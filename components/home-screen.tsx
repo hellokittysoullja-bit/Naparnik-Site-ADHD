@@ -608,7 +608,7 @@ export function HomeScreen() {
                 >
                   <p
                     ref={greetingRef}
-                    className={`font-sans text-lg leading-snug ${
+                    className={`font-sans text-lg leading-relaxed ${
                       greetingClamped ? "line-clamp-3" : ""
                     }`}
                   >

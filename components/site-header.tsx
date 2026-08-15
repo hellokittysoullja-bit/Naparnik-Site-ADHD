@@ -15,12 +15,16 @@ export function SiteHeader() {
           <span className="text-sm font-bold tracking-tight">напарник</span>
         </Link>
         <nav className="flex items-center gap-2">
+          {/* size="sm" = h-7 (28px) — компактный вид шапки часть бренда, менять
+              визуально не хотим. before:-inset-2 расширяет именно тач-зону до
+              44px (WCAG 2.5.8 / Fitts), не трогая размер кнопки — тот же приём,
+              что уже применён в section-nav.tsx (там -inset-4 на 12px точке). */}
           <Button
             render={<Link href="#how" />}
             nativeButton={false}
             size="sm"
             variant="ghost"
-            className="text-muted-foreground"
+            className="relative text-muted-foreground before:absolute before:-inset-2 before:content-['']"
           >
             Как это работает
           </Button>
@@ -29,7 +33,7 @@ export function SiteHeader() {
             nativeButton={false}
             size="sm"
             variant="ghost"
-            className="hidden text-muted-foreground sm:inline-flex"
+            className="relative hidden text-muted-foreground before:absolute before:-inset-2 before:content-[''] sm:inline-flex"
           >
             Мир
           </Button>

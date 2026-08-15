@@ -47,7 +47,10 @@ export function HeaderCta() {
       // (transform 120ms) и отдельный transition-opacity на одном элементе
       // не складываются — побеждает только один, кнопка либо не «жмётся»,
       // либо не проявляется плавно.
-      className={`press-fade font-semibold ${
+      // relative + before:-inset-2: size="sm" (h-7=28px) — тач-зона до 44px
+      // (WCAG 2.5.8), без изменения видимого размера. Тот же приём, что и
+      // в site-header.tsx на соседних nav-ссылках.
+      className={`press-fade relative font-semibold before:absolute before:-inset-2 before:content-[''] ${
         visible ? "opacity-100" : "pointer-events-none opacity-0"
       }`}
     >

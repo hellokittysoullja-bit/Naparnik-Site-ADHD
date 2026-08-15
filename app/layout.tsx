@@ -49,6 +49,26 @@ export const viewport: Viewport = {
   themeColor: "#1a1d17",
 };
 
+const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      name: "Напарник",
+      url: "https://ai-rc-one.vercel.app",
+      logo: "https://ai-rc-one.vercel.app/icon.png",
+    },
+    {
+      "@type": "WebSite",
+      name: "Напарник",
+      url: "https://ai-rc-one.vercel.app",
+      inLanguage: "ru-RU",
+      description:
+        "Напарник пишет тебе первым, помогает начать и растит свой мир из твоих фокус-сессий. Без стриков. Без стыда.",
+    },
+  ],
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -66,6 +86,11 @@ export default function RootLayout({
       className={`bg-background ${manrope.variable} ${jetbrainsMono.variable} ${caveat.variable}`}
     >
       <body className="antialiased font-sans">
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        />
         {children}
         {process.env.NODE_ENV === "production" && <Analytics />}
       </body>
