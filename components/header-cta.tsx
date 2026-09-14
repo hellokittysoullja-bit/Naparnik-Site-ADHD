@@ -47,7 +47,8 @@ export function HeaderCta() {
       // (transform 120ms) и отдельный transition-opacity на одном элементе
       // не складываются — побеждает только один, кнопка либо не «жмётся»,
       // либо не проявляется плавно.
-      className={`press-fade font-semibold ${
+      // min-h-11: единая зона нажатия 44px со всей шапкой (см. site-header)
+      className={`press-fade min-h-11 font-semibold ${
         visible ? "opacity-100" : "pointer-events-none opacity-0"
       }`}
     >

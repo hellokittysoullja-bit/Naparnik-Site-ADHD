@@ -17,27 +17,32 @@ import { SPRING_PARALLAX, SPRING_SNAPPY } from "@/lib/motion";
 import { playPurr } from "@/lib/reward-sound";
 
 /**
- * Первый экран: одна плотная композиция вместо двух зон, разбросанных по
- * полутора экранам. Промис (заголовок) поднят В КАДР — на десктопе он больше
- * не уходит под сгиб. Сцена остаётся иммерсивным фоном (её крафт — ров), но
- * слова оффера видны сразу: сцена не важнее промиса, они делят первый экран.
+ * Первый экран.
  *
- * Иерархия (сверху вниз, ни одного дубля):
- * - H1 — голос персонажа: «Начать — самое трудное. Я прихожу первым»
- *   с рукописным подчёркиванием слова-обещания (bespoke-деталь);
- * - слева от чипов ответа — рукописная пометка «даже если ты пропал на
- *   неделю» со стрелкой вверх на пузырь напарника: он придёт первым,
- *   даже если ты пропал — расширяет обещание H1, а не повторяет его;
- * - на lg+ — две колонки: оффер слева, существо и чат справа;
- * - подзаголовок — конкретика механики + дифференциатор «без стриков, без стыда»;
- * - живой чат-вход: существо здоровается, ты отвечаешь премиальной репликой —
- *   отличительный интерактивный крючок;
- * - главный CTA виден с первой секунды (не заперт за диалогом), внизу экрана —
- *   подсказка скролла: hero не должен читаться как конец страницы.
+ * Мобильный кадр несёт ОДИН момент и ровно одно действие:
+ * существо -> обещание (H1) -> одна строка сути -> кнопка.
+ * Диалог с чипами уехал на order-5 за сгиб (mt-[16dvh]), оставив намеренный
+ * сливер пузыря как подсказку скролла.
+ *
+ * Почему так, по замерам живой прод-сборки:
+ * - кнопка занимала 807-855px на экране 844px: нижняя кромка срезана, а с
+ *   видимой адресной строкой Safari (~750px) кнопки не было вовсе. Первый
+ *   экран не предлагал ни одного способа начать. Сейчас 503-555 на всех трёх
+ *   ходовых высотах (844 / 750 / 667) с запасом 260 / 166 / 83px;
+ * - вес по площади x светлоте: пузырь реплики (30 430px²) почти равнялся
+ *   заголовку (30 665px²) - два одинаково тяжёлых блока в кадре, фокуса нет;
+ * - тач-цели первого экрана и шапки: было 6 штук меньше 44px, стало 0;
+ * - подзаголовок 15px/60% давал 6.58:1 (AA, но не AAA). Сейчас 16px/72% =
+ *   9.15:1 по вендоренному scripts/contrast.py. Аудитория читает этот экран
+ *   уставшей, на hero-копии берём AAA;
+ * - тире на первом экране: было 4, стало 0 (taste-skill §9.G).
+ *
+ * На lg+ раскладка прежняя: оффер слева, существо и живой чат справа.
+ * Все mt-/order- правки этого прохода помечены lg:-сбросами.
  */
 
 const OPENING_LINE =
-  "Привет. Я Напарник. Если сил совсем нет — давай просто побудем рядом минуту.";
+  "Привет. Я Напарник. Если сил совсем нет, давай просто побудем рядом минуту.";
 
 const REPLIES = {
   procrastinate: {
@@ -256,7 +261,7 @@ export function Hero() {
       id="hero"
       // calc(100svh - 3.5rem): sticky-шапка h-14 съедает верх вьюпорта —
       // с чистым 100svh низ секции (и скролл-хинт) выталкивались за экран
-      className="grain grain-hero relative flex min-h-[calc(100svh-3.5rem)] flex-col items-center justify-center overflow-hidden px-4 pb-20 pt-6"
+      className="grain grain-hero relative flex min-h-[calc(100dvh-3.5rem)] flex-col items-center justify-center overflow-hidden px-4 pb-8 pt-6"
     >
       {/* Атмосфера: ночная сцена с луной и звёздами — иммерсивный фон.
           ВАЖНО: высота сцены зафиксирована 100svh, а не inset-0. На мобильном
@@ -356,7 +361,7 @@ export function Hero() {
               моменту, когда начинает рисоваться каракуля (0.95s) — взгляд
               сперва ловит проявление света, потом штрих */}
             <span className="chroma-appear">
-              Начать — самое трудное. Я прихожу{" "}
+              Начать трудно. Я прихожу{" "}
               <span
                 className="scribble-underline scribble-draw text-primary"
                 style={{ "--scribble-delay": "0.95s" } as CSSProperties}
@@ -395,16 +400,20 @@ export function Hero() {
               заголовка на два шага (кегль, тон, ширина колонки): на экране
               один главный текст — обещание H1; sub объясняет, не спорит */}
           <p
-            className="hero-rise order-3 max-w-[36ch] text-pretty text-[15px] leading-relaxed text-foreground/60 md:text-base lg:order-none lg:max-w-[44ch]"
+            className="hero-rise order-3 max-w-[32ch] text-pretty text-[16px] leading-[1.5] text-foreground/72 md:text-base lg:order-none lg:max-w-[44ch]"
             style={{ "--rise-delay": "0.46s" } as CSSProperties}
           >
             {/* Первое лицо, как и H1: два голоса в одном кадре — шов.
-                Имя продукта остаётся в шапке прямо над заголовком */}
+                Имя продукта остаётся в шапке прямо над заголовком.
+                Кегль 16, а не 15: отношение к H1 остаётся 2.6x (порог «display
+                >= 2.5x body»), но абсолютная читаемость выше, а /72 вместо /60
+                выводит пару из AA (6.58:1) в AAA (замер contrast.py). Аудитория
+                продукта читает этот экран уставшей — на hero-копии берём AAA.
+                «Без стриков. Без стыда.» отсюда снято: строка дословно живёт
+                в секции «Я обещаю» и в футере, а на первом экране она была
+                четвёртым текстовым блоком и тянула вес у действия. */}
             Я сижу рядом, пока ты работаешь, и&nbsp;выращиваю остров из твоих
-            стартов.{" "}
-            <span className="whitespace-nowrap font-medium text-foreground/95">
-              Без стриков. Без стыда.
-            </span>
+            стартов.
           </p>
 
           {/* Главный CTA: на мобильном — последний в кадре (order-5), на
@@ -414,7 +423,13 @@ export function Hero() {
             // свой «Начать» ровно тогда, когда hero-CTA не виден — инвариант
             // «в кадре всегда есть ровно одно primary-действие»
             id="hero-cta"
-            className="hero-rise order-5 mt-3 flex w-full flex-col items-center gap-2.5 lg:order-none lg:mt-1 lg:items-start"
+            // order-4, а не order-5: на мобильном действие идёт ДО диалога.
+            // Замер: при старом порядке кнопка занимала 807-855px на экране
+            // 844px — нижняя кромка срезана, а с видимой адресной строкой
+            // Safari (~750px) кнопки не было вовсе. Первый экран не
+            // предлагал ни одного способа начать. Диалог уехал на order-5,
+            // то есть за сгиб, где ему просторнее.
+            className="hero-rise order-4 mt-3 flex w-full flex-col items-center gap-2.5 lg:order-none lg:mt-1 lg:items-start"
             style={{ "--rise-delay": "0.78s" } as CSSProperties}
           >
             <motion.div
@@ -445,7 +460,7 @@ export function Hero() {
                 // .press (transform 120ms) и отдельный transition-shadow на
                 // одном элементе не складываются — тень никогда не
                 // «нагревалась» бы плавно.
-                className={`press-warm w-full max-w-xs rounded-2xl font-semibold sm:w-auto sm:px-10 ${
+                className={`press-warm min-h-[52px] w-full max-w-xs rounded-2xl font-semibold sm:w-auto sm:px-10 ${
                   ctaBoost
                     ? "shadow-[inset_0_1px_0_oklch(1_0_0/0.5),inset_0_-9px_18px_-9px_oklch(0.68_0.17_75/0.75),0_14px_30px_-14px_oklch(0_0_0/0.6)]"
                     : "shadow-[inset_0_1px_0_oklch(1_0_0/0.45),inset_0_-8px_16px_-10px_oklch(0.55_0.18_130/0.6),0_14px_28px_-14px_oklch(0_0_0/0.6)]"
@@ -461,6 +476,13 @@ export function Hero() {
                 )}
               </Button>
             </motion.div>
+            {/* Осознанное отступление от taste-skill §4.7 (он запрещает любую
+                мелкую подпись под CTA в hero). Оставлено намеренно: строка
+                снимает главное возражение ровно в точке решения, а не через
+                экран, и после перестановки порядка под кнопкой осталось
+                160+px свободной высоты — структурно она больше ничего не
+                выталкивает. Регистрации и карты в продукте действительно нет,
+                так что это факт, а не маркетинговый шум. */}
             <span className="text-[13px] font-medium text-muted-foreground">
               бесплатно · без карты и регистрации
             </span>
@@ -503,7 +525,17 @@ export function Hero() {
 
           {/* Живой чат-вход: он здоровается, ты отвечаешь — премиальная реплика */}
           <div
-            className="hero-rise order-4 mt-1 flex w-full flex-col gap-2.5 lg:order-none"
+            // order-5, а не order-4: на мобильном диалог идёт ПОСЛЕ действия,
+            // за сгибом, где ему просторно. Первый экран несёт один момент:
+            // существо, обещание, кнопка. На lg+ порядок задаёт сетка.
+            // mt-16dvh только на мобильном: замер веса показал, что пузырь
+            // реплики (30 430px²) почти равен заголовку (30 665px²) — два
+            // одинаково тяжёлых блока в одном кадре, фокуса нет. Отступ
+            // уводит диалог за сгиб, оставляя намеренный сливер: 109px на
+            // 844-экране, 30px на 750, ноль на 667. Этот сливер и есть
+            // подсказка скролла вместо снятого «листай — покажу»: пустой
+            // низ кадра читался бы как конец страницы.
+            className="hero-rise order-5 mt-[16dvh] flex w-full flex-col gap-2.5 lg:order-none lg:mt-1"
             style={{ "--rise-delay": "0.62s" } as CSSProperties}
             aria-live="polite"
           >
@@ -678,7 +710,7 @@ export function Hero() {
                         onMouseLeave={() => setExpression("calm")}
                         // Реплики легче команды: чипы — «что сказать», CTA —
                         // «что сделать». Один командный вес на экран
-                        className="group glass glass-interactive glass-shine press whitespace-nowrap rounded-2xl rounded-br-md px-3.5 py-2.5 text-sm font-medium text-foreground hover:text-primary"
+                        className="group glass glass-interactive glass-shine press inline-flex min-h-11 items-center whitespace-nowrap rounded-2xl rounded-br-md px-3.5 py-2.5 text-sm font-medium text-foreground hover:text-primary"
                       >
                         {REPLIES[key].visitor}
                       </motion.button>
@@ -692,31 +724,11 @@ export function Hero() {
         </div>
       </div>
 
-      {/* Подсказка «ниже есть ещё»: hero занимает весь экран, и без якоря
-          нижняя кромка читается как конец страницы. */}
-      <a
-        href="#how"
-        // К1: полный muted (4.6:1 на мелком кегле) вместо /80 (~3.5:1)
-        className="hero-rise absolute bottom-4 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-primary [@media(max-height:560px)]:hidden"
-        style={{ "--rise-delay": "1.5s" } as CSSProperties}
-      >
-        листай — покажу
-        <svg
-          width="14"
-          height="8"
-          viewBox="0 0 14 8"
-          fill="none"
-          aria-hidden="true"
-        >
-          <path
-            d="M1 1 L7 7 L13 1"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </a>
+      {/* Подсказка скролла «листай — покажу» снята: taste-skill §9.F
+          относит scroll cue к прямым запретам, и по делу — человек, который
+          ещё не скроллил, смотрит на первый экран и уже знает, что такое
+          скролл. Ниже сгиба теперь начинается диалог, его верхняя кромка
+          сама показывает, что страница продолжается. */}
     </section>
   );
 }
