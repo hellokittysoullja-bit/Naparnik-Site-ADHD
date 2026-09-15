@@ -346,7 +346,7 @@ export function Hero() {
         </svg>
       </div>
 
-      <div className="relative flex w-full max-w-md flex-col items-center gap-4 text-center lg:grid lg:max-w-5xl lg:grid-cols-[minmax(0,1fr)_minmax(0,27rem)] lg:items-center lg:gap-x-16 lg:text-left">
+      <div className="hero-stack relative flex w-full max-w-md flex-col items-center gap-4 text-center lg:grid lg:max-w-5xl lg:grid-cols-[minmax(0,1fr)_minmax(0,27rem)] lg:items-center lg:gap-x-16 lg:text-left">
         {/* Десктоп по референсу: оффер слева, существо и живой чат справа.
             На мобильном обе колонки схлопываются в display:contents,
             порядок кадра задают order-классы (сцена → промис → чат → CTA) */}
@@ -354,16 +354,19 @@ export function Hero() {
           {/* Промис голосом персонажа: первая фраза — боль, вторая —
             обещание от первого лица. Каракуля — под словом обещания */}
           <h1
-            className="hero-rise order-2 mt-2 text-balance text-[2.6rem] font-bold leading-[1.03] tracking-tight md:text-5xl lg:order-none lg:mt-0"
+            className="hero-title hero-rise order-2 mt-2 text-balance font-bold md:text-5xl lg:order-none lg:mt-0"
             style={{ "--rise-delay": "0.32s" } as CSSProperties}
           >
             {/* Тёплый «прогрев» слов остывает до резкого текста ровно к
               моменту, когда начинает рисоваться каракуля (0.95s) — взгляд
               сперва ловит проявление света, потом штрих */}
             <span className="chroma-appear">
-              Начать трудно. Я прихожу{" "}
+              {/* Я прихожу: однобуквенное слово не оставляем в конце
+                  строки — перенос уходит на границу предложений, и кадр
+                  читается как «проблема / обещание», по строке на мысль */}
+              Начать трудно. Я прихожу{" "}
               <span
-                className="scribble-underline scribble-draw text-primary"
+                className="scribble-underline scribble-draw scribble-ink"
                 style={{ "--scribble-delay": "0.95s" } as CSSProperties}
               >
                 первым
@@ -392,7 +395,10 @@ export function Hero() {
                   />
                 </svg>
               </span>
-              {"."}
+              {/* Точка приклеена к слову: отдельным текстовым узлом она
+                  уезжала на следующую строку одна. Под росчерком её нет —
+                  подчёркивание не заходит под знак препинания. */}
+              <span className="-ml-[0.06em]">.</span>
             </span>
           </h1>
 
@@ -423,13 +429,7 @@ export function Hero() {
             // свой «Начать» ровно тогда, когда hero-CTA не виден — инвариант
             // «в кадре всегда есть ровно одно primary-действие»
             id="hero-cta"
-            // order-4, а не order-5: на мобильном действие идёт ДО диалога.
-            // Замер: при старом порядке кнопка занимала 807-855px на экране
-            // 844px — нижняя кромка срезана, а с видимой адресной строкой
-            // Safari (~750px) кнопки не было вовсе. Первый экран не
-            // предлагал ни одного способа начать. Диалог уехал на order-5,
-            // то есть за сгиб, где ему просторнее.
-            className="hero-rise order-4 mt-3 flex w-full flex-col items-center gap-2.5 lg:order-none lg:mt-1 lg:items-start"
+            className="hero-rise order-5 mt-3 flex w-full flex-col items-center gap-2.5 lg:order-none lg:mt-1 lg:items-start"
             style={{ "--rise-delay": "0.78s" } as CSSProperties}
           >
             <motion.div
@@ -472,7 +472,11 @@ export function Hero() {
                     Иду…
                   </>
                 ) : (
-                  "Начать первое дело →"
+                  // Без стрелки в тексте: frontend-design (anthropics)
+                  // относит «'→' appended to link and button text» к
+                  // шаблонной обвязке, которая появляется у ИИ независимо
+                  // от предмета. Кнопка и так говорит, что произойдёт.
+                  "Начать первое дело"
                 )}
               </Button>
             </motion.div>
@@ -483,8 +487,13 @@ export function Hero() {
                 160+px свободной высоты — структурно она больше ничего не
                 выталкивает. Регистрации и карты в продукте действительно нет,
                 так что это факт, а не маркетинговый шум. */}
+            {/* Одна человеческая фраза вместо мета-строки через среднюю
+                точку: «meta strings joined with middle dots (A · B · C)» —
+                из того же списка шаблонной обвязки. Работу свою строка
+                делает ту же: снимает возражение про деньги и регистрацию
+                ровно в точке решения. */}
             <span className="text-[13px] font-medium text-muted-foreground">
-              бесплатно · без карты и регистрации
+              Бесплатно, без карты и регистрации
             </span>
           </div>
         </div>
@@ -494,7 +503,7 @@ export function Hero() {
             ужимается, чтобы CTA оставался над сгибом */}
           {/* Порог 860px (был 740px): реальный iPhone отдаёт странице ~810px —
               компрессия не срабатывала, и чипы ответа уезжали за сгиб */}
-          <div className="relative order-1 flex origin-bottom flex-col items-center lg:order-none [@media(max-height:860px)]:scale-90 [@media(max-height:700px)]:scale-[0.8]">
+          <div className="hero-scene relative order-1 flex origin-bottom flex-col items-center lg:order-none">
             {/* Э5 · Очаг дышит: внешний div держит позиционирование
                 (translate), внутренний — только scale-пульс в такт дыханию
                 кота. Очаг ТЁПЛЫЙ (hue 55): лайм зарезервирован за глазами,
@@ -523,19 +532,15 @@ export function Hero() {
             <GroundPool className="-mt-12 -mb-12" />
           </div>
 
-          {/* Живой чат-вход: он здоровается, ты отвечаешь — премиальная реплика */}
+          {/* Живой чат-вход: он здоровается, ты отвечаешь — премиальная реплика.
+              Порядок кадра вернулся к авторскому (диалог перед действием):
+              прятать реплики было неверно, они и есть отличительная часть
+              экрана. Кнопка помещается не за счёт их выселения, а за счёт
+              того, что вся композиция стала компактнее — сцена ужимается по
+              высоте экрана, заголовок влезает в две строки, ушли скролл-хинт
+              и четвёртый текстовый блок. */}
           <div
-            // order-5, а не order-4: на мобильном диалог идёт ПОСЛЕ действия,
-            // за сгибом, где ему просторно. Первый экран несёт один момент:
-            // существо, обещание, кнопка. На lg+ порядок задаёт сетка.
-            // mt-16dvh только на мобильном: замер веса показал, что пузырь
-            // реплики (30 430px²) почти равен заголовку (30 665px²) — два
-            // одинаково тяжёлых блока в одном кадре, фокуса нет. Отступ
-            // уводит диалог за сгиб, оставляя намеренный сливер: 109px на
-            // 844-экране, 30px на 750, ноль на 667. Этот сливер и есть
-            // подсказка скролла вместо снятого «листай — покажу»: пустой
-            // низ кадра читался бы как конец страницы.
-            className="hero-rise order-5 mt-[16dvh] flex w-full flex-col gap-2.5 lg:order-none lg:mt-1"
+            className="hero-rise order-4 mt-1 flex w-full flex-col gap-2.5 lg:order-none"
             style={{ "--rise-delay": "0.62s" } as CSSProperties}
             aria-live="polite"
           >

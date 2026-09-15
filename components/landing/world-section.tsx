@@ -103,7 +103,7 @@ const principles: Array<{ icon: React.ReactNode; title: string; text: string }> 
       </svg>
     ),
     title: 'Ноль стриков',
-    text: 'Стрики наказывают за срыв. Мы — нет.',
+    text: 'Стрики наказывают за срыв. Мы не наказываем.',
   },
   {
     icon: (
@@ -115,7 +115,7 @@ const principles: Array<{ icon: React.ReactNode; title: string; text: string }> 
       </svg>
     ),
     title: 'Мир не откатывается',
-    text: 'Что построено — построено навсегда.',
+    text: 'Что построено, то построено навсегда.',
   },
   {
     icon: (
@@ -139,7 +139,7 @@ const principles: Array<{ icon: React.ReactNode; title: string; text: string }> 
       </svg>
     ),
     title: 'Никогда не знаешь, что вырастет',
-    text: 'Дальше — находки: кот у костра, кит в бухте, северное сияние. Редкие — правда редкие.',
+    text: 'Дальше идут находки: кот у костра, кит в бухте, северное сияние. Редкие, и правда редкие.',
   },
 ]
 
@@ -177,15 +177,20 @@ export function WorldSection() {
             viewport={{ once: true, margin: '-80px' }}
             transition={SPRING_REVEAL}
           >
+            {/* Курсив вместо text-primary: emphasis того же семейства
+                (frontend-design, anthropics) — «его мир» выделено весом, а не
+                ещё одной раскраской. Лайм на всей странице теперь только в
+                presence.tsx — на реальном эмоциональном пике, а не разбросан
+                по трём заголовкам подряд. */}
             <h2 className="text-balance text-4xl font-bold leading-[1.1] tracking-tight md:text-6xl">
-              Ты растишь{' '}
-              <span className="text-primary">его мир</span>.
+              Ты растишь <em className="italic">его мир</em>.
               <br />
               Он не даёт твоему рухнуть.
             </h2>
             <p className="text-lg leading-relaxed text-muted-foreground md:text-xl">
-              Каждый старт выращивает кусочек острова. Листай — и он растёт, прямо как в
-              приложении. А теперь главное: он никогда не откатывается.
+              Каждый старт выращивает кусочек острова. Листай, и он растёт
+              точно так же, как в приложении. А теперь главное: он никогда не
+              откатывается.
             </p>
           </motion.div>
 
@@ -281,7 +286,7 @@ export function WorldSection() {
             {/* Подпись под островом */}
             <div className="flex items-center justify-between px-6 py-4">
               <p className="text-sm text-muted-foreground">
-                Листай — и остров растёт
+                Листай, и остров растёт
               </p>
               <Button
                 render={<Link href="/app" />}
