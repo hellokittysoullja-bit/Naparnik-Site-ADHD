@@ -284,7 +284,7 @@ export function WorldSection() {
                 Листай — и остров растёт
               </p>
               <Button
-                render={<Link href="/app" />}
+                render={<Link href="/app" data-cta="" />}
                 nativeButton={false}
                 size="sm"
                 variant="outline"

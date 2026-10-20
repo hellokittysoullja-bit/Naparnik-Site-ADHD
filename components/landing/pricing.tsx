@@ -99,7 +99,7 @@ export function Pricing() {
         </div>
 
         <Button
-          render={<Link href="/app" />}
+          render={<Link href="/app" data-cta="" />}
           nativeButton={false}
           size="lg"
           className="press w-full font-semibold"

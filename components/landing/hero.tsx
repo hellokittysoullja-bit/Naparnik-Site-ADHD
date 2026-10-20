@@ -12,7 +12,6 @@ import {
 import { ArrowRight, Loader2 } from "lucide-react";
 import { MascotSvg, type MascotExpression } from "@/components/mascot-svg";
 import { GroundPool, HeroScene, Moon } from "@/components/hero-scene";
-import { Button } from "@/components/ui/button";
 import { SPRING_PARALLAX, SPRING_SNAPPY } from "@/lib/motion";
 import { playPurr } from "@/lib/reward-sound";
 
@@ -182,6 +181,25 @@ export function Hero() {
   // обработчике: disabled на Link-рендере base-ui ничего не даёт
   // (:disabled — псевдокласс нативных форм, у <a> его не бывает).
   const [navigating, setNavigating] = useState(false);
+  // Нижняя панель CTA прячется, пока в кадре другая CTA страницы
+  const [barHidden, setBarHidden] = useState(false);
+  useEffect(() => {
+    const targets = document.querySelectorAll("[data-cta]");
+    if (!targets.length) return;
+    const visible = new Set<Element>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) visible.add(e.target);
+          else visible.delete(e.target);
+        }
+        setBarHidden(visible.size > 0);
+      },
+      { threshold: 0.6 },
+    );
+    targets.forEach((t) => io.observe(t));
+    return () => io.disconnect();
+  }, []);
 
   const reduceMotion = useReducedMotion();
 
@@ -255,7 +273,7 @@ export function Hero() {
     <section
       id="hero"
       // Шапки нет: hero занимает весь вьюпорт, первый экран начинается с сцены
-      className="grain grain-hero relative flex min-h-svh flex-col items-center justify-center overflow-hidden px-4 pb-20 pt-6"
+      className="grain grain-hero relative flex min-h-svh flex-col items-center justify-center overflow-hidden px-4 pb-36 pt-6 lg:pb-20"
     >
       {/* Атмосфера: ночная сцена с луной и звёздами — иммерсивный фон.
           ВАЖНО: высота сцены зафиксирована 100svh, а не inset-0. На мобильном
@@ -406,22 +424,31 @@ export function Hero() {
             </span>
           </p>
 
-          {/* Главный CTA: на мобильном — последний в кадре (order-5), на
-            десктопе — в текстовой колонке сразу под оффером */}
+          {/* Главный CTA. Мобильный (<lg): фиксированная нижняя панель, как у
+            Duolingo: разделитель сверху, кнопка на всю ширину с полями 14px,
+            «губа» 4px снизу, вдавливается при нажатии. Панель в потоке не
+            участвует, поэтому hero-rise тут нельзя: transform на предке
+            ломает position:fixed, а кнопка должна быть видна с первого кадра.
+            Панель прячется, пока в кадре другая CTA страницы ([data-cta]):
+            ровно одно primary-действие на вьюпорт. Десктоп: в текстовой
+            колонке под оффером, как раньше */}
           <div
             id="hero-cta"
-            className="hero-rise order-5 mt-3 flex w-full flex-col items-center gap-2.5 lg:order-none lg:mt-1 lg:items-start"
-            style={{ "--rise-delay": "0.78s" } as CSSProperties}
+            className={`order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:border-t max-lg:border-white/10 max-lg:bg-background/95 max-lg:px-3.5 max-lg:pb-[max(0.75rem,env(safe-area-inset-bottom))] max-lg:pt-3 max-lg:backdrop-blur-md max-lg:transition-[transform,opacity] max-lg:duration-300 max-lg:ease-out lg:order-none lg:mt-1 lg:items-start ${
+              barHidden
+                ? "max-lg:pointer-events-none max-lg:translate-y-full max-lg:opacity-0"
+                : ""
+            }`}
           >
             <motion.div
-              animate={ctaBoost ? { scale: [1, 1.045, 1] } : {}}
+              animate={ctaBoost ? { scale: [1, 1.02, 1] } : {}}
               transition={{ duration: 0.55, ease: "easeOut" }}
-              className="w-full sm:w-auto"
+              className="w-full lg:w-auto"
             >
-              <Button
-                render={<Link href="/app" />}
-                nativeButton={false}
-                size="lg"
+              <Link
+                href="/app"
+                // iOS Safari включает :active только при наличии touch-слушателя
+                onTouchStart={() => {}}
                 onClick={(e: React.MouseEvent) => {
                   if (navigating) {
                     e.preventDefault();
@@ -429,23 +456,8 @@ export function Hero() {
                   }
                   setNavigating(true);
                 }}
-                // Закон света: UI не светится неоном — но и не плоский.
-                // Объём леденца: блик по верхней кромке + тёплая тень нижней
-                // грани внутри заливки + чёрная тень вовне. Заметность — у
-                // самой светлоты primary, ярчайшей поверхности кадра.
-                // rounded-2xl: радиус единый с чипами и пузырём. А4: после
-                // ответа в диалоге кнопка «нагревается» — тёплая нижняя грань
-                // усиливается (событийное изменение, дофаминовый мостик
-                // диалог → действие), переход мягкий 700мс.
-                // .press-warm, не .press: transition — shorthand-свойство,
-                // .press (transform 120ms) и отдельный transition-shadow на
-                // одном элементе не складываются — тень никогда не
-                // «нагревалась» бы плавно.
-                className={`press-warm w-full max-w-xs rounded-2xl font-semibold sm:w-auto sm:px-10 ${
-                  ctaBoost
-                    ? "shadow-[inset_0_1px_0_oklch(1_0_0/0.5),inset_0_-9px_18px_-9px_oklch(0.68_0.17_75/0.75),0_14px_30px_-14px_oklch(0_0_0/0.6)]"
-                    : "shadow-[inset_0_1px_0_oklch(1_0_0/0.45),inset_0_-8px_16px_-10px_oklch(0.55_0.18_130/0.6),0_14px_28px_-14px_oklch(0_0_0/0.6)]"
-                }`}
+                data-warm={ctaBoost ? "" : undefined}
+                className="btn-chunky flex h-[52px] w-full select-none items-center justify-center gap-2 rounded-[16px] bg-primary px-6 text-[15px] font-bold uppercase tracking-[0.06em] text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:w-auto lg:px-10"
               >
                 {navigating ? (
                   <>
@@ -453,11 +465,11 @@ export function Hero() {
                     Иду…
                   </>
                 ) : (
-                  "Начать первое дело →"
+                  "Начать первое дело"
                 )}
-              </Button>
+              </Link>
             </motion.div>
-            <span className="text-[13px] font-medium text-muted-foreground">
+            <span className="text-[14px] font-medium text-foreground/70">
               бесплатно · без карты и регистрации
             </span>
           </div>

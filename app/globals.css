@@ -1242,3 +1242,36 @@ body[data-companion-speaking] .app-hearth {
     filter: none;
   }
 }
+
+
+/* Плотная кнопка главного действия (Duolingo-паттерн): «губа» 4px — это
+   box-shadow без размытия, поэтому раскладка не прыгает. При нажатии кнопка
+   проседает на высоту губы, губа схлопывается. Тёплая губа — событийное
+   изменение после ответа в диалоге (data-warm). */
+@property --lip {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.66 0.19 131);
+}
+.btn-chunky {
+  --lip: oklch(0.66 0.19 131);
+  box-shadow: 0 4px 0 var(--lip);
+  transition:
+    transform 110ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 110ms cubic-bezier(0.22, 1, 0.36, 1),
+    --lip 700ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-chunky[data-warm] {
+  --lip: oklch(0.7 0.16 70);
+}
+.btn-chunky:active {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 var(--lip);
+  transition-duration: 45ms, 45ms, 700ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-chunky {
+    transition: none;
+  }
+}
