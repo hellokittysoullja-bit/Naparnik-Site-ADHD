@@ -512,7 +512,6 @@ export function MascotSvg({
   const [squint, setSquint] = useState(false);
   // повторные тапы не должны давать одно и то же (привыкание): каждый
   // третий — кот машет в ответ
-  const taps = useRef(0);
   const [tapWave, setTapWave] = useState(false);
 
   useEffect(() => {
@@ -532,22 +531,70 @@ export function MascotSvg({
     });
   }, [action, alive, rootCtl]);
 
-  const poke = () => {
-    if (!interactive || !alive) return;
+  // «Мешок» реакций (как мешок фигур в Tetris): порядок случайный, но за
+  // цикл выпадает каждая и без повторов подряд — тап не приедается и нет
+  // долгой «засухи» без любимой реакции.
+  const bag = useRef<string[]>([]);
+  const lastReaction = useRef("");
+  const nextReaction = () => {
+    if (bag.current.length === 0) {
+      const all = ["squash", "ears", "wave", "squash", "slowblink"];
+      for (let i = all.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [all[i], all[j]] = [all[j], all[i]];
+      }
+      if (all[all.length - 1] === lastReaction.current) all.reverse();
+      bag.current = all;
+    }
+    const r = bag.current.pop() as string;
+    lastReaction.current = r;
+    return r;
+  };
+
+  const squash = () =>
     void rootCtl.start({
       y: [0, 1.5 * K, -5 * K, 0],
       scaleY: [1, 0.9, 1.05, 1],
       scaleX: [1, 1.07, 0.97, 1],
       transition: { duration: 0.46, times: [0, 0.22, 0.6, 1], ease: "easeOut" },
     });
+
+  const poke = () => {
+    if (!interactive || !alive) return;
+    const r = nextReaction();
+    if (r === "squash" || r === "wave") squash();
     void earL.start({ rotate: [0, -12, 2, 0], transition: { duration: 0.42 } });
     void earR.start({ rotate: [0, 12, -2, 0], transition: { duration: 0.42, delay: 0.04 } });
-    setSquint(true);
-    setTimeout(() => setSquint(false), 380);
-    taps.current += 1;
-    if (taps.current % 3 === 0 && action === "idle" && !tapWave) {
+    if (r === "slowblink") {
+      setBlink("slow");
+      setTimeout(() => setBlink("open"), 560);
+    } else {
+      setSquint(true);
+      setTimeout(() => setSquint(false), 380);
+    }
+    if (r === "wave" && action === "idle" && !tapWave) {
       setTapWave(true);
       setTimeout(() => setTapWave(false), WAVE.duration * 1000 + 100);
+    }
+  };
+
+  // Пасхалка: долгое нажатие — «гладишь» кота: он жмурится и тянется
+  // мордочкой, пока держишь палец (ответ на неожиданное действие).
+  const [petting, setPetting] = useState(false);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onDown = () => {
+    poke();
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = setTimeout(() => {
+      setPetting(true);
+      tilt.set(7);
+    }, 550);
+  };
+  const onUp = () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    if (petting) {
+      setPetting(false);
+      tilt.set(0);
     }
   };
 
@@ -615,7 +662,7 @@ export function MascotSvg({
   /* ── Веки ───────────────────────────────────────────────────────── */
   const lidBase = yawn ? 0.75 : focused ? 0.34 : writing ? 0.22 : 0;
   const lid =
-    blink !== "open" || squint ? 1 : lidBase;
+    blink !== "open" || squint ? 1 : petting ? 0.8 : lidBase;
   const lidTransition =
     blink === "slow"
       ? { duration: 0.28, ease: "easeInOut" as const }
@@ -679,7 +726,10 @@ export function MascotSvg({
       role={label ? "img" : undefined}
       aria-label={label || undefined}
       aria-hidden={label ? undefined : true}
-      onPointerDown={interactive ? poke : undefined}
+      onPointerDown={interactive ? onDown : undefined}
+      onPointerUp={interactive ? onUp : undefined}
+      onPointerLeave={interactive ? onUp : undefined}
+      onPointerCancel={interactive ? onUp : undefined}
       style={{ overflow: "visible" }}
     >
       {/* контактная тень: кот сидит на земле, а не висит в воздухе */}
