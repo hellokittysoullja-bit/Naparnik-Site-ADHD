@@ -273,7 +273,7 @@ export function Hero() {
     <section
       id="hero"
       // Шапки нет: hero занимает весь вьюпорт, первый экран начинается с сцены
-      className="grain grain-hero relative flex min-h-svh flex-col items-center justify-center overflow-hidden px-4 pb-28 pt-3 lg:pb-20 lg:pt-6"
+      className="grain grain-hero relative flex h-dvh min-h-0 flex-col items-center justify-center overflow-hidden px-4 pb-28 pt-3 lg:pb-20 lg:pt-6"
     >
       {/* Атмосфера: ночная сцена с луной и звёздами — иммерсивный фон.
           ВАЖНО: высота сцены зафиксирована 100svh, а не inset-0. На мобильном
@@ -283,7 +283,7 @@ export function Hero() {
           высотой композиция сцены совпадает с задуманной при любом контенте. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-svh"
+        className="pointer-events-none absolute inset-x-0 top-0 h-dvh"
       >
         {/* Э6 · Параллакс: при скролле небо отстаёт от контента (сцена
             +10svh, луна +16svh к концу первого экрана) — мир глубже экрана.
@@ -333,7 +333,7 @@ export function Hero() {
           где hero = 100svh, слой схлопывается в ноль и не рендерит ничего. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 top-[100svh] overflow-hidden"
+        className="pointer-events-none absolute inset-x-0 bottom-0 top-[100dvh] overflow-hidden"
       >
         <div
           className="absolute inset-0"
@@ -373,12 +373,12 @@ export function Hero() {
               моменту, когда начинает рисоваться каракуля (0.95s) — взгляд
               сперва ловит проявление света, потом штрих */}
             <span className="chroma-appear">
-              Начать — самое трудное. Я&nbsp;прихожу{" "}
+              Сдвинем твоё дело за{" "}
               <span
                 className="scribble-underline scribble-draw text-primary"
                 style={{ "--scribble-delay": "0.95s" } as CSSProperties}
               >
-                первым
+                2&nbsp;минуты
                 <svg
                   viewBox="0 0 100 12"
                   preserveAspectRatio="none"
@@ -408,22 +408,6 @@ export function Hero() {
             </span>
           </h1>
 
-          {/* Подзаголовок: конкретика + дифференциатор. Визуально ТИШЕ
-              заголовка на два шага (кегль, тон, ширина колонки): на экране
-              один главный текст — обещание H1; sub объясняет, не спорит */}
-          <p
-            className="hero-rise order-3 max-w-[36ch] text-pretty text-[15px] leading-relaxed text-foreground/60 md:text-base lg:order-none lg:max-w-[44ch]"
-            style={{ "--rise-delay": "0.46s" } as CSSProperties}
-          >
-            {/* Первое лицо, как и H1: два голоса в одном кадре — шов.
-                Имя продукта остаётся в шапке прямо над заголовком */}
-            Я сижу рядом, пока ты работаешь, и&nbsp;выращиваю остров из твоих
-            стартов.{" "}
-            <span className="whitespace-nowrap font-medium text-foreground/95">
-              Без стриков. Без стыда.
-            </span>
-          </p>
-
           {/* Главный CTA. Мобильный (<lg): фиксированная нижняя панель, как у
             Duolingo: разделитель сверху, кнопка на всю ширину с полями 14px,
             «губа» 4px снизу, вдавливается при нажатии. Панель в потоке не
@@ -434,7 +418,7 @@ export function Hero() {
             колонке под оффером, как раньше */}
           <div
             id="hero-cta"
-            className={`order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:border-t max-lg:border-white/10 max-lg:bg-background/95 max-lg:px-3.5 max-lg:pb-[max(1.125rem,env(safe-area-inset-bottom))] max-lg:pt-[1.125rem] max-lg:backdrop-blur-md max-lg:transition-[transform,opacity] max-lg:duration-300 max-lg:ease-out lg:order-none lg:mt-1 lg:items-start ${
+            className={`order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:px-3.5 max-lg:pb-[max(1.125rem,env(safe-area-inset-bottom))] lg:order-none lg:mt-1 lg:items-start ${
               barHidden
                 ? "max-lg:pointer-events-none max-lg:translate-y-full max-lg:opacity-0"
                 : ""
@@ -505,7 +489,7 @@ export function Hero() {
                 expression={expression}
                 size={196}
                 label=""
-                className="size-[164px] [@media(max-height:780px)]:size-[148px] lg:size-[196px] lg:origin-bottom lg:scale-[1.15]"
+                className="size-[190px] [@media(max-height:780px)]:size-[172px] lg:size-[196px] lg:origin-bottom lg:scale-[1.15]"
               />
             </button>
             <GroundPool className="-mt-12 -mb-12" />
@@ -702,31 +686,6 @@ export function Hero() {
         </div>
       </div>
 
-      {/* Подсказка «ниже есть ещё»: hero занимает весь экран, и без якоря
-          нижняя кромка читается как конец страницы. */}
-      <a
-        href="#how"
-        // К1: полный muted (4.6:1 на мелком кегле) вместо /80 (~3.5:1)
-        className="hero-rise absolute bottom-4 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-primary [@media(max-height:560px)]:hidden"
-        style={{ "--rise-delay": "1.5s" } as CSSProperties}
-      >
-        листай — покажу
-        <svg
-          width="14"
-          height="8"
-          viewBox="0 0 14 8"
-          fill="none"
-          aria-hidden="true"
-        >
-          <path
-            d="M1 1 L7 7 L13 1"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </a>
     </section>
   );
 }
