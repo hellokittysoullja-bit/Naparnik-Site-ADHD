@@ -1244,10 +1244,12 @@ body[data-companion-speaking] .app-hearth {
 }
 
 
-/* Плотная кнопка главного действия (Duolingo-паттерн): «губа» 4px — это
-   box-shadow без размытия, поэтому раскладка не прыгает. При нажатии кнопка
-   проседает на высоту губы, губа схлопывается. Тёплая губа — событийное
-   изменение после ответа в диалоге (data-warm). */
+/* Плотная кнопка главного действия (Duolingo-паттерн). Внешний элемент
+   .btn-chunky неподвижен и включает зону «губы» (padding-bottom 4px), чтобы
+   палец у нижнего края не терял кнопку при вдавливании. Двигается и красится
+   только .btn-face: губа = box-shadow без размытия (раскладка не прыгает),
+   при нажатии лицо проседает на высоту губы, губа схлопывается.
+   Тёплая губа — событийное изменение после ответа в диалоге (data-warm). */
 @property --lip {
   syntax: "<color>";
   inherits: true;
@@ -1255,23 +1257,35 @@ body[data-companion-speaking] .app-hearth {
 }
 .btn-chunky {
   --lip: oklch(0.66 0.19 131);
-  box-shadow: 0 4px 0 var(--lip);
-  transition:
-    transform 110ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 110ms cubic-bezier(0.22, 1, 0.36, 1),
-    --lip 700ms ease;
+  padding-bottom: 4px;
+  touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  transition: --lip 700ms ease;
 }
 .btn-chunky[data-warm] {
   --lip: oklch(0.7 0.16 70);
 }
-.btn-chunky:active {
+.btn-chunky .btn-face {
+  box-shadow: 0 4px 0 var(--lip);
+  transition:
+    transform 110ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 110ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 150ms ease;
+}
+.btn-chunky:active .btn-face {
   transform: translateY(4px);
   box-shadow: 0 0 0 var(--lip);
-  transition-duration: 45ms, 45ms, 700ms;
+  transition-duration: 45ms;
+}
+@media (hover: hover) {
+  .btn-chunky:hover .btn-face {
+    filter: brightness(1.06);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .btn-chunky {
+  .btn-chunky,
+  .btn-chunky .btn-face {
     transition: none;
   }
 }

@@ -366,14 +366,14 @@ export function Hero() {
           {/* Промис голосом персонажа: первая фраза — боль, вторая —
             обещание от первого лица. Каракуля — под словом обещания */}
           <h1
-            className="hero-rise order-2 mt-2 text-balance text-[2.6rem] font-bold leading-[1.03] tracking-tight md:text-5xl lg:order-none lg:mt-0"
+            className="hero-rise order-2 mt-2 text-balance text-[2.35rem] font-bold leading-[1.08] min-[400px]:text-[2.6rem] tracking-tight md:text-5xl lg:order-none lg:mt-0"
             style={{ "--rise-delay": "0.32s" } as CSSProperties}
           >
             {/* Тёплый «прогрев» слов остывает до резкого текста ровно к
               моменту, когда начинает рисоваться каракуля (0.95s) — взгляд
               сперва ловит проявление света, потом штрих */}
             <span className="chroma-appear">
-              Начать — самое трудное. Я прихожу{" "}
+              Начать — самое трудное. Я&nbsp;прихожу{" "}
               <span
                 className="scribble-underline scribble-draw text-primary"
                 style={{ "--scribble-delay": "0.95s" } as CSSProperties}
@@ -434,17 +434,25 @@ export function Hero() {
             колонке под оффером, как раньше */}
           <div
             id="hero-cta"
-            className={`order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:border-t max-lg:border-white/10 max-lg:bg-background/95 max-lg:px-3.5 max-lg:pb-[max(0.75rem,env(safe-area-inset-bottom))] max-lg:pt-3 max-lg:backdrop-blur-md max-lg:transition-[transform,opacity] max-lg:duration-300 max-lg:ease-out lg:order-none lg:mt-1 lg:items-start ${
+            className={`order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:border-t max-lg:border-white/10 max-lg:bg-background/95 max-lg:px-3.5 max-lg:pb-[max(1.125rem,env(safe-area-inset-bottom))] max-lg:pt-3 max-lg:backdrop-blur-md max-lg:transition-[transform,opacity] max-lg:duration-300 max-lg:ease-out lg:order-none lg:mt-1 lg:items-start ${
               barHidden
                 ? "max-lg:pointer-events-none max-lg:translate-y-full max-lg:opacity-0"
                 : ""
             }`}
           >
+            {/* Мобильный: подпись над кнопкой, чтобы кнопка стояла у нижнего
+                края (как «Далее» у Duolingo: 18px от края до губы) */}
+            <span className="text-[14px] font-medium text-foreground/70 max-lg:order-first">
+              бесплатно · без карты и регистрации
+            </span>
             <motion.div
               animate={ctaBoost ? { scale: [1, 1.02, 1] } : {}}
               transition={{ duration: 0.55, ease: "easeOut" }}
               className="w-full lg:w-auto"
             >
+              {/* Внешний <a> неподвижен и включает зону губы (+4px): палец у
+                  нижнего края не «выпадает» из кнопки, когда лицо вдавилось.
+                  Двигается только .btn-face */}
               <Link
                 href="/app"
                 // iOS Safari включает :active только при наличии touch-слушателя
@@ -457,21 +465,20 @@ export function Hero() {
                   setNavigating(true);
                 }}
                 data-warm={ctaBoost ? "" : undefined}
-                className="btn-chunky flex h-[52px] w-full select-none items-center justify-center gap-2 rounded-[16px] bg-primary px-6 text-[15px] font-bold uppercase tracking-[0.06em] text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:w-auto lg:px-10"
+                className="btn-chunky block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:w-auto"
               >
-                {navigating ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                    Иду…
-                  </>
-                ) : (
-                  "Начать первое дело"
-                )}
+                <span className="btn-face flex h-[52px] items-center justify-center gap-2 rounded-[16px] bg-primary px-6 text-[15px] font-bold uppercase tracking-[0.06em] text-primary-foreground lg:px-10">
+                  {navigating ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                      Иду…
+                    </>
+                  ) : (
+                    "Начать первое дело"
+                  )}
+                </span>
               </Link>
             </motion.div>
-            <span className="text-[14px] font-medium text-foreground/70">
-              бесплатно · без карты и регистрации
-            </span>
           </div>
         </div>
 
