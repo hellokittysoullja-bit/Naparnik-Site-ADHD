@@ -10,26 +10,15 @@ OUT=os.path.join(ROOT,'public/mascot/')
 im=np.asarray(Image.open(SRC).convert('RGB')).astype(np.float32)
 H,W=im.shape[:2]
 mn=im.min(2)
-# фон = почти белое, СВЯЗАННОЕ с краем (заливка от углов) — блики в глазах не трогаем
-nw=Image.fromarray(((mn>205)*255).astype(np.uint8),'L').copy()  # copy: fromarray read-only, floodfill молча не работает
-for c in [(0,0),(W-1,0),(0,H-1),(W-1,H-1)]: ImageDraw.floodfill(nw,c,128)
-# карман между хвостом и телом не связан с краем — заливаем крупные белые пятна
-for sy in range(0,H,12):
-    for sx in range(0,W,12):
-        if nw.getpixel((sx,sy))==255:
-            before=np.asarray(nw).copy()
-            ImageDraw.floodfill(nw,(sx,sy),60)
-            area=(np.asarray(nw)==60).sum()
-            if area>1500:
-                arr=np.asarray(nw).copy(); arr[arr==60]=128; nw=Image.fromarray(arr,'L').copy()
-            else:
-                arr=np.asarray(nw).copy(); arr[arr==60]=200; nw=Image.fromarray(arr,'L').copy()
-bg=np.asarray(nw)==128
-near=np.asarray(Image.fromarray((bg*255).astype(np.uint8)).filter(ImageFilter.MaxFilter(9)))>0
-soft=np.clip((248-mn)/38,0,1)
-alpha=np.where(bg,0,np.where(near,soft,1.0)).astype(np.float32)
+# Прозрачность: маска силуэта (BiRefNet, design/mascot/mask.png) + снятие белой примеси у кромки (matte.py).
+# Старая нарезка резала по порогу белого — на кромке оставалась светлая кайма (на тёмном фоне сайта: «белые штуки»).
+import sys
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+from matte import cutout
+solid=np.asarray(Image.open(os.path.join(ROOT,'design/mascot/mask.png')).convert('L'))>127
+rgb,alpha=cutout(im.astype(np.uint8),solid)
+alpha=alpha.astype(np.float32)
 a3=alpha[...,None]
-rgb=np.clip(np.where(a3>0.02,(im-(1-a3)*255)/np.maximum(a3,0.02),0),0,255)
 
 def poly(pts, feather=0):
     m=Image.new('L',(W,H),0); ImageDraw.Draw(m).polygon(pts,fill=255)
@@ -66,8 +55,8 @@ def save(name, rgbx, a, box):
     x0,y0,x1,y1=box
     arr=np.dstack([rgbx[y0:y1,x0:x1],np.clip(a[y0:y1,x0:x1],0,1)*255]).astype(np.uint8)
     img=Image.fromarray(arr,'RGBA')
-    img=img.resize(((x1-x0)//2,(y1-y0)//2),Image.LANCZOS)  # 50%: хватает для 2x DPR до ~300px
-    img.save(OUT+name+'.webp','WEBP',quality=88,method=6)
+    # полный размер рисунка, без потерь: уменьшение вдвое и сжатие с потерями размывали кромку и тянули светлую кайму
+    img.save(OUT+name+'.webp','WEBP',lossless=True,quality=100,method=6)
     print(name, box, img.size)
 
 # ── разметка частей (координаты исходника 1264×848) ──
@@ -116,6 +105,41 @@ save('head', eye_rgb, alpha*HEAD*notail*(1-ear_cut), (250,180,920,610))
 arm_hole=ARM>0.5
 body_rgb=inpaint(rgb, arm_hole, 40, valid=(alpha>0.6))
 bodyA=alpha*notail*body_zone
+# Под поднятой лапой — не плоская латка во всю дыру (она выпирала за силуэт, без обводки: «кляксой»),
+# а торс с настоящей линией силуэта: нижний левый край идёт дугой от обводки груди к задней лапе,
+# всё, что за дугой, — прозрачно (там земля), по дуге — тушь с шерстяными засечками.
+BELLY=[(414,625),(418,650),(424,676),(438,704),(462,726),(494,742),(528,750),(556,752)]
+def catmull(pts,n=14):
+    P=[pts[0]]+list(pts)+[pts[-1]]; out=[]
+    for i in range(1,len(P)-2):
+        p0,p1,p2,p3=[np.array(q,float) for q in P[i-1:i+3]]
+        for t in np.linspace(0,1,n,endpoint=False):
+            out.append(0.5*((2*p1)+(-p0+p2)*t+(2*p0-5*p1+4*p2-p3)*t*t+(-p0+3*p1-3*p2+p3)*t**3))
+    out.append(np.array(pts[-1],float)); return np.array(out)
+curve=catmull(BELLY)
+inside=Image.new('L',(W,H),0)
+ImageDraw.Draw(inside).polygon([tuple(q) for q in curve]+[(600,752),(600,600),(560,600),(414,600)],fill=255)
+inside=np.asarray(inside.filter(ImageFilter.GaussianBlur(1.2))).astype(np.float32)/255
+arm_zone=poly([(404,606),(572,606),(572,772),(404,772)],0)
+bodyA=np.where(arm_zone>0.5, bodyA*inside, bodyA)
+# тушь: обводка силуэта + засечки шёрстки наружу и вниз
+ink=Image.new('L',(W,H),0); dr=ImageDraw.Draw(ink)
+rng=np.random.RandomState(7)
+for i in range(len(curve)-1):
+    t=i/(len(curve)-1); wdt=int(round(3+2.2*np.sin(np.pi*min(1,t*1.15))))
+    dr.line([tuple(curve[i]),tuple(curve[i+1])],fill=255,width=max(2,wdt))
+for k in range(5,len(curve)-9,6):
+    x,y=curve[k]; nx,ny=curve[k+1]-curve[k-1]; L_=np.hypot(nx,ny)+1e-6
+    ox,oy=ny/L_,-nx/L_                       # нормаль наружу (влево-вниз)
+    ln=9+rng.randint(0,8); sh=rng.uniform(-0.25,0.25)
+    dr.line([(x,y),(x+(ox+sh)*ln,y+(oy+0.45)*ln)],fill=255,width=2)
+ink=np.asarray(ink.filter(ImageFilter.GaussianBlur(0.7))).astype(np.float32)/255*arm_zone
+# объём: мех темнеет к силуэту
+dist=np.asarray(Image.fromarray((inside*255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(14))).astype(np.float32)/255
+shade=1-0.22*(1-np.clip(dist*1.6,0,1))*arm_zone
+body_rgb=body_rgb*shade[...,None]
+body_rgb=body_rgb*(1-ink[...,None])+np.array([24,24,27],np.float32)*ink[...,None]
+bodyA=np.maximum(bodyA,ink*arm_zone*0.98)
 save('body', body_rgb, bodyA, (380,500,860,790))
 PAW=poly([(440,676),(470,662),(530,662),(556,680),(560,725),(550,760),(500,768),(445,760),(436,725)],2)
 save('leg', rgb, alpha*ARM*(1-PAW), (410,600,575,700))

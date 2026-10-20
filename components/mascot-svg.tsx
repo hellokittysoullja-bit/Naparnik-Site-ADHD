@@ -27,6 +27,7 @@ import {
   PAPER,
   PAW_C,
   PENCIL,
+  POSE,
   SHOULDER,
   VIEWBOX,
   type Layer,
@@ -161,27 +162,14 @@ const WRITE = (() => {
   return { times, arm, paw, inkTimes, inkVals, inkOpacity, d };
 })();
 
-/* ── «Машет»: подъём с anticipation и перелётом, кисть отстаёт ──────── */
-const WAVE = {
-  duration: 2.8,
-  times: [0, 0.09, 0.27, 0.39, 0.51, 0.63, 0.75, 0.86, 1],
-  arm: [0, -7, 124, 110, 128, 110, 126, 116, 0],
-  // кисть разворачивает подушечки к зрителю и «доигрывает» взмах
-  paw: [0, 6, -136, -104, -144, -104, -140, -122, 0],
-  ease: [
-    "easeOut",
-    [0.34, 1.56, 0.64, 1],
-    "easeInOut",
-    "easeInOut",
-    "easeInOut",
-    "easeInOut",
-    "easeInOut",
-    [0.65, 0, 0.35, 1],
-  ] as const,
-};
-
-/** Поза поднятой лапы для reduced motion — смысл «машет» без движения */
-const WAVE_STILL = { arm: 116, paw: -122 };
+/* ── «Машет»: две позы поднятой лапы из GPT-Image-2 (A — лапа наружу, B — внутрь) сменяют
+   друг друга короткими кроссфейдами; перед взмахом лапа поднимается на A, в конце — опускается.
+   Шаги — мс на позу: быстрый старт (anticipation), ровный взмах, затухание. Два раунда с паузой. */
+const WAVE_STEPS = [300, 230, 230, 240, 250, 260, 300, 340];
+const WAVE_ROUNDS = 2;
+const WAVE_GAP_MS = 1600;
+const WAVE_FADE = 0.09;
+const WAVE_TOTAL_MS = WAVE_STEPS.reduce((a, b) => a + b, 0);
 
 /* ── Рты: латка меха рисунка закрывает родное «ω»; улыбка и «ровный»
    рот — это само родное «ω», растянутое; «о» и открытый рот — вектор
@@ -264,7 +252,7 @@ export function MascotSvg({
   // Рты только из рисунка: родное «ω», растянутое в улыбку или
   // приплюснутое — на рисунке нет «о» и открытого рта, их не выдумываем.
   const mouth: MouthShape =
-    excited || yawn || action === "wave" || happy
+    excited || action === "wave"
       ? "smile"
       : focused || action === "write"
         ? "flat"
@@ -532,7 +520,7 @@ export function MascotSvg({
     }
     if (r === "wave" && action === "idle" && !tapWave) {
       setTapWave(true);
-      setTimeout(() => setTapWave(false), WAVE.duration * 1000 + 100);
+      setTimeout(() => setTapWave(false), WAVE_TOTAL_MS + 100);
     }
   };
 
@@ -556,66 +544,77 @@ export function MascotSvg({
     }
   };
 
-  /* ── Лапа-«рука» (левая для зрителя) ────────────────────────────── */
-  const armWaving = action === "wave" || action === "celebrate" || tapWave;
+  /* ── Лапа-«рука» (левая для зрителя) ────────────────────────────────
+     Взмах и радость — позы из картинок (патчи ниже), лапа рига на это время прячется;
+     жёсткое вращение остаётся только для «пишет» (карандаш на той же траектории). */
+  const waving = action === "wave" || tapWave;
+  const cheering = action === "celebrate";
   const writing = action === "write";
+  const [wavePose, setWavePose] = useState<"a" | "b" | null>(null);
+  useEffect(() => {
+    if (!waving) {
+      setWavePose(null);
+      return;
+    }
+    if (reduceMotion) {
+      setWavePose("a");
+      return;
+    }
+    let live = true;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const later = (fn: () => void, ms: number) => timers.push(setTimeout(() => live && fn(), ms));
+    let t = 0;
+    const rounds = action === "wave" ? WAVE_ROUNDS : 1;
+    for (let r = 0; r < rounds; r++) {
+      WAVE_STEPS.forEach((ms, i) => {
+        const pose = i % 2 === 0 ? "a" : "b";
+        later(() => setWavePose(pose), t);
+        t += ms;
+      });
+      later(() => setWavePose(null), t);
+      t += WAVE_GAP_MS;
+    }
+    return () => {
+      live = false;
+      timers.forEach(clearTimeout);
+    };
+  }, [waving, action, reduceMotion]);
+
+  // лапа рига прячется только пока на экране поза с поднятой лапой (в паузе между раундами она на месте)
+  const poseArm = wavePose !== null || cheering;
   const armAnim: TargetAndTransition = reduceMotion
-    ? armWaving
-      ? { rotate: WAVE_STILL.arm, transition: { duration: 0 } }
-      : { rotate: 0, transition: { duration: 0 } }
-    : armWaving
+    ? { rotate: 0, transition: { duration: 0 } }
+    : writing
       ? {
-          rotate: WAVE.arm,
+          rotate: WRITE.arm,
           transition: {
-            duration: WAVE.duration,
-            times: WAVE.times,
-            ease: [...WAVE.ease],
-            repeat: action === "wave" ? 1 : 0,
-            repeatDelay: 1.6,
+            duration: WRITE_DUR,
+            times: WRITE.times,
+            ease: "linear",
+            repeat: Infinity,
           },
         }
-      : writing
-        ? {
-            rotate: WRITE.arm,
-            transition: {
+      : { rotate: 0, transition: { duration: 0.5, ease: "easeInOut" } };
+  const pawAnim: TargetAndTransition = reduceMotion
+    ? { rotate: 0, y: 0, transition: { duration: 0 } }
+    : writing
+      ? {
+          rotate: 0,
+          y: WRITE.paw,
+          transition: {
+            y: {
               duration: WRITE_DUR,
               times: WRITE.times,
               ease: "linear",
               repeat: Infinity,
             },
-          }
-        : { rotate: 0, transition: { duration: 0.5, ease: "easeInOut" } };
-  const pawAnim: TargetAndTransition = reduceMotion
-    ? armWaving
-      ? { rotate: WAVE_STILL.paw, y: 0, transition: { duration: 0 } }
-      : { rotate: 0, y: 0, transition: { duration: 0 } }
-    : armWaving
-      ? {
-          rotate: WAVE.paw,
-          y: 0,
-          transition: {
-            duration: WAVE.duration,
-            times: WAVE.times,
-            ease: [...WAVE.ease],
-            repeat: action === "wave" ? 1 : 0,
-            repeatDelay: 1.6,
+            rotate: { duration: 0.3 },
           },
         }
-      : writing
-        ? {
-            rotate: 0,
-            y: WRITE.paw,
-            transition: {
-              y: {
-                duration: WRITE_DUR,
-                times: WRITE.times,
-                ease: "linear",
-                repeat: Infinity,
-              },
-              rotate: { duration: 0.3 },
-            },
-          }
-        : { rotate: 0, y: 0, transition: { duration: 0.5, ease: "easeInOut" } };
+      : { rotate: 0, y: 0, transition: { duration: 0.5, ease: "easeInOut" } };
+
+  /* Лицо из картинок: зевок и «жмурюсь от радости» — патчи глаз/рта поверх рига */
+  const facePose: "yawn" | "happy" | null = yawn ? "yawn" : happy || petting ? "happy" : null;
 
   /* ── Веки ───────────────────────────────────────────────────────── */
   const lidBase = yawn ? 0.75 : focused ? 0.34 : writing ? 0.22 : 0;
@@ -758,6 +757,13 @@ export function MascotSvg({
                 <Mouth shape={sleepy ? "flat" : mouth} />
               </motion.g>
             </AnimatePresence>
+            {/* жмурится от радости / зевает: глаза и рот из картинок, поверх рига, едут с головой */}
+            <motion.g initial={{ opacity: 0 }} animate={{ opacity: facePose === "happy" ? 1 : 0 }} transition={{ duration: 0.1 }}>
+              <Img l={POSE.happyEyes} />
+            </motion.g>
+            <motion.g initial={{ opacity: 0 }} animate={{ opacity: facePose === "yawn" ? 1 : 0 }} transition={{ duration: 0.12 }}>
+              <Img l={POSE.yawn} />
+            </motion.g>
           </motion.g>
         </g>
 
@@ -806,6 +812,7 @@ export function MascotSvg({
         {/* левая (для зрителя) лапа — машет и пишет; поверх головы, чтобы
             поднятая лапа не пряталась за щёку */}
         <g className="cat-breathe">
+         <motion.g initial={{ opacity: 1 }} animate={{ opacity: poseArm ? 0 : 1 }} transition={{ duration: WAVE_FADE }}>
           <motion.g style={pivot(SHOULDER)} initial={{ rotate: 0 }} animate={armAnim}>
             <Img l={L.leg} />
             <motion.g style={pivot(PAW_C)} initial={{ rotate: 0, y: 0 }} animate={pawAnim}>
@@ -828,6 +835,21 @@ export function MascotSvg({
               </AnimatePresence>
               <Img l={L.paw} />
             </motion.g>
+          </motion.g>
+         </motion.g>
+        </g>
+
+        {/* позы лап из картинок GPT-Image-2: взмах (две позы по кругу) и радость двумя лапами —
+            патч с поднятой лапой и грудью на месте опущенной */}
+        <g className="cat-breathe">
+          <motion.g initial={{ opacity: 0 }} animate={{ opacity: wavePose !== null ? 1 : 0 }} transition={{ duration: WAVE_FADE }}>
+            <Img l={POSE.waveA} />
+          </motion.g>
+          <motion.g initial={{ opacity: 0 }} animate={{ opacity: wavePose === "b" ? 1 : 0 }} transition={{ duration: WAVE_FADE }}>
+            <Img l={POSE.waveB} />
+          </motion.g>
+          <motion.g initial={{ opacity: 0 }} animate={{ opacity: cheering ? 1 : 0 }} transition={{ duration: 0.12 }}>
+            <Img l={POSE.cheer} />
           </motion.g>
         </g>
       </motion.g>

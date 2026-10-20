@@ -45,6 +45,16 @@ export const L = {
   mouthFur: layer("mouthfur", 556, 452, 674, 522),
 } as const;
 
+/* Позы из GPT-Image-2 (design/mascot/poses.py): модель меняет только позу/лицо, патч выровнен по
+   оригиналу и вырезан тем же matte — кладётся поверх рига на своё место */
+export const POSE = {
+  happyEyes: { href: "/mascot/pose-happy-eyes.webp", x: 395, y: 312, w: 436, h: 199 } as Layer,
+  yawn: { href: "/mascot/pose-yawn.webp", x: 385, y: 308, w: 456, h: 248 } as Layer,
+  waveA: { href: "/mascot/pose-wave-a.webp", x: 288, y: 398, w: 303, h: 415 } as Layer,
+  waveB: { href: "/mascot/pose-wave-b.webp", x: 288, y: 398, w: 303, h: 415 } as Layer,
+  cheer: { href: "/mascot/pose-cheer.webp", x: 250, y: 276, w: 668, h: 537 } as Layer,
+} as const;
+
 /** Квадратный кадр вокруг кота: потребители рассчитаны на квадрат */
 export const VIEWBOX = "250 -85 910 910";
 
