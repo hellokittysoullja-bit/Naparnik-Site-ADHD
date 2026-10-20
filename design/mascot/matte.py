@@ -10,7 +10,7 @@ import cv2
 EYE_KEEP = [(505, 405, 70, 73), (718, 405, 70, 73)]   # блики в глазах — единственное белое ВНУТРИ кота
 
 
-def cutout(rgb, solid_mask, band_px=5, keep_white=EYE_KEEP):
+def cutout(rgb, solid_mask, band_px=5, keep_white=EYE_KEEP, remove_paper=True):
     """rgb: HxWx3 uint8 на белом фоне. solid_mask: HxW bool — заведомо внутри кота (не фон).
     Возвращает (F float32 HxWx3, alpha float32 HxW)."""
     im = rgb.astype(np.float32)
@@ -21,8 +21,9 @@ def cutout(rgb, solid_mask, band_px=5, keep_white=EYE_KEEP):
     keep = np.zeros((H, W), bool)
     for cx, cy, rx, ry in keep_white:
         keep |= ((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2 <= 1
-    paper = (rgb.min(2) > 222) & ~keep
-    solid_mask = solid_mask & ~ndi.binary_dilation(paper, iterations=1)
+    if remove_paper:
+        paper = (rgb.min(2) > 222) & ~keep
+        solid_mask = solid_mask & ~ndi.binary_dilation(paper, iterations=1)
     inner = ndi.binary_erosion(solid_mask, iterations=band_px)          # твёрдо внутри
     outer = ndi.binary_dilation(solid_mask, iterations=band_px)         # дальше — только бумага
     # F: цвет ближайшей внутренней точки (с небольшим размытием, чтобы не тянуть шум штриха)
@@ -34,6 +35,11 @@ def cutout(rgb, solid_mask, band_px=5, keep_white=EYE_KEEP):
     num = ((255.0 - im) * d).sum(2)
     den = np.maximum((d * d).sum(2), 1e-3)
     a = np.clip(num / den, 0, 1)
+    # тонкая тушь (усы, засечки) темнее мха рядом: смесь светлого меха с белой так потемнеть не может -> пиксель сам и есть тушь
+    lumI, lumF = im.mean(2), F.mean(2)
+    ink = lumI < lumF - 10
+    a = np.where(ink, 1.0, a)
+    F = np.where(ink[..., None], im, F)
     # у очень светлого F (блики, белые усы) формула неустойчива — там доверяем маске
     light = d.mean(2) < 18
     a = np.where(light, solid_mask.astype(np.float32), a)

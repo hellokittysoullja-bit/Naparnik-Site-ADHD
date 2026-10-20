@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { MascotSvg } from '@/components/mascot-svg'
+import { MascotRig as MascotSvg } from '@/components/mascot-rig'
 import { hapticThreshold } from '@/lib/haptics'
 
 /*

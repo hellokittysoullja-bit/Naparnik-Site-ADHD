@@ -1,7 +1,7 @@
 'use client'
 
 import { AppBackdrop } from '@/components/app-backdrop'
-import { MascotSvg } from '@/components/mascot-svg'
+import { MascotRig as MascotSvg } from '@/components/mascot-rig'
 import { Button } from '@/components/ui/button'
 
 export default function ErrorPage({

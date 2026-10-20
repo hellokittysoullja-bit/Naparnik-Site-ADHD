@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MascotSvg } from "@/components/mascot-svg";
+import { MascotRig as MascotSvg } from "@/components/mascot-rig";
 import { Button } from "@/components/ui/button";
 
 /**

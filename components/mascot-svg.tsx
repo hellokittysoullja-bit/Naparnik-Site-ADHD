@@ -205,6 +205,128 @@ function ClosedEye({ side }: { side: "l" | "r" }) {
   return <Img l={side === "l" ? L.eyeClosedL : L.eyeClosedR} />;
 }
 
+/** Знаки вокруг кота: мысль, zzz, искры восторга. Вынесены, чтобы их рисовал и скелетный рендер (mascot-rig) */
+export function MascotFx({
+  action,
+  sleepy,
+  excited,
+  reduceMotion,
+}: {
+  action: MascotAction;
+  sleepy: boolean;
+  excited: boolean;
+  reduceMotion: boolean;
+}) {
+  return (
+    <>
+      {/* мысль: три точки всплывают по очереди — диегетичное «думаю» вместо спиннера */}
+      <AnimatePresence>
+        {action === "think" && (
+          <motion.g
+            key="think"
+            fill={EYE}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.18 } }}
+          >
+            {[
+              { x: 850, y: 90, r: 16 },
+              { x: 905, y: 30, r: 22 },
+              { x: 975, y: -40, r: 30 },
+            ].map((d, i) => (
+              <motion.circle
+                key={d.x}
+                cx={d.x}
+                cy={d.y}
+                r={d.r}
+                style={pivot(d)}
+                initial={{ scale: 0.4, opacity: 0.25 }}
+                animate={
+                  reduceMotion
+                    ? { scale: 1, opacity: 0.85 }
+                    : { scale: [0.4, 1.12, 1, 0.4], opacity: [0.25, 1, 0.85, 0.25] }
+                }
+                transition={
+                  reduceMotion
+                    ? { duration: 0 }
+                    : {
+                        duration: 1.8,
+                        times: [0, 0.25, 0.6, 1],
+                        delay: i * 0.22,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                      }
+                }
+              />
+            ))}
+          </motion.g>
+        )}
+      </AnimatePresence>
+
+      {/* zzz во сне */}
+      {sleepy && (
+        <g className="font-hand" fill={EYE}>
+          {[
+            { x: 830, y: 120, s: 60, d: 0 },
+            { x: 890, y: 50, s: 78, d: 0.5 },
+            { x: 960, y: -20, s: 100, d: 1 },
+          ].map((z) => (
+            /* initial — без ветвления по reduceMotion (React #418): различается
+               только animate — при reduced-motion «z» просто стоит видимой. */
+            <motion.text
+              key={z.x}
+              x={z.x}
+              y={z.y}
+              fontSize={z.s}
+              initial={{ opacity: 0, y: 18 }}
+              animate={
+                reduceMotion
+                  ? { opacity: 0.6, y: 0 }
+                  : { opacity: [0, 0.9, 0], y: [18, -18, -45] }
+              }
+              transition={
+                reduceMotion
+                  ? { duration: 0 }
+                  : { duration: 2.4, repeat: Infinity, delay: z.d, ease: "easeInOut" }
+              }
+            >
+              z
+            </motion.text>
+          ))}
+        </g>
+      )}
+
+      {/* искры в восторге */}
+      {excited && (
+        <g fill={EYE}>
+          {[
+            { x: 300, y: 120, d: 0 },
+            { x: 900, y: 150, d: 0.35 },
+            { x: 830, y: 20, d: 0.7 },
+          ].map((sp) => (
+            <motion.path
+              key={sp.x}
+              d="M0 -32 L8 -8 L32 0 L8 8 L0 32 L-8 8 L-32 0 L-8 -8 Z"
+              style={{ x: sp.x, y: sp.y }}
+              initial={{ scale: 0.5, opacity: 0.4 }}
+              animate={
+                reduceMotion
+                  ? { scale: 1, opacity: 0.9 }
+                  : { scale: [0.5, 1.15, 0.5], opacity: [0.4, 1, 0.4] }
+              }
+              transition={
+                reduceMotion
+                  ? { duration: 0 }
+                  : { duration: 1.4, repeat: Infinity, delay: sp.d, ease: "easeInOut" }
+              }
+            />
+          ))}
+        </g>
+      )}
+    </>
+  );
+}
+
 export function MascotSvg({
   expression = "calm",
   action = "idle",
@@ -858,110 +980,7 @@ export function MascotSvg({
         </g>
       </motion.g>
 
-      {/* мысль: три точки всплывают по очереди — диегетичное «думаю» вместо спиннера */}
-      <AnimatePresence>
-        {action === "think" && (
-          <motion.g
-            key="think"
-            fill={EYE}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.18 } }}
-          >
-            {[
-              { x: 850, y: 90, r: 16 },
-              { x: 905, y: 30, r: 22 },
-              { x: 975, y: -40, r: 30 },
-            ].map((d, i) => (
-              <motion.circle
-                key={d.x}
-                cx={d.x}
-                cy={d.y}
-                r={d.r}
-                style={pivot(d)}
-                initial={{ scale: 0.4, opacity: 0.25 }}
-                animate={
-                  reduceMotion
-                    ? { scale: 1, opacity: 0.85 }
-                    : { scale: [0.4, 1.12, 1, 0.4], opacity: [0.25, 1, 0.85, 0.25] }
-                }
-                transition={
-                  reduceMotion
-                    ? { duration: 0 }
-                    : {
-                        duration: 1.8,
-                        times: [0, 0.25, 0.6, 1],
-                        delay: i * 0.22,
-                        repeat: Infinity,
-                        ease: "easeInOut",
-                      }
-                }
-              />
-            ))}
-          </motion.g>
-        )}
-      </AnimatePresence>
-
-      {/* zzz во сне */}
-      {sleepy && (
-        <g className="font-hand" fill={EYE}>
-          {[
-            { x: 830, y: 120, s: 60, d: 0 },
-            { x: 890, y: 50, s: 78, d: 0.5 },
-            { x: 960, y: -20, s: 100, d: 1 },
-          ].map((z) => (
-            /* initial — без ветвления по reduceMotion (React #418): различается
-               только animate — при reduced-motion «z» просто стоит видимой. */
-            <motion.text
-              key={z.x}
-              x={z.x}
-              y={z.y}
-              fontSize={z.s}
-              initial={{ opacity: 0, y: 18 }}
-              animate={
-                reduceMotion
-                  ? { opacity: 0.6, y: 0 }
-                  : { opacity: [0, 0.9, 0], y: [18, -18, -45] }
-              }
-              transition={
-                reduceMotion
-                  ? { duration: 0 }
-                  : { duration: 2.4, repeat: Infinity, delay: z.d, ease: "easeInOut" }
-              }
-            >
-              z
-            </motion.text>
-          ))}
-        </g>
-      )}
-
-      {/* искры в восторге */}
-      {excited && (
-        <g fill={EYE}>
-          {[
-            { x: 300, y: 120, d: 0 },
-            { x: 900, y: 150, d: 0.35 },
-            { x: 830, y: 20, d: 0.7 },
-          ].map((sp) => (
-            <motion.path
-              key={sp.x}
-              d="M0 -32 L8 -8 L32 0 L8 8 L0 32 L-8 8 L-32 0 L-8 -8 Z"
-              style={{ x: sp.x, y: sp.y }}
-              initial={{ scale: 0.5, opacity: 0.4 }}
-              animate={
-                reduceMotion
-                  ? { scale: 1, opacity: 0.9 }
-                  : { scale: [0.5, 1.15, 0.5], opacity: [0.4, 1, 0.4] }
-              }
-              transition={
-                reduceMotion
-                  ? { duration: 0 }
-                  : { duration: 1.4, repeat: Infinity, delay: sp.d, ease: "easeInOut" }
-              }
-            />
-          ))}
-        </g>
-      )}
+      <MascotFx action={action} sleepy={sleepy} excited={excited} reduceMotion={!!reduceMotion} />
     </svg>
   );
 }

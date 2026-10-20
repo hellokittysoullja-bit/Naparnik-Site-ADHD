@@ -6,7 +6,8 @@ import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from 'ai'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Button } from '@/components/ui/button'
-import { MascotSvg, type MascotAction, type MascotExpression } from '@/components/mascot-svg'
+import { MascotRig as MascotSvg } from '@/components/mascot-rig';
+import { type MascotAction, type MascotExpression } from '@/components/mascot-svg'
 import {
   ArrowDown,
   ArrowRight,
