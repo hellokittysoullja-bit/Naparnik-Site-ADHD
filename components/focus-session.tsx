@@ -775,7 +775,7 @@ export function FocusSession() {
           animate={{ scale: 1 }}
           transition={{ duration: 1.8, ease: 'easeOut' }}
         >
-          <MascotSvg expression="happy" label="Напарник садится рядом" size={170} />
+          <MascotSvg expression="happy" action="wave" label="Напарник садится рядом" size={170} />
         </motion.div>
         <motion.p
           className="font-sans text-lg text-muted-foreground"
@@ -871,6 +871,9 @@ export function FocusSession() {
             >
               <MascotSvg
                 expression={cheering || backFromDrift ? 'happy' : 'focused'}
+                // body doubling: кот не надзирает, а сам пишет в блокноте
+                // рядом — «работаем вместе», та же метафора присутствия
+                action="write"
                 label="Напарник работает рядом"
                 size={130}
               />
@@ -953,7 +956,7 @@ export function FocusSession() {
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 px-4 py-8">
-      <MascotSvg expression="excited" label="Напарник радуется" size={110} />
+      <MascotSvg expression="excited" action="celebrate" label="Напарник радуется" size={110} />
       <div className="flex flex-col gap-2 text-center">
         <h1 className="text-2xl font-bold">
           {firstEver ? 'Первое дело сдвинуто.' : endedEarly ? 'Ты начал.' : 'Сделано.'}

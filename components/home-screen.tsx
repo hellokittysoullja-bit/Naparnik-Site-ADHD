@@ -583,6 +583,9 @@ export function HomeScreen() {
               >
                 <MascotSvg
                   expression={mascotExpression}
+                  // машет только на событие «вернулся» — тот же триггер,
+                  // что и прыжок; на рутинный mount не машет (habituation)
+                  action={shouldAnimateMascot ? "wave" : "idle"}
                   label={companionName ?? "Напарник"}
                   size={52}
                 />

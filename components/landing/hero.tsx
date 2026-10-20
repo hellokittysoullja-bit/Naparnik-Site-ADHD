@@ -171,6 +171,13 @@ export function Hero() {
   const [steps, setSteps] = useState<SceneStep[]>([]);
   const [answered, setAnswered] = useState(false);
   const [expression, setExpression] = useState<MascotExpression>("calm");
+  // Первое впечатление: кот машет гостю через секунду после загрузки —
+  // одно заметное движение в первый момент, дальше спокойный idle.
+  const [greeting, setGreeting] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setGreeting(true), 900);
+    return () => window.clearTimeout(t);
+  }, []);
   // CTA виден с первой секунды (не заперт за диалогом), но ответ существа
   // всё равно должен закрывать дофаминовую петлю действием, а не повисать
   // в пустоте — импульс на уже видимую кнопку вместо второй, конкурирующей
@@ -476,6 +483,7 @@ export function Hero() {
             >
               <MascotSvg
                 expression={expression}
+                action={greeting ? "wave" : "idle"}
                 size={196}
                 label=""
                 className="size-[clamp(112px,26dvh,206px)] lg:size-[196px] lg:origin-bottom lg:scale-[1.15]"
