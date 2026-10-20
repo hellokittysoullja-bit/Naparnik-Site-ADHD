@@ -137,7 +137,6 @@ export function FirstRun() {
 
   // Можно ли идти дальше с текущего экрана
   const canContinue =
-    step === 0 ||
     (step === 1 && !!state.sphere) ||
     (step === 2 && !!state.blocker) ||
     (step === 3 && !!chosenStep)
@@ -210,7 +209,7 @@ export function FirstRun() {
         {step > 0 ? (
           <button
             type="button"
-            onClick={() => go(step - 1)}
+            onClick={() => (step === 1 ? router.push('/') : go(step - 1))}
             aria-label="Назад"
             className="press -ml-2 inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
           >
@@ -226,10 +225,10 @@ export function FirstRun() {
             aria-valuemin={1}
             aria-valuemax={LAST_STEP}
             aria-valuenow={step}
-            className="relative h-3 flex-1 overflow-hidden rounded-full bg-foreground/12"
+            className="relative h-3 flex-1 rounded-full bg-foreground/12"
           >
             <motion.div
-              className="absolute inset-y-0 left-0 rounded-full bg-primary"
+              className="absolute inset-y-0 left-0 rounded-full bg-primary shadow-[0_0_10px_1px_color-mix(in_oklab,var(--primary)_55%,transparent),0_0_22px_2px_color-mix(in_oklab,var(--primary)_22%,transparent)]"
               initial={false}
               animate={{ width: `${(step / LAST_STEP) * 100}%` }}
               transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 170, damping: 24 }}
@@ -249,8 +248,6 @@ export function FirstRun() {
           transition={{ duration: reduceMotion ? 0.15 : 0.24, ease: [0.22, 1, 0.36, 1] }}
           className="flex min-h-0 flex-1 flex-col pb-[calc(6rem+env(safe-area-inset-bottom))]"
         >
-          {step === 0 && <Hello />}
-
           {(step === 1 || step === 2 || step === 3) && (
             <>
               <CatAsks line={line} face={face} nudge={nudge} />
@@ -356,34 +353,12 @@ export function FirstRun() {
             className="btn-chunky block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <span className="btn-face flex h-[52px] items-center justify-center rounded-[16px] bg-primary px-6 text-[15px] font-bold uppercase tracking-[0.06em] text-primary-foreground">
-              {step === 0 ? 'Давай' : 'Продолжить'}
+              Продолжить
             </span>
           </button>
         )}
       </div>
     </main>
-  )
-}
-
-/** Приветствие: кот крупно по центру, реплика над ним — один смысл, одна кнопка */
-function Hello() {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-5">
-      <motion.div
-        layoutId="onb-bubble"
-        className="glass-hearthside relative max-w-[19rem] rounded-2xl px-5 py-4 text-center"
-      >
-        <p className="font-hand text-[22px] font-medium leading-snug text-balance text-secondary-foreground">
-          <EmphasisText text="Привет! Я *Напарник*." />
-        </p>
-        <p className="mt-1.5 text-base leading-relaxed text-foreground/80 text-balance">
-          Два вопроса — и начнём твоё первое дело. Вместе, за {FIRST_MINUTES} минуты.
-        </p>
-      </motion.div>
-      <motion.div layoutId="onb-cat">
-        <MascotSvg expression="happy" size={196} label="Напарник здоровается" />
-      </motion.div>
-    </div>
   )
 }
 
@@ -400,7 +375,7 @@ function CatAsks({ line, face, nudge }: { line: string; face: MascotExpression; 
         animate={nudge ? { rotate: [0, -6, 5, -3, 0] } : { rotate: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <MascotSvg expression={face} size={92} label="Напарник" />
+        <MascotSvg expression={face} size={104} label="Напарник" />
       </motion.div>
       <motion.div
         layoutId="onb-bubble"
@@ -479,7 +454,7 @@ function Commit({ label, reason }: { label: string; reason: string | null }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4">
       <motion.div layoutId="onb-cat">
-        <MascotSvg expression="calm" size={132} label="Напарник готов" />
+        <MascotSvg expression="calm" size={148} label="Напарник готов" />
       </motion.div>
       <motion.div
         layoutId="onb-bubble"

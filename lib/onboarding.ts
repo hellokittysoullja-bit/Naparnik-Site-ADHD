@@ -63,7 +63,7 @@ export type OnboardingState = {
 const KEY = 'naparnik:onboarding'
 
 export const EMPTY_ONBOARDING: OnboardingState = {
-  step: 0,
+  step: 1,
   sphere: null,
   blocker: null,
   firstStep: null,
@@ -74,7 +74,9 @@ export function readOnboarding(): OnboardingState {
   try {
     const raw = window.localStorage.getItem(KEY)
     if (!raw) return EMPTY_ONBOARDING
-    return { ...EMPTY_ONBOARDING, ...(JSON.parse(raw) as Partial<OnboardingState>) }
+    const saved = { ...EMPTY_ONBOARDING, ...(JSON.parse(raw) as Partial<OnboardingState>) }
+    // Приветствие убрано: лендинг и есть приветствие, сразу к первому вопросу
+    return { ...saved, step: Math.max(1, saved.step) }
   } catch {
     return EMPTY_ONBOARDING
   }

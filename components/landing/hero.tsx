@@ -293,7 +293,7 @@ export function Hero() {
         </div>
         {/* Луна привязана к углу вьюпорта, а не к slice-сцене: видна целиком
             на любом экране, никогда не сталкивается с котом и текстом */}
-        <div className="parallax-moon absolute right-1 top-6 w-24 md:right-[5%] md:top-[7%] md:w-28">
+        <div className="parallax-moon absolute right-1 top-6 w-28 md:right-[5%] md:top-[7%] md:w-32">
           <motion.div style={{ x: moonX, y: moonY }} className="relative">
           {/* А5 · Пылинки в лунном свете: живут в viewport-слое (урок
               светлячков — не в slice-сцене), дрейф на пороге различимости */}
@@ -442,7 +442,7 @@ export function Hero() {
                       Иду…
                     </>
                   ) : (
-                    "Начать первое дело"
+                    "Давай"
                   )}
                 </span>
               </Link>
@@ -478,7 +478,7 @@ export function Hero() {
                 expression={expression}
                 size={196}
                 label=""
-                className="size-[clamp(104px,24dvh,190px)] lg:size-[196px] lg:origin-bottom lg:scale-[1.15]"
+                className="size-[clamp(112px,26dvh,206px)] lg:size-[196px] lg:origin-bottom lg:scale-[1.15]"
               />
             </button>
             <GroundPool className="-mt-12 -mb-12" />
