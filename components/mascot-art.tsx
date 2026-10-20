@@ -86,6 +86,17 @@ export function CatDefs({ uid }: { uid: string }) {
         <stop offset="72%" stopColor={EYE} />
         <stop offset="100%" stopColor={EYE_DARK} />
       </radialGradient>
+      {/* Акварельная фактура меха: заранее отрендеренный бесшовный тайл
+          (мягкие пятна + вытянутые шерстинки). Не feTurbulence: фильтр на
+          дышащих группах пересчитывался бы каждый кадр и душил мобильные. */}
+      <pattern
+        id={`${uid}-fur`}
+        width={76}
+        height={76}
+        patternUnits="userSpaceOnUse"
+      >
+        <image href="/mascot-fur.png" width={76} height={76} />
+      </pattern>
       <radialGradient id={`${uid}-glow`} cx="0.5" cy="0.6" r="0.5">
         <stop offset="0%" stopColor={FLAME} stopOpacity="0.55" />
         <stop offset="100%" stopColor={FLAME} stopOpacity="0" />
@@ -144,6 +155,7 @@ function Volume({
         <rect x={x} y={y} width={w} height={h} fill={`url(#${uid}-shade)`} />
         <rect x={x} y={y} width={w} height={h} fill={`url(#${uid}-warm)`} />
         <rect x={x} y={y} width={w} height={h} fill={`url(#${uid}-moon)`} />
+        <rect x={x} y={y} width={w} height={h} fill={`url(#${uid}-fur)`} opacity={0.28} />
       </g>
     </>
   );
@@ -287,6 +299,7 @@ export function CatLeg({ side, uid }: { side: "l" | "r"; uid: string }) {
       {/* лапы ближе к зрителю — верхний свет как на голове, тень книзу */}
       <path d={d} fill={`url(#${uid}-sheen)`} opacity={0.35} />
       <path d={d} fill={`url(#${uid}-shade)`} opacity={0.6} />
+      <path d={d} fill={`url(#${uid}-fur)`} opacity={0.24} />
       <path
         d={sides}
         fill="none"
