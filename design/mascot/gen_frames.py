@@ -26,6 +26,8 @@ FRAMES = {
     "smile": KEEP + "the mouth is a wider happy smile in the same thin ink line style.",
     "mouth-open": KEEP + "the mouth is open in a small happy laugh with a tiny pink tongue, same ink style.",
     "mouth-o": KEEP + "the mouth is a small round 'o' (curious, thinking), same ink style.",
+    "head-left": KEEP + "the cat's head is turned about 30 degrees to the viewer's left (three-quarter view), looking toward the left, ears and cheek fluff following the turn; the body, paws, tail and flame stay exactly as in the reference.",
+    "head-right": KEEP + "the cat's head is turned about 30 degrees to the viewer's right (three-quarter view), looking toward the right, ears and cheek fluff following the turn; the body, paws, tail and flame stay exactly as in the reference.",
     "paw-up": KEEP + "the cat's left front paw (viewer's left) is raised in a friendly wave, pads facing the viewer.",
 }
 
