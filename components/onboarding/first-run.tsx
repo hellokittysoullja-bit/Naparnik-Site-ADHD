@@ -82,7 +82,6 @@ export function FirstRun() {
   const router = useRouter()
   const reduceMotion = useReducedMotion()
   const [state, setState] = useState<OnboardingState>(EMPTY_ONBOARDING)
-  const [ready, setReady] = useState(false)
   const [nudge, setNudge] = useState(false)
   const [custom, setCustom] = useState('')
   const [customOpen, setCustomOpen] = useState(false)
@@ -100,7 +99,6 @@ export function FirstRun() {
         return
       }
       setState(readOnboarding())
-      setReady(true)
     })
     return () => {
       alive = false
@@ -208,8 +206,6 @@ export function FirstRun() {
       : `Первый шаг на *${FIRST_MINUTES} минуты*. Выбери или напиши свой.`
     face = 'calm'
   }
-
-  if (!ready) return <div className="h-dvh" aria-busy="true" />
 
   const slide = reduceMotion
     ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }

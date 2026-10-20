@@ -1358,3 +1358,33 @@ body[data-companion-speaking] .app-hearth {
     transition-property: color, background-color, border-color, opacity;
   }
 }
+
+/* Фокус клавиатуры у объёмных элементов: общее правило выше квадратило углы
+   (radius-sm) и Tailwind-кольцо давало второй контур — двойная рамка с
+   разными радиусами (поймано рендером, не воображением). Здесь один
+   контур, радиус совпадает с формой, зазор 3px. */
+.btn-chunky:focus-visible {
+  box-shadow: none !important;
+  border-radius: 16px;
+  outline: 3px solid var(--ring);
+  outline-offset: 3px;
+}
+.option-card:focus-visible {
+  border-radius: 16px;
+  outline-offset: 3px;
+}
+
+/* Принудительные цвета (Windows High Contrast): фон и тень-«губа» сплющиваются,
+   поэтому форму и выбор держим рамкой и системными цветами (WCAG 1.4.11). */
+@media (forced-colors: active) {
+  .btn-chunky .btn-face {
+    border: 2px solid ButtonText;
+  }
+  .option-card {
+    border-color: ButtonText;
+  }
+  .option-card[data-selected] {
+    border-color: Highlight;
+    outline: 2px solid Highlight;
+  }
+}
