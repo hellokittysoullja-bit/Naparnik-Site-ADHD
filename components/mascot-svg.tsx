@@ -31,6 +31,7 @@ import {
   VIEWBOX,
   type Layer,
 } from "@/components/mascot-geometry";
+import { TailChain } from "@/components/mascot-tail";
 import { SPRING_GAZE } from "@/lib/motion";
 
 /**
@@ -65,7 +66,7 @@ export type MascotExpression =
 /** Что кот делает руками/телом поверх выражения лица */
 export type MascotAction = "idle" | "wave" | "write" | "think" | "celebrate";
 
-type MouthShape = "w" | "smile" | "flat";
+type MouthShape = "w" | "smile" | "flat" | "open" | "o";
 
 type MascotSvgProps = {
   expression?: MascotExpression;
@@ -183,11 +184,12 @@ const WAVE = {
 /** Поза поднятой лапы для reduced motion — смысл «машет» без движения */
 const WAVE_STILL = { arm: 116, paw: -122 };
 
-/* ── Рты: латка меха рисунка закрывает родное «ω»; улыбка и «ровный»
-   рот — это само родное «ω», растянутое; «о» и открытый рот — вектор
-   (на рисунке их нет) ────────────────────────────────────────────── */
+/* ── Рты: родное «ω» рисунка растягивается в улыбку / приплющивается;
+   открытый рот и «о» — кадры, сгенерированные по оригиналу ────────── */
 function Mouth({ shape }: { shape: MouthShape }) {
   if (shape === "w") return null; // родной рот рисунка
+  if (shape === "open") return <Img l={L.mouthOpen} />;
+  if (shape === "o") return <Img l={L.mouthO} />;
   return (
     <g>
       <Img l={L.mouthFur} />
@@ -210,14 +212,9 @@ function Lid({ side }: { side: "l" | "r" }) {
   return <Img l={side === "l" ? L.eyeFurL : L.eyeFurR} />;
 }
 
-/** Закрытый глаз (сон, ожидание): мех рисунка + родная нижняя дуга обводки */
+/** Закрытый глаз (сон, ожидание, моргание): кадр, сгенерированный по оригиналу */
 function ClosedEye({ side }: { side: "l" | "r" }) {
-  return (
-    <>
-      <Img l={side === "l" ? L.eyeFurL : L.eyeFurR} />
-      <Img l={side === "l" ? L.eyeArcL : L.eyeArcR} />
-    </>
-  );
+  return <Img l={side === "l" ? L.eyeClosedL : L.eyeClosedR} />;
 }
 
 export function MascotSvg({
@@ -261,14 +258,17 @@ export function MascotSvg({
      (State Machine idle → idle_bored → idle). Не чаще раза в ~40 с. */
   const [yawn, setYawn] = useState(false);
 
-  // Рты только из рисунка: родное «ω», растянутое в улыбку или
-  // приплюснутое — на рисунке нет «о» и открытого рта, их не выдумываем.
-  const mouth: MouthShape =
-    excited || yawn || action === "wave" || happy
+  // Рты: родное «ω» (растянутое/приплюснутое) или кадры, сгенерированные по
+  // оригиналу, — векторных дорисовок нет.
+  const mouth: MouthShape = yawn || excited
+    ? "open"
+    : action === "wave" || happy
       ? "smile"
-      : focused || action === "write"
-        ? "flat"
-        : "w";
+      : action === "think"
+        ? "o"
+        : focused || action === "write"
+          ? "flat"
+          : "w";
 
   /* ── Взгляд ─────────────────────────────────────────────────────── */
   const px = useSpring(0, SPRING_GAZE);
@@ -618,15 +618,15 @@ export function MascotSvg({
         : { rotate: 0, y: 0, transition: { duration: 0.5, ease: "easeInOut" } };
 
   /* ── Веки ───────────────────────────────────────────────────────── */
-  const lidBase = yawn ? 0.75 : focused ? 0.34 : writing ? 0.22 : 0;
-  const lid =
-    blink !== "open" || squint ? 1 : petting ? 0.8 : lidBase;
-  const lidTransition =
+  // частичное веко — мех рисунка; полное закрытие (моргание) и полуприкрытие
+  // (зевок, «гладят») — сгенерированные по оригиналу кадры глаз
+  const lid = focused ? 0.34 : writing ? 0.22 : 0;
+  const closedNow = blink !== "open" || squint;
+  const halfNow = (yawn || petting) && !closedNow;
+  const fadeT =
     blink === "slow"
       ? { duration: 0.28, ease: "easeInOut" as const }
-      : lid === 1
-        ? { duration: 0.06, ease: "easeIn" as const }
-        : { duration: 0.11, ease: "easeOut" as const };
+      : { duration: 0.07, ease: "easeOut" as const };
 
   const eye = (side: "l" | "r") => {
     const { x, y } = side === "l" ? EYE_L : EYE_R;
@@ -661,11 +661,19 @@ export function MascotSvg({
             style={pivot({ x, y: y - EYE_RY - 6 })}
             initial={{ scaleY: 0 }}
             animate={{ scaleY: lid }}
-            transition={lidTransition}
+            transition={{ duration: 0.2, ease: "easeOut" }}
           >
             <Lid side={side} />
           </motion.g>
         </g>
+        {/* кадры глаз поверх: кроссфейд ~70 мс читается как живое моргание
+            («хватит 10 кадров»), морфинг путей не нужен */}
+        <motion.g initial={{ opacity: 0 }} animate={{ opacity: halfNow ? 1 : 0 }} transition={fadeT}>
+          <Img l={side === "l" ? L.eyeHalfL : L.eyeHalfR} />
+        </motion.g>
+        <motion.g initial={{ opacity: 0 }} animate={{ opacity: closedNow ? 1 : 0 }} transition={fadeT}>
+          <ClosedEye side={side} />
+        </motion.g>
       </g>
     );
   };
@@ -693,18 +701,14 @@ export function MascotSvg({
       {/* контактная тень: кот сидит на земле, а не висит в воздухе */}
       <ellipse cx={690} cy={776} rx={330} ry={20} fill="oklch(0.08 0.01 270)" opacity={0.35} />
       <motion.g style={pivot(GROUND)} initial={{ y: 0, scaleX: 1, scaleY: 1 }} animate={rootCtl}>
-        {/* хвост за телом: качается от основания, завиток отстаёт, огонь пляшет */}
-        <g className="cat-tail">
-          <Img l={L.tailBase} />
-          <g className="cat-curl">
-            <Img l={L.tailCurl} />
-            <g className="cat-flame">
-              <Img l={L.flame} />
-            </g>
-            <circle className="cat-ember" cx={972} cy={268} r={6} fill="oklch(0.85 0.15 75)" />
-            <circle className="cat-ember cat-ember--late" cx={948} cy={285} r={4.5} fill="oklch(0.88 0.12 90)" />
+        {/* хвост за телом: цепочка сегментов, по нему бежит волна; огонь на кончике */}
+        <TailChain uid={uid}>
+          <g className="cat-flame">
+            <Img l={L.flame} />
           </g>
-        </g>
+          <circle className="cat-ember" cx={972} cy={268} r={6} fill="oklch(0.85 0.15 75)" />
+          <circle className="cat-ember cat-ember--late" cx={948} cy={285} r={4.5} fill="oklch(0.88 0.12 90)" />
+        </TailChain>
 
         {/* тело (с правой для зрителя лапой) — дышит от земли */}
         <g className="cat-breathe">
