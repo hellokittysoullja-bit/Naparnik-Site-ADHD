@@ -65,7 +65,7 @@ export type MascotExpression =
 /** Что кот делает руками/телом поверх выражения лица */
 export type MascotAction = "idle" | "wave" | "write" | "think" | "celebrate";
 
-type MouthShape = "w" | "smile" | "open" | "flat" | "o";
+type MouthShape = "w" | "smile" | "flat";
 
 type MascotSvgProps = {
   expression?: MascotExpression;
@@ -188,13 +188,6 @@ const WAVE_STILL = { arm: 116, paw: -122 };
    (на рисунке их нет) ────────────────────────────────────────────── */
 function Mouth({ shape }: { shape: MouthShape }) {
   if (shape === "w") return null; // родной рот рисунка
-  const line = {
-    fill: "none",
-    stroke: INK,
-    strokeWidth: 4.5,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
   return (
     <g>
       <Img l={L.mouthFur} />
@@ -207,25 +200,6 @@ function Mouth({ shape }: { shape: MouthShape }) {
         <g transform="translate(615 470) scale(0.8 0.55) translate(-615 -470)">
           <Img l={L.mouth} />
         </g>
-      )}
-      {shape === "o" && (
-        <>
-          <path d="M614 468 L614 481" {...line} />
-          <ellipse cx={614} cy={495} rx={8} ry={10} fill={INK} />
-        </>
-      )}
-      {shape === "open" && (
-        <>
-          <path d="M614 468 L614 478" {...line} />
-          <path
-            d="M588 480 Q614 483 640 480 Q636 520 614 521 Q592 520 588 480Z"
-            fill={INK}
-            stroke={INK}
-            strokeWidth={3}
-            strokeLinejoin="round"
-          />
-          <path d="M599 508 Q614 498 629 508 Q624 518 614 518 Q604 518 599 508Z" fill="rgb(222 120 130)" />
-        </>
       )}
     </g>
   );
@@ -287,17 +261,14 @@ export function MascotSvg({
      (State Machine idle → idle_bored → idle). Не чаще раза в ~40 с. */
   const [yawn, setYawn] = useState(false);
 
-  const mouth: MouthShape = yawn
-    ? "open"
-    : excited
-    ? "open"
-    : action === "wave" || happy
+  // Рты только из рисунка: родное «ω», растянутое в улыбку или
+  // приплюснутое — на рисунке нет «о» и открытого рта, их не выдумываем.
+  const mouth: MouthShape =
+    excited || yawn || action === "wave" || happy
       ? "smile"
-      : action === "think"
-        ? "o"
-        : focused || action === "write"
-          ? "flat"
-          : "w";
+      : focused || action === "write"
+        ? "flat"
+        : "w";
 
   /* ── Взгляд ─────────────────────────────────────────────────────── */
   const px = useSpring(0, SPRING_GAZE);
