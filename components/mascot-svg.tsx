@@ -10,24 +10,6 @@ import {
   type TargetAndTransition,
 } from "motion/react";
 import {
-  CatBody,
-  CatClosedEye,
-  CatDefs,
-  CatEar,
-  CatEyeBase,
-  CatFlame,
-  CatHead,
-  CatLeg,
-  CatLid,
-  CatMouth,
-  CatMuzzle,
-  CatPaw,
-  CatPupil,
-  CatSmileLid,
-  CatTail,
-  type MouthShape,
-} from "@/components/mascot-art";
-import {
   EAR_L_PIVOT,
   EAR_R_PIVOT,
   EYE,
@@ -35,20 +17,26 @@ import {
   EYE_R,
   EYE_RX,
   EYE_RY,
+  FUR,
+  GROUND,
   INK,
-  NOTEBOOK,
-  NOTEBOOK_SPINE,
+  L,
+  MOUTH,
+  NECK,
   OUTLINE,
   PAPER,
-  PAW_L,
-  PAW_R,
+  PAW_C,
   PENCIL,
-  SHOULDER_L,
+  SHOULDER,
+  VIEWBOX,
+  type Layer,
 } from "@/components/mascot-geometry";
 import { SPRING_GAZE } from "@/lib/motion";
 
 /**
- * Рукокодный векторный маскот — живое существо, а не картинка.
+ * Кот-напарник — ОРИГИНАЛЬНЫЙ рисунок владельца, разрезанный на слои и
+ * посаженный на кости (cutout-риг, как в Spine/Rive). Кот совпадает с
+ * референсом до пикселя, а двигается как персонаж.
  *
  * Как устроена «жизнь» (по разбору аниматоров из базы знаний:
  * Neistadt «Keep Alive», AnimSchool про idle-циклы, Kouhi про дыхание):
@@ -56,17 +44,16 @@ import { SPRING_GAZE } from "@/lib/motion";
  * — Idle-слои на CSS (globals.css, «Напарник: idle-риг»): дыхание 4.6 с,
  *   вдох короче выдоха, с удержанием на пике; голова едет за грудью с
  *   задержкой (follow-through); хвост качается на своём, некратном
- *   дыханию периоде 7.4 с, а завиток догоняет его с отставанием
- *   (overlapping action); огонёк и кисточка уха — на третьих частотах.
- *   Ничего не синхронно — поэтому шов цикла не ловится глазом.
+ *   дыханию периоде, а завиток догоняет его с отставанием (overlapping
+ *   action); огонёк дрожит на третьей частоте. Шов цикла не ловится.
  * — Редкие события на JS со случайным интервалом: моргание (иногда
- *   двойное, иногда медленное «кошачье доверие»), зрачки чуть
- *   расширяются после моргания и сужаются с перелётом, дёрнулось ухо,
- *   взгляд в сторону — уравновешенный (влево, потом вправо), наклон
- *   головы. Не на каждый вдох — иначе «роботно».
+ *   двойное, иногда медленное «кошачье доверие»), зрачки чуть расширяются
+ *   после моргания и сужаются с перелётом, дёрнулось ухо, уравновешенный
+ *   взгляд в сторону, наклон головы, зевок от скуки, редкий большой вздох.
  * — Действия (prop `action`) — Motion-хореографии с anticipation,
  *   перелётом и settle: машет лапой, пишет в блокноте, думает, радуется.
- * — Тап по коту — real-time отклик: squash & stretch, ухо, прищур.
+ * — Тап по коту — real-time отклик: squash & stretch, уши, прищур;
+ *   каждый третий тап — машет в ответ.
  *
  * Reduced motion: CSS-слои гасятся медиазапросом, действия показываются
  * статичной позой — смысл (машет / пишет) сохраняется без движения.
@@ -78,6 +65,8 @@ export type MascotExpression =
 /** Что кот делает руками/телом поверх выражения лица */
 export type MascotAction = "idle" | "wave" | "write" | "think" | "celebrate";
 
+type MouthShape = "w" | "smile" | "open" | "flat" | "o";
+
 type MascotSvgProps = {
   expression?: MascotExpression;
   action?: MascotAction;
@@ -88,19 +77,34 @@ type MascotSvgProps = {
   interactive?: boolean;
 };
 
-/** Опора для вращения в координатах viewBox (а не своей bbox) */
+/** Старые единицы риг-хореографий (viewBox 200) → пиксели рисунка */
+const K = 4.55;
+
+/**
+ * Опора для вращения в координатах рисунка. originX/originY, а не
+ * transformOrigin: Motion собирает origin сам и молча перезаписывает
+ * строковый transformOrigin на «50% 50%» (поймано рендером).
+ */
 const pivot = (p: { x: number; y: number }) =>
   ({
     transformBox: "view-box",
-    // originX/originY, а не transformOrigin: Motion собирает origin сам
-    // и молча перезаписывает строковый transformOrigin на «50% 50%» —
-    // веки и лапы крутились вокруг центра viewBox (поймано рендером).
     originX: `${p.x}px`,
     originY: `${p.y}px`,
   }) as const;
 
-const GROUND = { x: 100, y: 185 };
-const NECK = { x: 100, y: 132 };
+/** Слой рисунка на своём месте */
+export function Img({ l }: { l: Layer }) {
+  return (
+    <image
+      href={l.href}
+      x={l.x}
+      y={l.y}
+      width={l.w}
+      height={l.h}
+      preserveAspectRatio="none"
+    />
+  );
+}
 
 /* ── «Пишет»: одна траектория для лапы, карандаша и чернил ───────────
    Лапа вращается вокруг плеча и подрагивает вверх-вниз (почерк);
@@ -110,15 +114,15 @@ const NECK = { x: 100, y: 132 };
 const WRITE_DUR = 3.6;
 const WRITE_N = 44;
 const WRITE_END = 0.64;
-const PENCIL_TIP = { x: 74.5, y: 188 };
+const PENCIL_TIP = { x: 448, y: 766 };
 
 function tipAt(thetaDeg: number, wy: number) {
   const t = (thetaDeg * Math.PI) / 180;
-  const dx = PENCIL_TIP.x - SHOULDER_L.x;
-  const dy = PENCIL_TIP.y + wy - SHOULDER_L.y;
+  const dx = PENCIL_TIP.x - SHOULDER.x;
+  const dy = PENCIL_TIP.y + wy - SHOULDER.y;
   return {
-    x: SHOULDER_L.x + dx * Math.cos(t) - dy * Math.sin(t),
-    y: SHOULDER_L.y + dx * Math.sin(t) + dy * Math.cos(t),
+    x: SHOULDER.x + dx * Math.cos(t) - dy * Math.sin(t),
+    y: SHOULDER.y + dx * Math.sin(t) + dy * Math.cos(t),
   };
 }
 
@@ -130,15 +134,14 @@ const WRITE = (() => {
   for (let i = 0; i < WRITE_N; i++) {
     const u = i / (WRITE_N - 1);
     const eased = u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
-    const theta = 13 - 22 * eased;
+    const theta = 11 - 20 * eased;
     // почерк: петли разной высоты, а не ровная синусоида
-    const wy = -1.7 * Math.sin(u * Math.PI * 2 * 5.5) * (0.7 + 0.3 * Math.sin(u * 9));
+    const wy = -1.7 * K * Math.sin(u * Math.PI * 2 * 5.5) * (0.7 + 0.3 * Math.sin(u * 9));
     times.push(u * WRITE_END);
     arm.push(theta);
     paw.push(wy);
     pts.push(tipAt(theta, wy));
   }
-  // накопленная длина → доля проявленной линии в каждой точке
   const acc = [0];
   for (let i = 1; i < pts.length; i++) {
     acc.push(acc[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
@@ -147,13 +150,13 @@ const WRITE = (() => {
   const ink = acc.map((a) => a / total);
   // отрыв: карандаш поднимается и возвращается к началу строки
   times.push(0.72, 0.82, 0.88, 1);
-  arm.push(4, 13, 13, 13);
-  paw.push(-5, -4, 0, 0);
+  arm.push(4, 11, 11, 11);
+  paw.push(-5 * K, -4 * K, 0, 0);
   const inkTimes = [...times.slice(0, WRITE_N), 0.9, 0.97, 1];
   const inkVals = [...ink, 1, 1, 0];
   const inkOpacity = [...ink.map(() => 1), 1, 0, 0];
   const d = pts
-    .map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
+    .map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
     .join(" ");
   return { times, arm, paw, inkTimes, inkVals, inkOpacity, d };
 })();
@@ -162,9 +165,9 @@ const WRITE = (() => {
 const WAVE = {
   duration: 2.8,
   times: [0, 0.09, 0.27, 0.39, 0.51, 0.63, 0.75, 0.86, 1],
-  arm: [0, -7, 120, 106, 124, 106, 122, 112, 0],
+  arm: [0, -7, 124, 110, 128, 110, 126, 116, 0],
   // кисть разворачивает подушечки к зрителю и «доигрывает» взмах
-  paw: [0, 6, -132, -100, -140, -100, -136, -118, 0],
+  paw: [0, 6, -136, -104, -144, -104, -140, -122, 0],
   ease: [
     "easeOut",
     [0.34, 1.56, 0.64, 1],
@@ -178,7 +181,83 @@ const WAVE = {
 };
 
 /** Поза поднятой лапы для reduced motion — смысл «машет» без движения */
-const WAVE_STILL = { arm: 112, paw: -118 };
+const WAVE_STILL = { arm: 116, paw: -122 };
+
+/* ── Рты поверх рисунка: латка меха закрывает родное «ω» ─────────── */
+function Mouth({ shape }: { shape: MouthShape }) {
+  if (shape === "w") return null; // родной рот рисунка
+  const line = {
+    fill: "none",
+    stroke: INK,
+    strokeWidth: 4.5,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  return (
+    <g>
+      <ellipse cx={MOUTH.x} cy={MOUTH.y + 3} rx={42} ry={19} fill={FUR} />
+      {shape === "smile" && (
+        <path d="M614 468 L614 485 M580 481 Q597 508 614 485 Q631 508 648 481" {...line} />
+      )}
+      {shape === "flat" && <path d="M614 468 L614 487 M600 493 L628 493" {...line} />}
+      {shape === "o" && (
+        <>
+          <path d="M614 468 L614 481" {...line} />
+          <ellipse cx={614} cy={495} rx={8} ry={10} fill={INK} />
+        </>
+      )}
+      {shape === "open" && (
+        <>
+          <path d="M614 468 L614 478" {...line} />
+          <path
+            d="M588 480 Q614 483 640 480 Q636 520 614 521 Q592 520 588 480Z"
+            fill={INK}
+            stroke={INK}
+            strokeWidth={3}
+            strokeLinejoin="round"
+          />
+          <path d="M599 508 Q614 498 629 508 Q624 518 614 518 Q604 518 599 508Z" fill="rgb(222 120 130)" />
+        </>
+      )}
+    </g>
+  );
+}
+
+/** Верхнее веко: меховая шторка с тушевой кромкой (деформация, не fade) */
+function Lid({ x, y }: { x: number; y: number }) {
+  const l = x - EYE_RX - 6;
+  const r = x + EYE_RX + 6;
+  const top = y - EYE_RY - 6;
+  const bot = y + EYE_RY + 4;
+  return (
+    <>
+      <path d={`M${l} ${top} L${r} ${top} L${r} ${bot - 14} Q${x} ${bot + 10} ${l} ${bot - 14}Z`} fill={FUR} />
+      <path
+        d={`M${l + 6} ${bot - 14} Q${x} ${bot + 10} ${r - 6} ${bot - 14}`}
+        fill="none"
+        stroke={OUTLINE}
+        strokeWidth={7}
+        strokeLinecap="round"
+      />
+    </>
+  );
+}
+
+/** Закрытый глаз (сон, ожидание): глаз целиком под мехом + дуга */
+function ClosedEye({ x, y }: { x: number; y: number }) {
+  return (
+    <>
+      <ellipse cx={x} cy={y} rx={EYE_RX + 16} ry={EYE_RY + 16} fill={FUR} />
+      <path
+        d={`M${x - 46} ${y + 4} Q${x} ${y + 40} ${x + 46} ${y + 4}`}
+        fill="none"
+        stroke={INK}
+        strokeWidth={8}
+        strokeLinecap="round"
+      />
+    </>
+  );
+}
 
 export function MascotSvg({
   expression = "calm",
@@ -190,7 +269,7 @@ export function MascotSvg({
 }: MascotSvgProps) {
   const reduceMotion = useReducedMotion();
   const ref = useRef<SVGSVGElement>(null);
-  const uid = useId().replace(/:/g, "");
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
 
   // Перф-гейт: на лендинге живёт 5+ инстансов существа — глаза, таймеры
   // и CSS-слои работают только у видимых котов.
@@ -256,8 +335,8 @@ export function MascotSvg({
       return;
     }
     if (actionGaze) {
-      px.set(actionGaze.x);
-      py.set(actionGaze.y);
+      px.set(actionGaze.x * K);
+      py.set(actionGaze.y * K);
       tilt.set(actionGaze.tilt);
       return;
     }
@@ -271,8 +350,8 @@ export function MascotSvg({
       const cy = r.top + r.height * 0.44;
       const dx = Math.max(-1, Math.min(1, (e.clientX - cx) / (r.width * 1.2)));
       const dy = Math.max(-1, Math.min(1, (e.clientY - cy) / (r.height * 1.2)));
-      px.set(dx * 5);
-      py.set(dy * 4);
+      px.set(dx * 5 * K);
+      py.set(dy * 4 * K);
     };
     // На таче pointermove мёртв: листаешь — кот провожает взглядом,
     // через полсекунды покоя глаза возвращаются к центру.
@@ -283,7 +362,7 @@ export function MascotSvg({
       lastY = window.scrollY;
       if (Math.abs(dy) < 2) return;
       lastPointer.current = performance.now();
-      py.set(Math.max(-1, Math.min(1, dy / 48)) * 4.5);
+      py.set(Math.max(-1, Math.min(1, dy / 48)) * 4.5 * K);
       clearTimeout(settle);
       settle = setTimeout(() => py.set(0), 500);
     };
@@ -374,8 +453,8 @@ export function MascotSvg({
       later(() => {
         if (action === "idle" && performance.now() - lastPointer.current > 2500) {
           glanceSide = -glanceSide;
-          px.set(glanceSide * 3.6);
-          py.set(rnd(-1.5, 1.2));
+          px.set(glanceSide * 3.6 * K);
+          py.set(rnd(-1.5, 1.2) * K);
           if (Math.random() < 0.45) tilt.set(glanceSide * 3.5);
           later(() => {
             px.set(0);
@@ -440,7 +519,7 @@ export function MascotSvg({
     if (action !== "celebrate" || !alive) return;
     // anticipation (присел) → прыжок с вытяжкой → приземление со сжатием → settle
     void rootCtl.start({
-      y: [0, 2.5, -20, 0, -7, 0],
+      y: [0, 2.5 * K, -20 * K, 0, -7 * K, 0],
       scaleY: [1, 0.88, 1.08, 0.9, 1.03, 1],
       scaleX: [1, 1.08, 0.95, 1.08, 0.99, 1],
       transition: {
@@ -456,7 +535,7 @@ export function MascotSvg({
   const poke = () => {
     if (!interactive || !alive) return;
     void rootCtl.start({
-      y: [0, 1.5, -5, 0],
+      y: [0, 1.5 * K, -5 * K, 0],
       scaleY: [1, 0.9, 1.05, 1],
       scaleX: [1, 1.07, 0.97, 1],
       transition: { duration: 0.46, times: [0, 0.22, 0.6, 1], ease: "easeOut" },
@@ -551,38 +630,37 @@ export function MascotSvg({
       <g key={side}>
         <defs>
           <clipPath id={clipId}>
-            <ellipse cx={x} cy={y} rx={EYE_RX - 1} ry={EYE_RY - 1} />
+            <ellipse cx={x} cy={y} rx={EYE_RX} ry={EYE_RY} />
           </clipPath>
         </defs>
-        <CatEyeBase x={x} y={y} uid={uid} />
         <g clipPath={`url(#${clipId})`}>
           {/* style — ВСЕГДА, без ветвления по reduceMotion: серверный рендер
               не знает системную настройку, ветвление давало React #418 на
               каждой загрузке у людей с «уменьшить движение». Пружины сами
               держат px/py на нуле, разметка одинакова. */}
-          <motion.g style={{ x: px, y: py, ...pivot({ x, y }) }} initial={{ scale: 1 }} animate={pupilsCtl}>
-            <CatPupil x={x} y={y} dilated={excited} />
-          </motion.g>
-          {happy && !excited && <CatSmileLid x={x} y={y} />}
           <motion.g
-            style={pivot({ x, y: y - EYE_RY - 2 })}
+            style={{ x: px, y: py, ...pivot({ x, y }) }}
+            initial={{ scale: 1 }}
+            animate={pupilsCtl}
+          >
+            <motion.g
+              style={pivot({ x, y })}
+              initial={{ scale: 1 }}
+              animate={{ scale: excited ? 1.18 : 1 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Img l={side === "l" ? L.pupilL : L.pupilR} />
+            </motion.g>
+          </motion.g>
+          <motion.g
+            style={pivot({ x, y: y - EYE_RY - 6 })}
             initial={{ scaleY: 0 }}
             animate={{ scaleY: lid }}
             transition={lidTransition}
           >
-            <CatLid x={x} y={y} />
+            <Lid x={x} y={y} />
           </motion.g>
         </g>
-        {/* кромка поверх век — контур глаза не «съедается» шторкой */}
-        <ellipse
-          cx={x}
-          cy={y}
-          rx={EYE_RX}
-          ry={EYE_RY}
-          fill="none"
-          stroke={OUTLINE}
-          strokeWidth={3.2}
-        />
       </g>
     );
   };
@@ -592,7 +670,7 @@ export function MascotSvg({
   return (
     <svg
       ref={ref}
-      viewBox="0 0 200 200"
+      viewBox={VIEWBOX}
       width={size}
       height={size}
       className={["cat-rig", className].filter(Boolean).join(" ")}
@@ -604,50 +682,38 @@ export function MascotSvg({
       onPointerDown={interactive ? poke : undefined}
       style={{ overflow: "visible" }}
     >
-      <CatDefs uid={uid} />
       {/* контактная тень: кот сидит на земле, а не висит в воздухе */}
-      <ellipse cx={112} cy={187} rx={64} ry={6} fill="oklch(0.08 0.01 270)" opacity={0.35} />
+      <ellipse cx={690} cy={776} rx={330} ry={20} fill="oklch(0.08 0.01 270)" opacity={0.35} />
       <motion.g style={pivot(GROUND)} initial={{ y: 0, scaleX: 1, scaleY: 1 }} animate={rootCtl}>
-        {/* хвост за телом: качается от основания, завиток отстаёт */}
+        {/* хвост за телом: качается от основания, завиток отстаёт, огонь пляшет */}
         <g className="cat-tail">
-          <CatTail
-            uid={uid}
-            curl={(node, layer) => (
-              <g key={layer} className="cat-curl">
-                {node}
-              </g>
-            )}
-            flame={
-              <g className="cat-flame">
-                <CatFlame
-                  uid={uid}
-                  core={(n) => <g className="cat-flame-core">{n}</g>}
-                />
-                <circle className="cat-ember" cx={171} cy={79} r={1.6} fill="oklch(0.85 0.15 75)" />
-                <circle className="cat-ember cat-ember--late" cx={165} cy={83} r={1.2} fill="oklch(0.88 0.12 90)" />
-              </g>
-            }
-          />
+          <Img l={L.tailBase} />
+          <g className="cat-curl">
+            <Img l={L.tailCurl} />
+            <g className="cat-flame">
+              <Img l={L.flame} />
+            </g>
+            <circle className="cat-ember" cx={972} cy={268} r={6} fill="oklch(0.85 0.15 75)" />
+            <circle className="cat-ember cat-ember--late" cx={948} cy={285} r={4.5} fill="oklch(0.88 0.12 90)" />
+          </g>
         </g>
 
-        {/* тело с правой (для зрителя) лапой — дышит от земли */}
+        {/* тело (с правой для зрителя лапой) — дышит от земли */}
         <g className="cat-breathe">
-          <CatBody uid={uid} />
-          <CatLeg side="r" uid={uid} />
-          <CatPaw x={PAW_R.x} y={PAW_R.y} />
+          <Img l={L.body} />
         </g>
 
         {/* голова едет за грудью с задержкой; наклон — на вложенной группе */}
         <g className="cat-ride">
           <motion.g style={{ rotate: tilt, ...pivot(NECK) }}>
-            <motion.g style={pivot(EAR_L_PIVOT)} initial={{ rotate: 0, scaleY: 1 }} animate={earL}>
+            <motion.g style={pivot(EAR_L_PIVOT)} initial={{ rotate: 0 }} animate={earL}>
               <motion.g
                 style={pivot(EAR_L_PIVOT)}
                 initial={{ rotate: 0 }}
                 animate={{ rotate: listening ? 4 : sleepy ? -8 : 0 }}
                 transition={{ duration: 0.6, ease: "easeInOut" }}
               >
-                <CatEar side="l" tip={(n) => <g className="cat-ear-tip">{n}</g>} />
+                <Img l={L.earL} />
               </motion.g>
             </motion.g>
             <motion.g style={pivot(EAR_R_PIVOT)} initial={{ rotate: 0 }} animate={earR}>
@@ -657,15 +723,14 @@ export function MascotSvg({
                 animate={{ rotate: listening ? -4 : sleepy ? 8 : 0 }}
                 transition={{ duration: 0.6, ease: "easeInOut" }}
               >
-                <CatEar side="r" />
+                <Img l={L.earR} />
               </motion.g>
             </motion.g>
-            <CatHead uid={uid} />
-            <CatMuzzle blush={happy || excited ? 1 : 0.85} />
+            <Img l={L.head} />
             {eyesClosed ? (
               <>
-                <CatClosedEye x={EYE_L.x} y={EYE_L.y} />
-                <CatClosedEye x={EYE_R.x} y={EYE_R.y} />
+                <ClosedEye x={EYE_L.x} y={EYE_L.y} />
+                <ClosedEye x={EYE_R.x} y={EYE_R.y} />
               </>
             ) : (
               <>
@@ -682,11 +747,7 @@ export function MascotSvg({
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.1 }}
               >
-                {sleepy ? (
-                  <ellipse cx={100} cy={116} rx={2.2} ry={1.8} fill={INK} />
-                ) : (
-                  <CatMouth shape={mouth} />
-                )}
+                <Mouth shape={sleepy ? "flat" : mouth} />
               </motion.g>
             </AnimatePresence>
           </motion.g>
@@ -697,21 +758,21 @@ export function MascotSvg({
           {writing && (
             <motion.g
               key="notebook"
-              style={pivot({ x: 77, y: 189 })}
-              initial={{ opacity: 0, y: 6, scale: 0.9 }}
+              style={pivot({ x: 430, y: 780 })}
+              initial={{ opacity: 0, y: 26, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 4, transition: { duration: 0.2, ease: "easeIn" } }}
+              exit={{ opacity: 0, y: 18, transition: { duration: 0.2, ease: "easeIn" } }}
               transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
             >
-              <path d={NOTEBOOK} fill={PAPER} stroke={OUTLINE} strokeWidth={2.2} strokeLinejoin="round" />
-              <path d={NOTEBOOK_SPINE} stroke="oklch(0.75 0.03 90)" strokeWidth={1.2} />
-              <path d="M50 187.5 L104 186" stroke="oklch(0.8 0.04 240)" strokeWidth={0.7} opacity={0.8} />
-              <path d="M49 192 L106 190.5" stroke="oklch(0.8 0.04 240)" strokeWidth={0.7} opacity={0.8} />
+              <path d="M300 748 L560 740 L578 806 L282 814Z" fill={PAPER} stroke={OUTLINE} strokeWidth={7} strokeLinejoin="round" />
+              <path d="M432 744 L432 810" stroke="oklch(0.75 0.03 90)" strokeWidth={5} />
+              <path d="M306 770 L562 763" stroke="oklch(0.8 0.04 240)" strokeWidth={3} opacity={0.8} />
+              <path d="M300 792 L570 784" stroke="oklch(0.8 0.04 240)" strokeWidth={3} opacity={0.8} />
               <motion.path
                 d={WRITE.d}
                 fill="none"
                 stroke={INK}
-                strokeWidth={1.3}
+                strokeWidth={5}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 initial={{ pathLength: 0, opacity: 1 }}
@@ -737,9 +798,9 @@ export function MascotSvg({
         {/* левая (для зрителя) лапа — машет и пишет; поверх головы, чтобы
             поднятая лапа не пряталась за щёку */}
         <g className="cat-breathe">
-          <motion.g style={pivot(SHOULDER_L)} initial={{ rotate: 0 }} animate={armAnim}>
-            <CatLeg side="l" uid={uid} />
-            <motion.g style={pivot(PAW_L)} initial={{ rotate: 0, y: 0 }} animate={pawAnim}>
+          <motion.g style={pivot(SHOULDER)} initial={{ rotate: 0 }} animate={armAnim}>
+            <Img l={L.leg} />
+            <motion.g style={pivot(PAW_C)} initial={{ rotate: 0, y: 0 }} animate={pawAnim}>
               <AnimatePresence>
                 {writing && (
                   <motion.g
@@ -749,20 +810,15 @@ export function MascotSvg({
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <path
-                      d="M76.6 184.4L95.5 163.2"
-                      stroke={OUTLINE}
-                      strokeWidth={6.2}
-                      strokeLinecap="round"
-                    />
-                    <path d="M76.6 184.4L95.5 163.2" stroke={PENCIL} strokeWidth={3.8} />
-                    <path d="M93.6 165.3L96.4 162.2" stroke="oklch(0.72 0.1 10)" strokeWidth={3.8} strokeLinecap="round" />
-                    <path d="M74.5 188L75.4 182.6L78.6 185.4Z" fill="oklch(0.85 0.06 70)" stroke={OUTLINE} strokeWidth={1} strokeLinejoin="round" />
-                    <path d="M74.5 188L74.9 185.9L76.1 186.9Z" fill={INK} />
+                    <path d="M457 754 L540 660" stroke={OUTLINE} strokeWidth={26} strokeLinecap="round" />
+                    <path d="M457 754 L540 660" stroke={PENCIL} strokeWidth={17} />
+                    <path d="M532 669 L544 655" stroke="oklch(0.72 0.1 10)" strokeWidth={17} strokeLinecap="round" />
+                    <path d="M448 766 L452 742 L466 754Z" fill="oklch(0.85 0.06 70)" stroke={OUTLINE} strokeWidth={4} strokeLinejoin="round" />
+                    <path d="M448 766 L450 757 L455 761Z" fill={INK} />
                   </motion.g>
                 )}
               </AnimatePresence>
-              <CatPaw x={PAW_L.x} y={PAW_L.y} />
+              <Img l={L.paw} />
             </motion.g>
           </motion.g>
         </g>
@@ -779,9 +835,9 @@ export function MascotSvg({
             exit={{ opacity: 0, transition: { duration: 0.18 } }}
           >
             {[
-              { x: 160, y: 40, r: 4.2 },
-              { x: 173, y: 26, r: 5.8 },
-              { x: 188, y: 9, r: 7.6 },
+              { x: 850, y: 90, r: 16 },
+              { x: 905, y: 30, r: 22 },
+              { x: 975, y: -40, r: 30 },
             ].map((d, i) => (
               <motion.circle
                 key={d.x}
@@ -816,9 +872,9 @@ export function MascotSvg({
       {sleepy && (
         <g className="font-hand" fill={EYE}>
           {[
-            { x: 146, y: 46, s: 13, d: 0 },
-            { x: 160, y: 32, s: 17, d: 0.5 },
-            { x: 176, y: 16, s: 22, d: 1 },
+            { x: 830, y: 120, s: 60, d: 0 },
+            { x: 890, y: 50, s: 78, d: 0.5 },
+            { x: 960, y: -20, s: 100, d: 1 },
           ].map((z) => (
             /* initial — без ветвления по reduceMotion (React #418): различается
                только animate — при reduced-motion «z» просто стоит видимой. */
@@ -827,11 +883,11 @@ export function MascotSvg({
               x={z.x}
               y={z.y}
               fontSize={z.s}
-              initial={{ opacity: 0, y: 4 }}
+              initial={{ opacity: 0, y: 18 }}
               animate={
                 reduceMotion
                   ? { opacity: 0.6, y: 0 }
-                  : { opacity: [0, 0.9, 0], y: [4, -4, -10] }
+                  : { opacity: [0, 0.9, 0], y: [18, -18, -45] }
               }
               transition={
                 reduceMotion
@@ -849,13 +905,13 @@ export function MascotSvg({
       {excited && (
         <g fill={EYE}>
           {[
-            { x: 30, y: 52, d: 0 },
-            { x: 170, y: 58, d: 0.35 },
-            { x: 150, y: 20, d: 0.7 },
+            { x: 300, y: 120, d: 0 },
+            { x: 900, y: 150, d: 0.35 },
+            { x: 830, y: 20, d: 0.7 },
           ].map((sp) => (
             <motion.path
               key={sp.x}
-              d="M0 -7 L1.8 -1.8 L7 0 L1.8 1.8 L0 7 L-1.8 1.8 L-7 0 L-1.8 -1.8 Z"
+              d="M0 -32 L8 -8 L32 0 L8 8 L0 32 L-8 8 L-32 0 L-8 -8 Z"
               style={{ x: sp.x, y: sp.y }}
               initial={{ scale: 0.5, opacity: 0.4 }}
               animate={

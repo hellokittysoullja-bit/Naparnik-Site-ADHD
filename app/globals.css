@@ -1414,7 +1414,7 @@ body[data-companion-speaking] .app-hearth {
    растёт от земли — лапы не отрываются */
 .cat-breathe {
   transform-box: view-box;
-  transform-origin: 100px 185px;
+  transform-origin: 600px 768px;
   animation: cat-breathe var(--cat-breath) cubic-bezier(0.37, 0, 0.63, 1)
     infinite;
 }
@@ -1425,7 +1425,7 @@ body[data-companion-speaking] .app-hearth {
   }
   40%,
   50% {
-    transform: scale(1.01, 1.032);
+    transform: scale(1.008, 1.026);
   }
 }
 
@@ -1441,23 +1441,23 @@ body[data-companion-speaking] .app-hearth {
   }
   42%,
   52% {
-    transform: translateY(-2px);
+    transform: translateY(-7px);
   }
 }
 
 /* Хвост качается от основания; завиток догоняет с отставанием */
 .cat-tail {
   transform-box: view-box;
-  transform-origin: 134px 177px;
+  transform-origin: 820px 700px;
   animation: cat-tail 7.4s ease-in-out infinite;
 }
 @keyframes cat-tail {
   0%,
   100% {
-    transform: rotate(-2.5deg);
+    transform: rotate(-2deg);
   }
   50% {
-    transform: rotate(4deg);
+    transform: rotate(3deg);
   }
 }
 .cat-rig[data-mood="excited"] .cat-tail {
@@ -1465,7 +1465,7 @@ body[data-companion-speaking] .app-hearth {
 }
 .cat-curl {
   transform-box: view-box;
-  transform-origin: 178px 124px;
+  transform-origin: 975px 560px;
   animation: cat-curl 7.4s ease-in-out 0.6s infinite backwards;
 }
 @keyframes cat-curl {
@@ -1481,12 +1481,12 @@ body[data-companion-speaking] .app-hearth {
 /* Огонёк: неровное дрожание на двух частотах, ядро в противофазе */
 .cat-flame {
   transform-box: view-box;
-  transform-origin: 168px 112px;
+  transform-origin: 972px 415px;
   animation: cat-flame 1.3s ease-in-out infinite;
 }
 .cat-flame-core {
   transform-box: view-box;
-  transform-origin: 168px 109px;
+  transform-origin: 972px 410px;
   animation: cat-flame 0.9s ease-in-out infinite reverse;
 }
 @keyframes cat-flame {
@@ -1522,7 +1522,7 @@ body[data-companion-speaking] .app-hearth {
   }
   100% {
     opacity: 0;
-    transform: translate(3px, -18px);
+    transform: translate(14px, -80px);
   }
 }
 

@@ -1,28 +1,15 @@
 import {
-  CatBody,
-  CatDefs,
-  CatEar,
-  CatEyeBase,
-  CatFlame,
-  CatHead,
-  CatLeg,
-  CatLid,
-  CatMouth,
-  CatMuzzle,
-  CatPaw,
-  CatPupil,
-  CatTail,
-} from "@/components/mascot-art";
-import {
   EYE_L,
   EYE_R,
   EYE_RX,
   EYE_RY,
+  FUR,
   INK,
+  L,
   OUTLINE,
-  PAW_L,
-  PAW_R,
+  VIEWBOX,
   WARM,
+  type Layer,
 } from "@/components/mascot-geometry";
 
 /**
@@ -396,11 +383,15 @@ export function Moon({ className }: { className?: string }) {
 }
 
 /**
- * Статичный напарник для серверного первого кадра: собран из тех же частей
- * (mascot-art), что и интерактивный маскот, — кот до гидрации и после
- * неотличим. Дыхание, хвост с отстающим завитком, огонёк, кисточка уха и
- * моргание — на CSS-слоях idle-рига (globals.css), без JS.
+ * Статичный напарник для серверного первого кадра: те же слои оригинального
+ * рисунка, что у интерактивного маскота, — кот до гидрации и после
+ * неотличим. Дыхание, хвост с отстающим завитком, огонёк и моргание — на
+ * CSS-слоях idle-рига (globals.css), без JS.
  */
+function Img({ l }: { l: Layer }) {
+  return <image href={l.href} x={l.x} y={l.y} width={l.w} height={l.h} preserveAspectRatio="none" />;
+}
+
 export function MascotStatic({
   size = 200,
   className,
@@ -408,78 +399,67 @@ export function MascotStatic({
   size?: number;
   className?: string;
 }) {
-  const uid = "ms";
-  const eye = (x: number, y: number, side: string) => (
-    <g>
-      <defs>
-        <clipPath id={`ms-eye-${side}`}>
-          <ellipse cx={x} cy={y} rx={EYE_RX - 1} ry={EYE_RY - 1} />
-        </clipPath>
-      </defs>
-      <CatEyeBase x={x} y={y} uid={uid} />
-      <g clipPath={`url(#ms-eye-${side})`}>
-        <CatPupil x={x} y={y} />
-        <g className="cat-lid-auto">
-          <CatLid x={x} y={y} />
+  const lid = (x: number, y: number, side: string) => {
+    const l = x - EYE_RX - 6;
+    const r = x + EYE_RX + 6;
+    const top = y - EYE_RY - 6;
+    const bot = y + EYE_RY + 4;
+    return (
+      <g key={side}>
+        <defs>
+          <clipPath id={`ms-eye-${side}`}>
+            <ellipse cx={x} cy={y} rx={EYE_RX} ry={EYE_RY} />
+          </clipPath>
+        </defs>
+        <g clipPath={`url(#ms-eye-${side})`}>
+          <g className="cat-lid-auto">
+            <path d={`M${l} ${top} L${r} ${top} L${r} ${bot - 14} Q${x} ${bot + 10} ${l} ${bot - 14}Z`} fill={FUR} />
+            <path
+              d={`M${l + 6} ${bot - 14} Q${x} ${bot + 10} ${r - 6} ${bot - 14}`}
+              fill="none"
+              stroke={OUTLINE}
+              strokeWidth={7}
+              strokeLinecap="round"
+            />
+          </g>
         </g>
       </g>
-      <ellipse
-        cx={x}
-        cy={y}
-        rx={EYE_RX}
-        ry={EYE_RY}
-        fill="none"
-        stroke={OUTLINE}
-        strokeWidth={3.2}
-      />
-    </g>
-  );
+    );
+  };
   return (
     <svg
-      viewBox="0 0 200 200"
+      viewBox={VIEWBOX}
       width={size}
       height={size}
       className={["cat-rig", className].filter(Boolean).join(" ")}
       aria-hidden="true"
       style={{ overflow: "visible" }}
     >
-      <CatDefs uid={uid} />
-      <ellipse cx={112} cy={187} rx={64} ry={6} fill="oklch(0.08 0.01 270)" opacity={0.35} />
+      <ellipse cx={690} cy={776} rx={330} ry={20} fill="oklch(0.08 0.01 270)" opacity={0.35} />
       <g className="cat-tail">
-        <CatTail
-            uid={uid}
-          curl={(node, layer) => (
-            <g key={layer} className="cat-curl">
-              {node}
-            </g>
-          )}
-          flame={
-            <g className="cat-flame">
-              <CatFlame
-                uid={uid}
-                core={(n) => <g className="cat-flame-core">{n}</g>}
-              />
-            </g>
-          }
-        />
+        <Img l={L.tailBase} />
+        <g className="cat-curl">
+          <Img l={L.tailCurl} />
+          <g className="cat-flame">
+            <Img l={L.flame} />
+          </g>
+        </g>
       </g>
       <g className="cat-breathe">
-        <CatBody uid={uid} />
-        <CatLeg side="r" uid={uid} />
-        <CatPaw x={PAW_R.x} y={PAW_R.y} />
+        <Img l={L.body} />
       </g>
       <g className="cat-ride">
-        <CatEar side="l" tip={(n) => <g className="cat-ear-tip">{n}</g>} />
-        <CatEar side="r" />
-        <CatHead uid={uid} />
-        <CatMuzzle />
-        {eye(EYE_L.x, EYE_L.y, "l")}
-        {eye(EYE_R.x, EYE_R.y, "r")}
-        <CatMouth shape="w" />
+        <Img l={L.earL} />
+        <Img l={L.earR} />
+        <Img l={L.head} />
+        <Img l={L.pupilL} />
+        <Img l={L.pupilR} />
+        {lid(EYE_L.x, EYE_L.y, "l")}
+        {lid(EYE_R.x, EYE_R.y, "r")}
       </g>
       <g className="cat-breathe">
-        <CatLeg side="l" uid={uid} />
-        <CatPaw x={PAW_L.x} y={PAW_L.y} />
+        <Img l={L.leg} />
+        <Img l={L.paw} />
       </g>
     </svg>
   );
