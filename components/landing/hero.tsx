@@ -175,6 +175,18 @@ export function Hero() {
   // всё равно должен закрывать дофаминовую петлю действием, а не повисать
   // в пустоте — импульс на уже видимую кнопку вместо второй, конкурирующей
   const [ctaBoost, setCtaBoost] = useState(false);
+  // Новичок идёт в знакомство (2 вопроса → первые 2 минуты), вернувшийся —
+  // сразу домой: второй раз онбординг не нужен. Читаем локальную память
+  // напрямую — лендинг статический, без загрузки модуля памяти.
+  const [entryHref, setEntryHref] = useState("/app/start");
+  useEffect(() => {
+    try {
+      const starts = JSON.parse(window.localStorage.getItem("naparnik:starts") ?? "[]");
+      if (Array.isArray(starts) && starts.length > 0) setEntryHref("/app");
+    } catch {
+      /* приватный режим — пусть будет знакомство */
+    }
+  }, []);
   // Клиентский переход на /app не мгновенен (первая загрузка бандла) —
   // 200-300мс без визуального отклика читаются мозгом как «не сработало»,
   // тянет за собой повторный клик. Гвардим от двойного клика в самом
@@ -410,7 +422,7 @@ export function Hero() {
                   нижнего края не «выпадает» из кнопки, когда лицо вдавилось.
                   Двигается только .btn-face */}
               <Link
-                href="/app"
+                href={entryHref}
                 // iOS Safari включает :active только при наличии touch-слушателя
                 onTouchStart={() => {}}
                 onClick={(e: React.MouseEvent) => {
@@ -584,7 +596,7 @@ export function Hero() {
                 className="self-start"
               >
                 <Link
-                  href="/app"
+                  href={entryHref}
                   className="glass-highlight press inline-flex items-center gap-1.5 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm font-semibold text-primary"
                 >
                   Пойдём попробуем

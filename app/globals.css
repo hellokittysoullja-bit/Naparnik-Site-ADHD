@@ -1291,3 +1291,62 @@ body[data-companion-speaking] .app-hearth {
     transition: none;
   }
 }
+
+/* ==========================================================================
+   Онбординг первого входа (components/onboarding/*)
+   ========================================================================== */
+
+/* Кнопка «ещё рано»: та же форма и место, но приглушённая — не disabled
+   (немых кнопок нет: тап по ней даёт подсказку кота), а «ждёт выбора».
+   Читаемость сохраняем: серое лицо с muted-текстом ≥4.5:1 на фоне. */
+.btn-chunky[data-idle] {
+  --lip: oklch(0.28 0.01 130);
+}
+.btn-chunky[data-idle] .btn-face {
+  background: oklch(0.34 0.012 130);
+  color: oklch(0.8 0.01 110);
+}
+
+/* Удержание: пока палец держит, лицо остаётся вдавленным — тело кнопки
+   «помнит» нажатие, а не отпружинивает посреди ритуала */
+.btn-hold[data-holding] .btn-face {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 var(--lip);
+}
+
+/* Карточка-вариант ответа: тональное стекло на тон светлее неба, своя
+   «губа» 2px — тот же физический язык, что у главной кнопки, но тише.
+   Выбранная — зелёная кромка и тонировка, плюс галочка (не только цвет). */
+.option-card {
+  --card-lip: oklch(1 0 0 / 0.07);
+  background: oklch(1 0 0 / 0.06);
+  border: 2px solid oklch(1 0 0 / 0.1);
+  box-shadow: 0 2px 0 var(--card-lip);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition:
+    transform 110ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 110ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+.option-card[data-selected] {
+  --card-lip: oklch(from var(--primary) calc(l - 0.3) calc(c * 0.7) h);
+  background: oklch(from var(--primary) l c h / 0.1);
+  border-color: var(--primary);
+}
+.option-card:active {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 var(--card-lip);
+  transition-duration: 45ms;
+}
+@media (hover: hover) {
+  .option-card:not([data-selected]):hover {
+    background: oklch(1 0 0 / 0.09);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .option-card {
+    transition: none;
+  }
+}

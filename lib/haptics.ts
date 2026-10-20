@@ -1,12 +1,47 @@
 /**
  * Хаптика: подтверждение действия телом, минуя зрение.
- * Работает на Android (Chrome); на iOS Safari navigator.vibrate
- * отсутствует — тихо ничего не происходит. Ноль вреда, чистый плюс.
+ * Android (Chrome) — navigator.vibrate. На iOS Safari navigator.vibrate
+ * нет вовсе, и раньше iPhone не получал ни одного тика. iOS 18 сам даёт
+ * системный тик при переключении нативного `<input type="checkbox" switch>`
+ * — переключаем невидимый свитч через его label. Работает только внутри
+ * жеста пользователя (тап), то есть ровно там, где хаптика и нужна.
+ * Паттерн на iOS сводится к числу тиков. Нет поддержки — тихо ничего.
  */
+
+let iosSwitch: HTMLLabelElement | null = null
+
+function iosTick() {
+  if (typeof document === 'undefined') return
+  if (!iosSwitch) {
+    const label = document.createElement('label')
+    label.setAttribute('aria-hidden', 'true')
+    label.style.cssText =
+      'position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none'
+    const input = document.createElement('input')
+    input.type = 'checkbox'
+    input.setAttribute('switch', '')
+    input.tabIndex = -1
+    label.appendChild(input)
+    document.body.appendChild(label)
+    iosSwitch = label
+  }
+  iosSwitch.click()
+}
 
 function vibrate(pattern: number | number[]) {
   if (typeof navigator === 'undefined') return
-  if (typeof navigator.vibrate !== 'function') return
+  if (typeof navigator.vibrate !== 'function') {
+    // Только у iOS-подобных устройств с тачем — на десктопе свитч бесполезен
+    if (!/iP(hone|ad|od)/.test(navigator.userAgent) && navigator.maxTouchPoints < 2) return
+    const pulses = Array.isArray(pattern) ? Math.ceil(pattern.length / 2) : 1
+    try {
+      iosTick()
+      for (let i = 1; i < pulses; i++) window.setTimeout(iosTick, i * 90)
+    } catch {
+      /* молчим */
+    }
+    return
+  }
   try {
     navigator.vibrate(pattern)
   } catch {

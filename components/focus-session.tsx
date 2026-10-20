@@ -41,6 +41,7 @@ import { playStartSigh } from '@/lib/reward-sound'
 import { startCampfire, stopCampfire } from '@/lib/ambient'
 import { hapticDone, hapticStart, hapticThreshold } from '@/lib/haptics'
 import { trimLabel } from '@/lib/utils'
+import { FIRST_MINUTES } from '@/lib/onboarding'
 
 const durations = [15, 25, 45]
 
@@ -114,7 +115,15 @@ export function FocusSession() {
   const prefilledStep = searchParams.get('step') ?? ''
   const fromPlan = searchParams.get('plan') === '1'
   const prefilledDuration = Number(searchParams.get('d'))
-  const initialMinutes = durations.includes(prefilledDuration) ? prefilledDuration : 25
+  // auto=1 приходит из знакомства (/app/start): человек уже выбрал шаг и
+  // удержал кнопку — повторный сетап был бы вторым «точно?» подряд.
+  // Только там разрешена короткая первая сессия (FIRST_MINUTES).
+  const autoStart = searchParams.get('auto') === '1' && Boolean(prefilledStep)
+  const initialMinutes =
+    durations.includes(prefilledDuration) ||
+    (autoStart && prefilledDuration === FIRST_MINUTES)
+      ? prefilledDuration
+      : 25
 
   const [phase, setPhase] = useState<Phase>('setup')
   const [task, setTask] = useState(prefilledStep)
@@ -171,6 +180,9 @@ export function FocusSession() {
   const [voice, setVoice] = useState(fallbackVoice.start)
   const [doneVoice, setDoneVoice] = useState<string | null>(null)
   const [endedEarly, setEndedEarly] = useState(false)
+  // Самый первый старт в жизни продукта — пик называем по имени шага,
+  // а не общей фразой: это момент, который человек запомнит (Peak-End)
+  const [firstEver, setFirstEver] = useState(false)
 
   // Награда: что выросло на острове после этого старта.
   // Ориентир (старты 1-10) или находка из пула с редкостью (старты 11+).
@@ -347,7 +359,15 @@ export function FocusSession() {
     if (restoredRef.current) return
     restoredRef.current = true
     getActiveSession().then((s) => {
-      if (!s) return
+      if (!s) {
+        if (autoStart) {
+          // Параметры убираем сразу: перезагрузка после финиша не должна
+          // запустить вторую сессию (активная восстановится и без них)
+          window.history.replaceState(null, '', '/app/session')
+          void start()
+        }
+        return
+      }
       totalRef.current = s.minutes * 60
       startedAtRef.current = s.startedAt
       startIdRef.current = s.startId
@@ -486,6 +506,7 @@ export function FocusSession() {
     }
     hapticDone()
     setEndedEarly(early)
+    setFirstEver(n === 1)
     setDoneVoice(null)
     setPlanSaved(false)
     setPlanFormOpen(false)
@@ -934,9 +955,17 @@ export function FocusSession() {
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 px-4 py-8">
       <MascotSvg expression="excited" label="Напарник радуется" size={110} />
       <div className="flex flex-col gap-2 text-center">
-        <h2 className="text-2xl font-bold">{endedEarly ? 'Ты начал.' : 'Сделано.'}</h2>
+        <h2 className="text-2xl font-bold">
+          {firstEver ? 'Первое дело сдвинуто.' : endedEarly ? 'Ты начал.' : 'Сделано.'}
+        </h2>
         <p className="font-sans text-[0.95rem] leading-relaxed text-muted-foreground">
-          <EmphasisText text={doneVoice ?? fallbackVoice[endedEarly ? 'early-exit' : 'done']} />
+          <EmphasisText
+            text={
+              firstEver
+                ? `«${trimLabel(task, 40)}» — начато. А начать и есть самое трудное. Смотри, что выросло.`
+                : (doneVoice ?? fallbackVoice[endedEarly ? 'early-exit' : 'done'])
+            }
+          />
         </p>
       </div>
 
@@ -989,6 +1018,34 @@ export function FocusSession() {
         style={{ pointerEvents: restRevealed ? 'auto' : 'none' }}
         aria-hidden={!restRevealed}
       >
+      {firstEver ? (
+        // Первая победа: один ясный следующий шаг вместо меню из четырёх.
+        // План на завтра и остальное — уже с Дома, после пика, не вместо него
+        <div className="flex w-full flex-col gap-2">
+          <Link
+            href="/app"
+            onTouchStart={() => {}}
+            className="btn-chunky block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <span className="btn-face flex h-[52px] items-center justify-center rounded-[16px] bg-primary px-6 text-[15px] font-bold uppercase tracking-[0.06em] text-primary-foreground">
+              Дальше — в мой дом
+            </span>
+          </Link>
+          <Button
+            variant="ghost"
+            className="text-muted-foreground"
+            onClick={() => {
+              setTask(nextUp.step ?? task)
+              setFirstEver(false)
+              setGrownElement(null)
+              setPhase('setup')
+            }}
+          >
+            Хочу ещё — посидим подольше
+          </Button>
+        </div>
+      ) : (
+      <>
       {!planSaved ? (
         !planFormOpen ? (
           <div className="flex w-full flex-col gap-2">
@@ -1107,6 +1164,8 @@ export function FocusSession() {
           Посмотреть, как вырос мир
         </Button>
       </div>
+      </>
+      )}
       </motion.div>
     </div>
   )
