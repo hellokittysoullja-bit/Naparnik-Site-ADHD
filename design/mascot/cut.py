@@ -72,8 +72,8 @@ body_zone=poly([(250,520),(1000,520),(1000,800),(250,800)],10)
 
 notail=1-tail
 # хвост: основание и завиток с огоньком отдельно (завиток отстаёт, огонь пляшет)
-save('tail-base', rgb, alpha*tail*(1-CURL_SPLIT), (780,430,1160,790))
-save('tail-curl', rgb, alpha*tail*CURL_SPLIT*(1-FLAME), (880,250,1160,600))
+# хвост одним слоем без огонька: в рантайме режется на сегменты цепочки (mascot-tail.tsx)
+save('tail', rgb, alpha*tail*(1-FLAME), (780,380,1160,790))
 save('flame', rgb, alpha*FLAME, (905,255,1040,430))
 
 # уши

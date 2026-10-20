@@ -25,8 +25,7 @@ const layer = (name: string, x0: number, y0: number, x1: number, y1: number): La
 });
 
 export const L = {
-  tailBase: layer("tail-base", 780, 430, 1160, 790),
-  tailCurl: layer("tail-curl", 880, 250, 1160, 600),
+  tail: layer("tail", 780, 380, 1160, 790),
   flame: layer("flame", 905, 255, 1040, 430),
   body: layer("body", 380, 500, 860, 790),
   leg: layer("leg", 410, 600, 575, 700),
@@ -42,6 +41,14 @@ export const L = {
   eyeArcL: layer("eyearc-l", 425, 325, 585, 485),
   eyeArcR: layer("eyearc-r", 638, 325, 798, 485),
   mouth: layer("mouth", 572, 466, 658, 508),
+  // кадры, сгенерированные по оригиналу (design/mascot/gen_frames.py): тот же рисунок,
+  // изменена одна деталь; выровнены и нарезаны design/mascot/from_gen.py
+  eyeClosedL: layer("eyeclosed-l", 405, 301, 605, 509),
+  eyeClosedR: layer("eyeclosed-r", 618, 301, 818, 509),
+  eyeHalfL: layer("eyehalf-l", 405, 301, 605, 509),
+  eyeHalfR: layer("eyehalf-r", 618, 301, 818, 509),
+  mouthOpen: layer("mouthopen", 539, 427, 691, 563),
+  mouthO: layer("moutho", 539, 427, 691, 563),
   mouthFur: layer("mouthfur", 556, 452, 674, 522),
 } as const;
 

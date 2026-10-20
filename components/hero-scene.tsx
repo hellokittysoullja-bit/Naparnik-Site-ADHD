@@ -1,3 +1,4 @@
+import { TailChain } from "@/components/mascot-tail";
 import {
   EYE_L,
   EYE_R,
@@ -429,15 +430,11 @@ export function MascotStatic({
       style={{ overflow: "visible" }}
     >
       <ellipse cx={690} cy={776} rx={330} ry={20} fill="oklch(0.08 0.01 270)" opacity={0.35} />
-      <g className="cat-tail">
-        <Img l={L.tailBase} />
-        <g className="cat-curl">
-          <Img l={L.tailCurl} />
-          <g className="cat-flame">
-            <Img l={L.flame} />
-          </g>
+      <TailChain uid="ms">
+        <g className="cat-flame">
+          <Img l={L.flame} />
         </g>
-      </g>
+      </TailChain>
       <g className="cat-breathe">
         <Img l={L.body} />
       </g>
