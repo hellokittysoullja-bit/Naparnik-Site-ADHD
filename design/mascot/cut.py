@@ -26,7 +26,14 @@ for sy in range(0,H,12):
                 arr=np.asarray(nw).copy(); arr[arr==60]=200; nw=Image.fromarray(arr,'L').copy()
 bg=np.asarray(nw)==128
 near=np.asarray(Image.fromarray((bg*255).astype(np.uint8)).filter(ImageFilter.MaxFilter(9)))>0
-soft=np.clip((248-mn)/38,0,1)
+# Край чернильного контура — сглаженный переход «чернила → белая бумага». Светло-серые
+# пиксели кромки раньше считались непрозрачными и давали белую кайму на тёмном фоне.
+# Теперь у кромки каждый пиксель — смесь локального тёмного цвета и белого (matting):
+# alpha = (255 - яркость) / (255 - тёмный цвет рядом), белая часть уходит в прозрачность.
+mn_img=Image.fromarray(mn.astype(np.uint8),'L')
+localdark=np.asarray(mn_img.filter(ImageFilter.MinFilter(7))).astype(np.float32)
+localdark=np.clip(localdark,20,235)
+soft=np.clip((255-mn)/(255-localdark),0,1)
 alpha=np.where(bg,0,np.where(near,soft,1.0)).astype(np.float32)
 a3=alpha[...,None]
 rgb=np.clip(np.where(a3>0.02,(im-(1-a3)*255)/np.maximum(a3,0.02),0),0,255)
