@@ -183,7 +183,9 @@ const WAVE = {
 /** Поза поднятой лапы для reduced motion — смысл «машет» без движения */
 const WAVE_STILL = { arm: 116, paw: -122 };
 
-/* ── Рты поверх рисунка: латка меха закрывает родное «ω» ─────────── */
+/* ── Рты: латка меха рисунка закрывает родное «ω»; улыбка и «ровный»
+   рот — это само родное «ω», растянутое; «о» и открытый рот — вектор
+   (на рисунке их нет) ────────────────────────────────────────────── */
 function Mouth({ shape }: { shape: MouthShape }) {
   if (shape === "w") return null; // родной рот рисунка
   const line = {
@@ -195,11 +197,17 @@ function Mouth({ shape }: { shape: MouthShape }) {
   };
   return (
     <g>
-      <ellipse cx={MOUTH.x} cy={MOUTH.y + 3} rx={42} ry={19} fill={FUR} />
+      <Img l={L.mouthFur} />
       {shape === "smile" && (
-        <path d="M614 468 L614 485 M580 481 Q597 508 614 485 Q631 508 648 481" {...line} />
+        <g transform="translate(615 470) scale(1.32 1.55) translate(-615 -470)">
+          <Img l={L.mouth} />
+        </g>
       )}
-      {shape === "flat" && <path d="M614 468 L614 487 M600 493 L628 493" {...line} />}
+      {shape === "flat" && (
+        <g transform="translate(615 470) scale(0.8 0.55) translate(-615 -470)">
+          <Img l={L.mouth} />
+        </g>
+      )}
       {shape === "o" && (
         <>
           <path d="M614 468 L614 481" {...line} />
@@ -223,38 +231,17 @@ function Mouth({ shape }: { shape: MouthShape }) {
   );
 }
 
-/** Верхнее веко: меховая шторка с тушевой кромкой (деформация, не fade) */
-function Lid({ x, y }: { x: number; y: number }) {
-  const l = x - EYE_RX - 6;
-  const r = x + EYE_RX + 6;
-  const top = y - EYE_RY - 6;
-  const bot = y + EYE_RY + 4;
-  return (
-    <>
-      <path d={`M${l} ${top} L${r} ${top} L${r} ${bot - 14} Q${x} ${bot + 10} ${l} ${bot - 14}Z`} fill={FUR} />
-      <path
-        d={`M${l + 6} ${bot - 14} Q${x} ${bot + 10} ${r - 6} ${bot - 14}`}
-        fill="none"
-        stroke={OUTLINE}
-        strokeWidth={7}
-        strokeLinecap="round"
-      />
-    </>
-  );
+/** Верхнее веко — мех самого рисунка, которым залатан глаз */
+function Lid({ side }: { side: "l" | "r" }) {
+  return <Img l={side === "l" ? L.eyeFurL : L.eyeFurR} />;
 }
 
-/** Закрытый глаз (сон, ожидание): глаз целиком под мехом + дуга */
-function ClosedEye({ x, y }: { x: number; y: number }) {
+/** Закрытый глаз (сон, ожидание): мех рисунка + родная нижняя дуга обводки */
+function ClosedEye({ side }: { side: "l" | "r" }) {
   return (
     <>
-      <ellipse cx={x} cy={y} rx={EYE_RX + 16} ry={EYE_RY + 16} fill={FUR} />
-      <path
-        d={`M${x - 46} ${y + 4} Q${x} ${y + 40} ${x + 46} ${y + 4}`}
-        fill="none"
-        stroke={INK}
-        strokeWidth={8}
-        strokeLinecap="round"
-      />
+      <Img l={side === "l" ? L.eyeFurL : L.eyeFurR} />
+      <Img l={side === "l" ? L.eyeArcL : L.eyeArcR} />
     </>
   );
 }
@@ -705,7 +692,7 @@ export function MascotSvg({
             animate={{ scaleY: lid }}
             transition={lidTransition}
           >
-            <Lid x={x} y={y} />
+            <Lid side={side} />
           </motion.g>
         </g>
       </g>
@@ -779,8 +766,8 @@ export function MascotSvg({
             <Img l={L.head} />
             {eyesClosed ? (
               <>
-                <ClosedEye x={EYE_L.x} y={EYE_L.y} />
-                <ClosedEye x={EYE_R.x} y={EYE_R.y} />
+                <ClosedEye side="l" />
+                <ClosedEye side="r" />
               </>
             ) : (
               <>

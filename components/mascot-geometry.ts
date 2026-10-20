@@ -36,6 +36,13 @@ export const L = {
   head: layer("head", 250, 180, 920, 610),
   pupilL: layer("pupil-l", 465, 345, 545, 465),
   pupilR: layer("pupil-r", 678, 345, 758, 465),
+  // мимика из пикселей рисунка: мех века, родная дуга обводки, родной рот
+  eyeFurL: layer("eyefur-l", 425, 325, 585, 485),
+  eyeFurR: layer("eyefur-r", 638, 325, 798, 485),
+  eyeArcL: layer("eyearc-l", 425, 325, 585, 485),
+  eyeArcR: layer("eyearc-r", 638, 325, 798, 485),
+  mouth: layer("mouth", 572, 466, 658, 508),
+  mouthFur: layer("mouthfur", 556, 452, 674, 522),
 } as const;
 
 /** Квадратный кадр вокруг кота: потребители рассчитаны на квадрат */

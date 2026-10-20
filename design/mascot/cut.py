@@ -122,3 +122,26 @@ save('leg', rgb, alpha*ARM*(1-PAW), (410,600,575,700))
 save('paw', rgb, alpha*PAW, (430,655,565,775))
 fur=rgb[290:310,480:530].reshape(-1,3).mean(0); print('FUR', fur.round())
 
+
+# ── мимика из пикселей самого рисунка ──
+# веко = мех рисунка, которым залатан глаз; закрытый глаз = этот мех +
+# родная нижняя дуга тушевой обводки глаза; улыбка = родной рот «ω»
+lum=im.mean(2)
+for k,(cx,cy,rx,ry) in EYES.items():
+    big=ell(cx,cy,rx+8,ry+8)
+    furfill=inpaint(rgb, big, 40, valid=(alpha>0.6)&~big)
+    m=Image.fromarray((ell(cx,cy,rx+10,ry+10)*255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(3))
+    save('eyefur-'+k, furfill, np.asarray(m).astype(np.float32)/255, (cx-80,cy-80,cx+80,cy+80))
+    ring=ell(cx,cy,rx+12,ry+12)&~ell(cx,cy,rx-14,ry-14)&(yy>cy+18)&(lum<90)
+    rm=Image.fromarray((ring*255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.8))
+    save('eyearc-'+k, rgb, np.asarray(rm).astype(np.float32)/255, (cx-80,cy-80,cx+80,cy+80))
+MB=(572,466,658,508)
+mbox=np.zeros((H,W),bool); mbox[MB[1]:MB[3],MB[0]:MB[2]]=True
+mline=mbox&(lum<95)
+mm=Image.fromarray((mline*255).astype(np.uint8)).filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.GaussianBlur(0.8))
+save('mouth', rgb, np.asarray(mm).astype(np.float32)/255, MB)
+hole=np.asarray(Image.fromarray((mline*255).astype(np.uint8)).filter(ImageFilter.MaxFilter(9)))>0
+mfur=inpaint(rgb, hole, 40, valid=(alpha>0.6)&~hole)
+pm=np.zeros((H,W),np.float32); pm[MB[1]-6:MB[3]+6,MB[0]-8:MB[2]+8]=1
+pm=np.asarray(Image.fromarray((pm*255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(4))).astype(np.float32)/255
+save('mouthfur', mfur, pm, (MB[0]-16,MB[1]-14,MB[2]+16,MB[3]+14))

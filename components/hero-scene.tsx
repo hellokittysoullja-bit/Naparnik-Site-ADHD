@@ -413,14 +413,7 @@ export function MascotStatic({
         </defs>
         <g clipPath={`url(#ms-eye-${side})`}>
           <g className="cat-lid-auto">
-            <path d={`M${l} ${top} L${r} ${top} L${r} ${bot - 14} Q${x} ${bot + 10} ${l} ${bot - 14}Z`} fill={FUR} />
-            <path
-              d={`M${l + 6} ${bot - 14} Q${x} ${bot + 10} ${r - 6} ${bot - 14}`}
-              fill="none"
-              stroke={OUTLINE}
-              strokeWidth={7}
-              strokeLinecap="round"
-            />
+            <Img l={side === "l" ? L.eyeFurL : L.eyeFurR} />
           </g>
         </g>
       </g>
