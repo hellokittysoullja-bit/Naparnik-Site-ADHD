@@ -228,7 +228,7 @@ export function FirstRun() {
             className="relative h-3 flex-1 rounded-full bg-foreground/12"
           >
             <motion.div
-              className="absolute inset-y-0 left-0 rounded-full bg-primary shadow-[0_0_10px_1px_color-mix(in_oklab,var(--primary)_55%,transparent),0_0_22px_2px_color-mix(in_oklab,var(--primary)_22%,transparent)]"
+              className="absolute inset-y-0 left-0 rounded-full bg-primary shadow-[0_0_8px_0_color-mix(in_oklab,var(--primary)_28%,transparent),0_0_18px_1px_color-mix(in_oklab,var(--primary)_10%,transparent)]"
               initial={false}
               animate={{ width: `${(step / LAST_STEP) * 100}%` }}
               transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 170, damping: 24 }}
