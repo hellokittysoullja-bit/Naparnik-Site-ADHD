@@ -254,9 +254,8 @@ export function Hero() {
   return (
     <section
       id="hero"
-      // calc(100svh - 3.5rem): sticky-шапка h-14 съедает верх вьюпорта —
-      // с чистым 100svh низ секции (и скролл-хинт) выталкивались за экран
-      className="grain grain-hero relative flex min-h-[calc(100svh-3.5rem)] flex-col items-center justify-center overflow-hidden px-4 pb-20 pt-6"
+      // Шапки нет: hero занимает весь вьюпорт, первый экран начинается с сцены
+      className="grain grain-hero relative flex min-h-svh flex-col items-center justify-center overflow-hidden px-4 pb-20 pt-6"
     >
       {/* Атмосфера: ночная сцена с луной и звёздами — иммерсивный фон.
           ВАЖНО: высота сцены зафиксирована 100svh, а не inset-0. На мобильном
@@ -266,7 +265,7 @@ export function Hero() {
           высотой композиция сцены совпадает с задуманной при любом контенте. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-[calc(100svh-3.5rem)]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-svh"
       >
         {/* Э6 · Параллакс: при скролле небо отстаёт от контента (сцена
             +10svh, луна +16svh к концу первого экрана) — мир глубже экрана.
@@ -316,7 +315,7 @@ export function Hero() {
           где hero = 100svh, слой схлопывается в ноль и не рендерит ничего. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 top-[calc(100svh-3.5rem)] overflow-hidden"
+        className="pointer-events-none absolute inset-x-0 bottom-0 top-[100svh] overflow-hidden"
       >
         <div
           className="absolute inset-0"
@@ -410,9 +409,6 @@ export function Hero() {
           {/* Главный CTA: на мобильном — последний в кадре (order-5), на
             десктопе — в текстовой колонке сразу под оффером */}
           <div
-            // id для шапки: HeaderCta наблюдает за этим блоком и показывает
-            // свой «Начать» ровно тогда, когда hero-CTA не виден — инвариант
-            // «в кадре всегда есть ровно одно primary-действие»
             id="hero-cta"
             className="hero-rise order-5 mt-3 flex w-full flex-col items-center gap-2.5 lg:order-none lg:mt-1 lg:items-start"
             style={{ "--rise-delay": "0.78s" } as CSSProperties}

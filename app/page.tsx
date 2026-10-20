@@ -1,4 +1,3 @@
-import { SiteHeader } from "@/components/site-header";
 import { SectionNav } from "@/components/landing/section-nav";
 import { Hero } from "@/components/landing/hero";
 import { LandingBackdrop } from "@/components/landing/landing-backdrop";
@@ -20,7 +19,6 @@ export default function LandingPage() {
       <noscript>
         <style>{`[style*="opacity:0"], [style*="opacity: 0"] { opacity: 1 !important; transform: none !important; }`}</style>
       </noscript>
-      <SiteHeader />
       <SectionNav />
       {/* relative — якорь для общего ночного фона под всеми секциями */}
       <main className="relative flex-1">
