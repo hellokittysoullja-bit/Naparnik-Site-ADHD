@@ -143,7 +143,7 @@ function TypedLine({ text, onDone }: { text: string; onDone?: () => void }) {
 
   return (
     <p
-      className="font-hand text-xl leading-snug text-secondary-foreground md:text-2xl"
+      className="font-hand text-[22px] font-medium leading-snug text-balance text-secondary-foreground md:text-2xl"
       onClick={skip}
     >
       <span className="sr-only">{text}</span>
@@ -366,14 +366,16 @@ export function Hero() {
           {/* Промис голосом персонажа: первая фраза — боль, вторая —
             обещание от первого лица. Каракуля — под словом обещания */}
           <h1
-            className="hero-rise order-2 mt-2 text-balance text-[2.35rem] font-bold leading-[1.08] min-[400px]:text-[2.6rem] tracking-tight md:text-5xl lg:order-none lg:mt-0"
+            className="hero-rise order-2 mt-2 text-[clamp(2rem,10vw,3rem)] font-bold leading-[1.08] tracking-tight md:text-5xl lg:order-none lg:mt-0"
             style={{ "--rise-delay": "0.32s" } as CSSProperties}
           >
             {/* Тёплый «прогрев» слов остывает до резкого текста ровно к
               моменту, когда начинает рисоваться каракуля (0.95s) — взгляд
               сперва ловит проявление света, потом штрих */}
             <span className="chroma-appear">
-              Сдвинем твоё дело за{" "}
+              Сдвинем твоё
+              <br />
+              дело за{" "}
               <span
                 className="scribble-underline scribble-draw text-primary"
                 style={{ "--scribble-delay": "0.95s" } as CSSProperties}
@@ -418,7 +420,7 @@ export function Hero() {
             колонке под оффером, как раньше */}
           <div
             id="hero-cta"
-            className={`order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:px-3.5 max-lg:pb-[max(1.125rem,env(safe-area-inset-bottom))] lg:order-none lg:mt-1 lg:items-start ${
+            className={`order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:px-4 max-lg:pb-[max(1.125rem,env(safe-area-inset-bottom))] lg:order-none lg:mt-1 lg:items-start ${
               barHidden
                 ? "max-lg:pointer-events-none max-lg:translate-y-full max-lg:opacity-0"
                 : ""
@@ -497,7 +499,7 @@ export function Hero() {
 
           {/* Живой чат-вход: он здоровается, ты отвечаешь — премиальная реплика */}
           <div
-            className="hero-rise order-4 mt-1 flex w-full flex-col gap-2.5 lg:order-none"
+            className="hero-rise order-4 mt-3 flex w-full flex-col gap-2.5 lg:order-none lg:mt-1"
             style={{ "--rise-delay": "0.62s" } as CSSProperties}
             aria-live="polite"
           >
@@ -529,7 +531,7 @@ export function Hero() {
                 <WordReveal
                   text={OPENING_LINE}
                   startDelay={0.85}
-                  className="font-hand text-xl leading-snug text-secondary-foreground md:text-2xl"
+                  className="font-hand text-[22px] font-medium leading-snug text-balance text-secondary-foreground md:text-2xl"
                 />
               </div>
             </div>
@@ -644,7 +646,7 @@ export function Hero() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <p className="-rotate-2 text-left font-hand text-base leading-tight">
+                <p className="-rotate-2 text-left font-hand text-base font-medium leading-tight">
                   даже если ты
                   <br />
                   пропал на&nbsp;неделю
@@ -672,7 +674,7 @@ export function Hero() {
                         onMouseLeave={() => setExpression("calm")}
                         // Реплики легче команды: чипы — «что сказать», CTA —
                         // «что сделать». Один командный вес на экран
-                        className="group glass glass-interactive glass-shine press whitespace-nowrap rounded-2xl rounded-br-md px-3.5 py-2.5 text-sm font-medium text-foreground hover:text-primary"
+                        className="group glass glass-interactive glass-shine press whitespace-nowrap rounded-2xl rounded-br-md min-h-11 px-3.5 py-2.5 text-[15px] font-medium text-foreground hover:text-primary"
                       >
                         {REPLIES[key].visitor}
                       </motion.button>
