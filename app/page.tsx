@@ -19,8 +19,8 @@ export default function LandingPage() {
         <style>{`[style*="opacity:0"], [style*="opacity: 0"] { opacity: 1 !important; transform: none !important; }`}</style>
       </noscript>
       {/* Стиль живёт только пока смонтирована эта страница: /app скроллится как раньше */}
-      <style>{`html,body{height:100%;overflow:hidden;overscroll-behavior:none}`}</style>
-      <main className="relative h-dvh overflow-hidden">
+      <style>{`@media (min-height:521px){html,body{height:100%;overflow:hidden;overscroll-behavior:none}}`}</style>
+      <main className="relative min-h-dvh">
         <LandingBackdrop />
         <Hero />
       </main>

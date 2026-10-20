@@ -312,7 +312,7 @@
 }
 .chroma-appear {
   animation: chroma-flash 0.85s ease-out both;
-  animation-delay: 0.34s;
+  animation-delay: 0.12s;
 }
 @media (prefers-reduced-motion: reduce) {
   .chroma-appear {
@@ -1256,7 +1256,9 @@ body[data-companion-speaking] .app-hearth {
   initial-value: oklch(0.66 0.19 131);
 }
 .btn-chunky {
+  /* «Губа» выводится из primary: темнее на 0.2 по светлоте, хрома почти та же */
   --lip: oklch(0.66 0.19 131);
+  --lip: oklch(from var(--primary) calc(l - 0.2) calc(c * 0.92) h);
   padding-bottom: 4px;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;

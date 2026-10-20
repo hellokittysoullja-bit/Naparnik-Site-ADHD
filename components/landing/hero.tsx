@@ -143,7 +143,7 @@ function TypedLine({ text, onDone }: { text: string; onDone?: () => void }) {
 
   return (
     <p
-      className="font-hand text-[22px] font-medium leading-snug text-balance text-secondary-foreground md:text-2xl"
+      className="font-hand text-[clamp(18px,3.1dvh,22px)] font-medium leading-snug text-balance text-secondary-foreground md:text-2xl"
       onClick={skip}
     >
       <span className="sr-only">{text}</span>
@@ -181,26 +181,6 @@ export function Hero() {
   // обработчике: disabled на Link-рендере base-ui ничего не даёт
   // (:disabled — псевдокласс нативных форм, у <a> его не бывает).
   const [navigating, setNavigating] = useState(false);
-  // Нижняя панель CTA прячется, пока в кадре другая CTA страницы
-  const [barHidden, setBarHidden] = useState(false);
-  useEffect(() => {
-    const targets = document.querySelectorAll("[data-cta]");
-    if (!targets.length) return;
-    const visible = new Set<Element>();
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) visible.add(e.target);
-          else visible.delete(e.target);
-        }
-        setBarHidden(visible.size > 0);
-      },
-      { threshold: 0.6 },
-    );
-    targets.forEach((t) => io.observe(t));
-    return () => io.disconnect();
-  }, []);
-
   const reduceMotion = useReducedMotion();
 
   // А6 · Глубина за курсором (десктоп): слои сцены едва смещаются за
@@ -273,7 +253,7 @@ export function Hero() {
     <section
       id="hero"
       // Шапки нет: hero занимает весь вьюпорт, первый экран начинается с сцены
-      className="grain grain-hero relative flex h-dvh min-h-0 flex-col items-center justify-center overflow-hidden px-4 pb-28 pt-3 lg:pb-20 lg:pt-6"
+      className="grain grain-hero relative flex h-dvh min-h-0 flex-col items-center justify-center overflow-hidden px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] [@media(max-height:520px)]:h-auto [@media(max-height:520px)]:min-h-dvh lg:pb-20 lg:pt-6"
     >
       {/* Атмосфера: ночная сцена с луной и звёздами — иммерсивный фон.
           ВАЖНО: высота сцены зафиксирована 100svh, а не inset-0. На мобильном
@@ -366,8 +346,8 @@ export function Hero() {
           {/* Промис голосом персонажа: первая фраза — боль, вторая —
             обещание от первого лица. Каракуля — под словом обещания */}
           <h1
-            className="hero-rise order-2 mt-2 text-[clamp(2rem,10vw,3rem)] font-bold leading-[1.08] tracking-tight md:text-5xl lg:order-none lg:mt-0"
-            style={{ "--rise-delay": "0.32s" } as CSSProperties}
+            className="hero-rise order-2 mt-2 text-[clamp(1.75rem,min(10vw,5.4dvh),3rem)] font-bold leading-[1.08] tracking-tight md:text-5xl lg:order-none lg:mt-0"
+            style={{ "--rise-delay": "0.1s" } as CSSProperties}
           >
             {/* Тёплый «прогрев» слов остывает до резкого текста ровно к
               моменту, когда начинает рисоваться каракуля (0.95s) — взгляд
@@ -378,7 +358,7 @@ export function Hero() {
               дело за{" "}
               <span
                 className="scribble-underline scribble-draw text-primary"
-                style={{ "--scribble-delay": "0.95s" } as CSSProperties}
+                style={{ "--scribble-delay": "0.55s" } as CSSProperties}
               >
                 2&nbsp;минуты
                 <svg
@@ -415,16 +395,11 @@ export function Hero() {
             «губа» 4px снизу, вдавливается при нажатии. Панель в потоке не
             участвует, поэтому hero-rise тут нельзя: transform на предке
             ломает position:fixed, а кнопка должна быть видна с первого кадра.
-            Панель прячется, пока в кадре другая CTA страницы ([data-cta]):
-            ровно одно primary-действие на вьюпорт. Десктоп: в текстовой
+            Десктоп: в текстовой
             колонке под оффером, как раньше */}
           <div
             id="hero-cta"
-            className={`order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:px-4 max-lg:pb-[max(1.125rem,env(safe-area-inset-bottom))] lg:order-none lg:mt-1 lg:items-start ${
-              barHidden
-                ? "max-lg:pointer-events-none max-lg:translate-y-full max-lg:opacity-0"
-                : ""
-            }`}
+            className="order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:px-4 max-lg:pb-[max(1.125rem,env(safe-area-inset-bottom))] lg:order-none lg:mt-1 lg:items-start"
           >
             <motion.div
               animate={ctaBoost ? { scale: [1, 1.02, 1] } : {}}
@@ -491,7 +466,7 @@ export function Hero() {
                 expression={expression}
                 size={196}
                 label=""
-                className="size-[190px] [@media(max-height:780px)]:size-[172px] lg:size-[196px] lg:origin-bottom lg:scale-[1.15]"
+                className="size-[clamp(104px,24dvh,190px)] lg:size-[196px] lg:origin-bottom lg:scale-[1.15]"
               />
             </button>
             <GroundPool className="-mt-12 -mb-12" />
@@ -500,7 +475,7 @@ export function Hero() {
           {/* Живой чат-вход: он здоровается, ты отвечаешь — премиальная реплика */}
           <div
             className="hero-rise order-4 mt-3 flex w-full flex-col gap-2.5 lg:order-none lg:mt-1"
-            style={{ "--rise-delay": "0.62s" } as CSSProperties}
+            style={{ "--rise-delay": "0.3s" } as CSSProperties}
             aria-live="polite"
           >
             {/* LayoutGroup — общий контекст FLIP-морфа: layoutId чипа и
@@ -530,8 +505,9 @@ export function Hero() {
                 </svg>
                 <WordReveal
                   text={OPENING_LINE}
-                  startDelay={0.85}
-                  className="font-hand text-[22px] font-medium leading-snug text-balance text-secondary-foreground md:text-2xl"
+                  startDelay={0.5}
+                  step={0.06}
+                  className="font-hand text-[clamp(18px,3.1dvh,22px)] font-medium leading-snug text-balance text-secondary-foreground md:text-2xl"
                 />
               </div>
             </div>
