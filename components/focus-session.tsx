@@ -942,9 +942,6 @@ export function FocusSession() {
             >
               Закончить раньше
             </Button>
-            <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              старт уже засчитан · полная сессия повышает шанс редкой находки
-            </p>
           </div>
         </motion.div>
       </>
