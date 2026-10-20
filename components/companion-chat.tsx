@@ -6,7 +6,7 @@ import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from 'ai'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Button } from '@/components/ui/button'
-import { MascotSvg, type MascotExpression } from '@/components/mascot-svg'
+import { MascotSvg, type MascotAction, type MascotExpression } from '@/components/mascot-svg'
 import {
   ArrowDown,
   ArrowRight,
@@ -65,9 +65,11 @@ type CompanionChatProps = {
 function CompanionAvatar({
   reacting = false,
   expression = 'calm',
+  action = 'idle',
 }: {
   reacting?: boolean
   expression?: MascotExpression
+  action?: MascotAction
 }) {
   // Кружок-подложка: тёмный кот на тёмном фоне читался пятнышком.
   // Тёплое кольцо — тот же очаг, что горит на лендинге и на «Доме»:
@@ -99,7 +101,7 @@ function CompanionAvatar({
         transition: 'box-shadow 260ms ease-out',
       }}
     >
-      <MascotSvg expression={reacting ? 'happy' : expression} size={30} />
+      <MascotSvg expression={reacting ? 'happy' : expression} action={action} size={30} />
     </motion.div>
   )
 }
@@ -1093,7 +1095,9 @@ export function CompanionChat({
                   означает «реплика только что пришла» (см. комментарий в
                   CompanionAvatar) — во время печати ничего ещё не пришло,
                   кот думает, а не радуется. */}
-              <CompanionAvatar expression="focused" />
+              {/* Кот «думает»: глаза вверх, мысли всплывают точками —
+                  диегетичное ожидание вместо безликого спиннера */}
+              <CompanionAvatar expression="calm" action="think" />
               {/* Тот же .glass + тень, что у реплик: пузырь-ожидание — это
                   форма реплики В ПРОЦЕССЕ, а не отдельный виджет рядом с ней.
                   Три тлеющих угля (.ember-dot, globals.css) — тот же огонь,

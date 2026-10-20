@@ -42,7 +42,14 @@ components/
   island.tsx           — карта Мира целиком
   reveal-island.tsx    — хореография «пик дофамина» на финале сессии
   island-sprites.tsx   — SVG-спрайты построек острова
-  mascot-svg.tsx       — сам кот-напарник (expression-based)
+  mascot-svg.tsx       — сам кот-напарник: риг (expression + action: wave/write/
+                         think/celebrate, тап, «скучает»), Motion для действий
+  mascot-art.tsx       — рисунок кота по частям (без хуков) — общий для
+                         интерактивного и серверного MascotStatic
+  mascot-geometry.ts   — пути, палитра и точки опоры рига; idle-слои
+                         (дыхание, хвост, огонёк) — CSS «Напарник: idle-риг»
+                         в globals.css. Опоры Motion — только originX/originY,
+                         строковый transformOrigin Motion перезаписывает
 
 lib/
   memory.ts       — localStorage-обёртка. write() шлёт CustomEvent
