@@ -25,22 +25,6 @@ for sy in range(0,H,12):
             else:
                 arr=np.asarray(nw).copy(); arr[arr==60]=200; nw=Image.fromarray(arr,'L').copy()
 bg=np.asarray(nw)==128
-# Белые «карманы» бумаги, зажатые между чернильными линиями у самого края силуэта (между
-# лапами, в зазубринах меха): к краю картинки они не привязаны, flood-fill их не берёт и
-# они оставались непрозрачными белыми крупинками. Если светлый кусочек лежит рядом с фоном —
-# это бумага, а не блик (блики в глазах далеко от края и остаются).
-try:
-    from scipy import ndimage as ndi
-    lightpx=(mn>195)&(~bg)
-    lab,nl=ndi.label(lightpx)
-    dist_bg=ndi.distance_transform_edt(~bg)
-    sizes=ndi.sum(lightpx,lab,range(1,nl+1))
-    mind=ndi.minimum(dist_bg,lab,range(1,nl+1))
-    kill=np.zeros(nl+1,bool)
-    kill[1:]=(sizes<2500)&(mind<22)
-    bg=bg|kill[lab]
-except ImportError:
-    pass
 near=np.asarray(Image.fromarray((bg*255).astype(np.uint8)).filter(ImageFilter.MaxFilter(9)))>0
 # Край чернильного контура — сглаженный переход «чернила → белая бумага». Светло-серые
 # пиксели кромки раньше считались непрозрачными и давали белую кайму на тёмном фоне.
@@ -53,6 +37,18 @@ soft=np.clip((255-mn)/(255-localdark),0,1)
 alpha=np.where(bg,0,np.where(near,soft,1.0)).astype(np.float32)
 a3=alpha[...,None]
 rgb=np.clip(np.where(a3>0.02,(im-(1-a3)*255)/np.maximum(a3,0.02),0),0,255)
+# Белые пиксели у края (остатки бумаги между чернильными линиями) не удаляются, а
+# перекрашиваются в цвет ближайшей серой шерсти — форма края остаётся прежней.
+try:
+    from scipy import ndimage as _ndi
+    _sat=rgb.max(2)-rgb.min(2); _lum=rgb.mean(2)
+    _edge=_ndi.distance_transform_edt(alpha>0.1)<=12
+    _white=(rgb.min(2)>165)&(_sat<45)&(alpha>0.05)&_edge
+    _donor=(alpha>0.9)&(_lum>55)&(_lum<165)&(_sat<60)&(~_ndi.binary_dilation(_white,iterations=2))
+    _idx=_ndi.distance_transform_edt(~_donor,return_distances=False,return_indices=True)
+    rgb=np.where(_white[...,None],rgb[_idx[0],_idx[1]],rgb).astype(np.float32)
+except ImportError:
+    pass
 
 def poly(pts, feather=0):
     m=Image.new('L',(W,H),0); ImageDraw.Draw(m).polygon(pts,fill=255)
