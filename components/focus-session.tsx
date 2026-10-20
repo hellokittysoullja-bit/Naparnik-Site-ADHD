@@ -564,6 +564,7 @@ export function FocusSession() {
   if (phase === 'setup') {
     return (
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 py-6">
+        <h1 className="sr-only">Фокус-сессия: выбери первый шаг</h1>
         {/* Сцена: существо в центре внимания, а не в углу формы */}
         <div className="flex flex-1 flex-col items-center justify-center gap-4">
           <MascotSvg expression="calm" label={companionName ?? 'Напарник'} size={150} />
@@ -768,6 +769,7 @@ export function FocusSession() {
     // Хореография: мир затихает, существо садится рядом, сессия проявляется
     return (
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 py-8">
+        <h1 className="sr-only">Напарник садится рядом</h1>
         <motion.div
           initial={{ scale: 1.06 }}
           animate={{ scale: 1 }}
@@ -814,6 +816,7 @@ export function FocusSession() {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6 }}
         >
+          <h1 className="sr-only">Идёт фокус-сессия</h1>
           {/* Существо — центр сцены: дышит, радуется четвертям, встречает из отвлечения */}
           {/* #10 · Кольцо вместо линейного бара под существом: время сессии
               читается на самом объекте, за которым и так следит взгляд, а не
@@ -952,9 +955,9 @@ export function FocusSession() {
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 px-4 py-8">
       <MascotSvg expression="excited" label="Напарник радуется" size={110} />
       <div className="flex flex-col gap-2 text-center">
-        <h2 className="text-2xl font-bold">
+        <h1 className="text-2xl font-bold">
           {firstEver ? 'Первое дело сдвинуто.' : endedEarly ? 'Ты начал.' : 'Сделано.'}
-        </h2>
+        </h1>
         <p className="font-sans text-[0.95rem] leading-relaxed text-muted-foreground">
           <EmphasisText
             text={

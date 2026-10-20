@@ -156,6 +156,23 @@ export function FirstRun() {
     go(step + 1)
   }
 
+  // Модель клавиатуры radiogroup (ARIA APG): стрелки двигают фокус И выбор,
+  // Tab входит в группу одной точкой (roving tabindex ниже, в Option)
+  function onRadioKeys(e: React.KeyboardEvent<HTMLDivElement>) {
+    const keys = ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft']
+    if (!keys.includes(e.key)) return
+    const radios = Array.from(
+      e.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="radio"]'),
+    )
+    if (radios.length === 0) return
+    const at = radios.indexOf(document.activeElement as HTMLButtonElement)
+    const dir = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : -1
+    const next = radios[(at + dir + radios.length) % radios.length]
+    e.preventDefault()
+    next.focus()
+    next.click()
+  }
+
   function begin() {
     const label = chosenStep || steps[0]
     setLeaving(true)
@@ -204,6 +221,7 @@ export function FirstRun() {
 
   return (
     <main className="relative mx-auto flex h-dvh w-full max-w-md flex-col overflow-hidden px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
+      <h1 className="sr-only">Знакомство с Напарником</h1>
       {/* Где я: назад + прогресс. На приветствии шкалы нет — вопросов ещё не было */}
       <div className="flex h-12 shrink-0 items-center gap-2">
         {step > 0 ? (
@@ -251,11 +269,17 @@ export function FirstRun() {
           {(step === 1 || step === 2 || step === 3) && (
             <>
               <CatAsks line={line} face={face} nudge={nudge} />
-              <div className="mt-5 flex flex-col gap-2.5 overflow-y-auto pb-2" role="radiogroup">
+              <div
+                className="mt-5 flex flex-col gap-2.5 overflow-y-auto pb-2"
+                role="radiogroup"
+                aria-label={step === 1 ? 'Что висит' : step === 2 ? 'Что мешает начать' : 'Первый шаг'}
+                onKeyDown={onRadioKeys}
+              >
                 {step === 1 &&
-                  SPHERES.map((s) => (
+                  SPHERES.map((s, i) => (
                     <Option
                       key={s.key}
+                      firstTab={i === 0 && !state.sphere}
                       icon={SPHERE_ICON[s.key]}
                       label={s.label}
                       selected={state.sphere === s.key}
@@ -268,9 +292,10 @@ export function FirstRun() {
                     />
                   ))}
                 {step === 2 &&
-                  BLOCKERS.map((b) => (
+                  BLOCKERS.map((b, i) => (
                     <Option
                       key={b.key}
+                      firstTab={i === 0 && !state.blocker}
                       icon={BLOCKER_ICON[b.key]}
                       label={b.label}
                       selected={state.blocker === b.key}
@@ -283,9 +308,10 @@ export function FirstRun() {
                   ))}
                 {step === 3 && (
                   <>
-                    {steps.map((s) => (
+                    {steps.map((s, i) => (
                       <Option
                         key={s}
+                        firstTab={i === 0 && customOpen === false && !state.firstStep}
                         icon={Sparkles}
                         label={s}
                         selected={!customOpen && state.firstStep === s}
@@ -409,17 +435,21 @@ function Option({
   label,
   selected,
   onSelect,
+  firstTab = false,
 }: {
   icon: LucideIcon
   label: string
   selected: boolean
   onSelect: () => void
+  /** Точка входа Tab, пока ничего не выбрано (roving tabindex) */
+  firstTab?: boolean
 }) {
   return (
     <button
       type="button"
       role="radio"
       aria-checked={selected}
+      tabIndex={selected || firstTab ? 0 : -1}
       onClick={onSelect}
       onTouchStart={() => {}}
       data-selected={selected ? '' : undefined}
@@ -436,7 +466,7 @@ function Option({
         aria-hidden="true"
         className={`flex size-6 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-150 ${
           selected ? 'scale-100 border-primary bg-primary' : 'scale-90 border-foreground/20'
-        }`}
+        } motion-reduce:transition-none motion-reduce:transform-none`}
       >
         {selected && <Check className="size-3.5 text-primary-foreground" strokeWidth={3.5} />}
       </span>
@@ -463,7 +493,7 @@ function Commit({ label, reason }: { label: string; reason: string | null }) {
         <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
           твои первые {FIRST_MINUTES} минуты
         </p>
-        <p className="mt-2 text-balance text-[26px] font-bold leading-tight tracking-tight">
+        <p className="mt-2 line-clamp-3 break-words text-balance text-[clamp(24px,4.4dvh,32px)] font-bold leading-[1.1] tracking-tight">
           {label}
         </p>
         {reason && (
@@ -471,7 +501,7 @@ function Commit({ label, reason }: { label: string; reason: string | null }) {
             <EmphasisText text={reason} />
           </p>
         )}
-        <ul className="mt-4 flex flex-col gap-2 text-left">
+        <ul className="mt-4 flex flex-col gap-2 text-left [@media(max-height:700px)]:hidden">
           {promises.map((p, i) => (
             <li key={i} className="flex items-center gap-2.5 text-[15px] text-muted-foreground">
               <Check className="size-4 shrink-0 text-primary" strokeWidth={3} aria-hidden="true" />

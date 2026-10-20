@@ -1350,3 +1350,11 @@ body[data-companion-speaking] .app-hearth {
     transition: none;
   }
 }
+
+/* Reduced motion: кнопки не двигаются и не масштабируются — только цвет и
+   прозрачность (WCAG 2.3.3; ловит verify_reduced_motion из XIAS). */
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="button"] {
+    transition-property: color, background-color, border-color, opacity;
+  }
+}
