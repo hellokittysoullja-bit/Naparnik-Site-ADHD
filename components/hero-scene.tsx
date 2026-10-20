@@ -447,6 +447,7 @@ export function MascotStatic({
       <ellipse cx={112} cy={187} rx={64} ry={6} fill="oklch(0.08 0.01 270)" opacity={0.35} />
       <g className="cat-tail">
         <CatTail
+            uid={uid}
           curl={(node, layer) => (
             <g key={layer} className="cat-curl">
               {node}

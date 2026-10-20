@@ -186,9 +186,11 @@ function Strands({ paths, opacity = 0.5 }: { paths: string[]; opacity?: number }
  * раза в одинаково анимированную группу, `curl`.
  */
 export function CatTail({
+  uid,
   curl = (n) => n,
   flame,
 }: {
+  uid: string;
   curl?: (node: ReactNode, layer: "outline" | "fill") => ReactNode;
   flame?: ReactNode;
 }) {
@@ -214,9 +216,15 @@ export function CatTail({
       ))}
       {seg(TAIL_BASE, 17.5, FUR)}
       {seg(TAIL_MID, 13.5, FUR)}
+      {/* та же акварельная фактура, что на теле — хвост не «пластиковый» */}
+      <g opacity={0.3}>
+        {seg(TAIL_BASE, 17.5, `url(#${uid}-fur)`)}
+        {seg(TAIL_MID, 13.5, `url(#${uid}-fur)`)}
+      </g>
       {curl(
         <>
           {seg(TAIL_CURL, 9.6, FUR)}
+          <g opacity={0.3}>{seg(TAIL_CURL, 9.6, `url(#${uid}-fur)`)}</g>
           {/* светлая прядь вдоль завитка — объём */}
           <path
             d="M173 117 C164 114 159 120 161 127"

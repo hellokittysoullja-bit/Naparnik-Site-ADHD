@@ -611,6 +611,7 @@ export function MascotSvg({
         {/* хвост за телом: качается от основания, завиток отстаёт */}
         <g className="cat-tail">
           <CatTail
+            uid={uid}
             curl={(node, layer) => (
               <g key={layer} className="cat-curl">
                 {node}
