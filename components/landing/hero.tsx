@@ -273,7 +273,7 @@ export function Hero() {
     <section
       id="hero"
       // Шапки нет: hero занимает весь вьюпорт, первый экран начинается с сцены
-      className="grain grain-hero relative flex min-h-svh flex-col items-center justify-center overflow-hidden px-4 pb-36 pt-6 lg:pb-20"
+      className="grain grain-hero relative flex min-h-svh flex-col items-center justify-center overflow-hidden px-4 pb-28 pt-3 lg:pb-20 lg:pt-6"
     >
       {/* Атмосфера: ночная сцена с луной и звёздами — иммерсивный фон.
           ВАЖНО: высота сцены зафиксирована 100svh, а не inset-0. На мобильном
@@ -358,7 +358,7 @@ export function Hero() {
         </svg>
       </div>
 
-      <div className="relative flex w-full max-w-md flex-col items-center gap-4 text-center lg:grid lg:max-w-5xl lg:grid-cols-[minmax(0,1fr)_minmax(0,27rem)] lg:items-center lg:gap-x-16 lg:text-left">
+      <div className="relative flex w-full max-w-md flex-col items-center gap-3 text-center lg:gap-4 lg:grid lg:max-w-5xl lg:grid-cols-[minmax(0,1fr)_minmax(0,27rem)] lg:items-center lg:gap-x-16 lg:text-left">
         {/* Десктоп по референсу: оффер слева, существо и живой чат справа.
             На мобильном обе колонки схлопываются в display:contents,
             порядок кадра задают order-классы (сцена → промис → чат → CTA) */}
@@ -434,17 +434,12 @@ export function Hero() {
             колонке под оффером, как раньше */}
           <div
             id="hero-cta"
-            className={`order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:border-t max-lg:border-white/10 max-lg:bg-background/95 max-lg:px-3.5 max-lg:pb-[max(1.125rem,env(safe-area-inset-bottom))] max-lg:pt-3 max-lg:backdrop-blur-md max-lg:transition-[transform,opacity] max-lg:duration-300 max-lg:ease-out lg:order-none lg:mt-1 lg:items-start ${
+            className={`order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:border-t max-lg:border-white/10 max-lg:bg-background/95 max-lg:px-3.5 max-lg:pb-[max(1.125rem,env(safe-area-inset-bottom))] max-lg:pt-[1.125rem] max-lg:backdrop-blur-md max-lg:transition-[transform,opacity] max-lg:duration-300 max-lg:ease-out lg:order-none lg:mt-1 lg:items-start ${
               barHidden
                 ? "max-lg:pointer-events-none max-lg:translate-y-full max-lg:opacity-0"
                 : ""
             }`}
           >
-            {/* Мобильный: подпись над кнопкой, чтобы кнопка стояла у нижнего
-                края (как «Далее» у Duolingo: 18px от края до губы) */}
-            <span className="text-[14px] font-medium text-foreground/70 max-lg:order-first">
-              бесплатно · без карты и регистрации
-            </span>
             <motion.div
               animate={ctaBoost ? { scale: [1, 1.02, 1] } : {}}
               transition={{ duration: 0.55, ease: "easeOut" }}
@@ -510,7 +505,7 @@ export function Hero() {
                 expression={expression}
                 size={196}
                 label=""
-                className="lg:origin-bottom lg:scale-[1.15]"
+                className="size-[164px] [@media(max-height:780px)]:size-[148px] lg:size-[196px] lg:origin-bottom lg:scale-[1.15]"
               />
             </button>
             <GroundPool className="-mt-12 -mb-12" />
