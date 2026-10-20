@@ -444,6 +444,7 @@ export function MascotStatic({
       style={{ overflow: "visible" }}
     >
       <CatDefs uid={uid} />
+      <ellipse cx={112} cy={187} rx={64} ry={6} fill="oklch(0.08 0.01 270)" opacity={0.35} />
       <g className="cat-tail">
         <CatTail
           curl={(node, layer) => (

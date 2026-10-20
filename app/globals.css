@@ -1529,7 +1529,7 @@ body[data-companion-speaking] .app-hearth {
 /* Заломленная кисточка левого уха — болтающаяся часть с инерцией */
 .cat-ear-tip {
   transform-box: view-box;
-  transform-origin: 47px 25px;
+  transform-origin: 54px 25px;
   animation: cat-ear-tip 3.7s ease-in-out infinite;
 }
 @keyframes cat-ear-tip {

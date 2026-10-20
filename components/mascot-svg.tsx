@@ -303,6 +303,7 @@ export function MascotSvg({
   const pupilsCtl = useAnimationControls();
   const earL = useAnimationControls();
   const earR = useAnimationControls();
+  const rootCtl = useAnimationControls();
 
   useEffect(() => {
     if (!alive || eyesClosed) return;
@@ -346,7 +347,9 @@ export function MascotSvg({
           }, 120);
         }
         blinkLoop();
-      }, rnd(2600, 6600));
+      // раз в несколько циклов дыхания, не на каждый вдох (AnimSchool):
+      // слишком частое моргание читается «роботно»
+      }, rnd(4000, 11000));
     };
     blinkLoop();
 
@@ -404,15 +407,34 @@ export function MascotSvg({
     };
     boredLoop();
 
+    // большой вздох раз в 4–5 циклов дыхания — редкое событие на фоне
+    // «ровного контраста» обычных вдохов
+    const sighLoop = () => {
+      later(() => {
+        if (action === "idle") {
+          void rootCtl.start({
+            scaleY: [1, 1.045, 1.045, 1],
+            scaleX: [1, 1.015, 1.015, 1],
+            transition: { duration: 2.2, times: [0, 0.35, 0.5, 1], ease: "easeInOut" },
+          });
+        }
+        sighLoop();
+      }, rnd(21000, 30000));
+    };
+    sighLoop();
+
     return () => {
       live = false;
       timers.forEach(clearTimeout);
     };
-  }, [alive, eyesClosed, action, pupilsCtl, earL, earR, px, py, tilt]);
+  }, [alive, eyesClosed, action, pupilsCtl, earL, earR, px, py, tilt, rootCtl]);
 
   /* ── Корневая группа: прыжки радости и отклик на тап ────────────── */
-  const rootCtl = useAnimationControls();
   const [squint, setSquint] = useState(false);
+  // повторные тапы не должны давать одно и то же (привыкание): каждый
+  // третий — кот машет в ответ
+  const taps = useRef(0);
+  const [tapWave, setTapWave] = useState(false);
 
   useEffect(() => {
     if (action !== "celebrate" || !alive) return;
@@ -443,10 +465,15 @@ export function MascotSvg({
     void earR.start({ rotate: [0, 12, -2, 0], transition: { duration: 0.42, delay: 0.04 } });
     setSquint(true);
     setTimeout(() => setSquint(false), 380);
+    taps.current += 1;
+    if (taps.current % 3 === 0 && action === "idle" && !tapWave) {
+      setTapWave(true);
+      setTimeout(() => setTapWave(false), WAVE.duration * 1000 + 100);
+    }
   };
 
   /* ── Лапа-«рука» (левая для зрителя) ────────────────────────────── */
-  const armWaving = action === "wave" || action === "celebrate";
+  const armWaving = action === "wave" || action === "celebrate" || tapWave;
   const writing = action === "write";
   const armAnim: TargetAndTransition = reduceMotion
     ? armWaving
@@ -459,7 +486,7 @@ export function MascotSvg({
             duration: WAVE.duration,
             times: WAVE.times,
             ease: [...WAVE.ease],
-            repeat: action === "celebrate" ? 0 : 1,
+            repeat: action === "wave" ? 1 : 0,
             repeatDelay: 1.6,
           },
         }
@@ -486,7 +513,7 @@ export function MascotSvg({
             duration: WAVE.duration,
             times: WAVE.times,
             ease: [...WAVE.ease],
-            repeat: action === "celebrate" ? 0 : 1,
+            repeat: action === "wave" ? 1 : 0,
             repeatDelay: 1.6,
           },
         }
@@ -578,6 +605,8 @@ export function MascotSvg({
       style={{ overflow: "visible" }}
     >
       <CatDefs uid={uid} />
+      {/* контактная тень: кот сидит на земле, а не висит в воздухе */}
+      <ellipse cx={112} cy={187} rx={64} ry={6} fill="oklch(0.08 0.01 270)" opacity={0.35} />
       <motion.g style={pivot(GROUND)} initial={{ y: 0, scaleX: 1, scaleY: 1 }} animate={rootCtl}>
         {/* хвост за телом: качается от основания, завиток отстаёт */}
         <g className="cat-tail">

@@ -12,11 +12,13 @@
 import type { ReactNode } from "react";
 import {
   ACCENT,
+  BODY_FRINGE,
   BODY_PATH,
   BODY_STRANDS,
   CHEEK_MARKS,
   CHEST_TUFT,
   CROWN_TUFT,
+  EAR_FUR,
   EAR_INNER,
   EAR_L,
   EAR_L_INNER,
@@ -35,6 +37,7 @@ import {
   FUR,
   FUR_DARK,
   FUR_LIGHT,
+  HEAD_FRINGE,
   HEAD_PATH,
   INK,
   LEG_L,
@@ -45,6 +48,7 @@ import {
   SHEEN,
   TAIL_BASE,
   TAIL_CURL,
+  TAIL_FUR,
   TAIL_MID,
   WARM,
   WHISKERS,
@@ -95,26 +99,52 @@ export function CatDefs({ uid }: { uid: string }) {
  * света и тени (cel-shading), без штриховки. Контур — тёмный тон меха,
  * а не чёрная тушь: форма читается мягко, но не теряется на тёмном фоне.
  */
-function Volume({ d, uid, clip }: { d: string; uid: string; clip: string }) {
+function Volume({
+  d,
+  uid,
+  clip,
+  fur = [],
+  box,
+}: {
+  d: string;
+  uid: string;
+  clip: string;
+  /** пряди кромки — рисуются общим проходом с формой */
+  fur?: string[];
+  /** габарит формы с прядями: на него натягиваются градиенты объёма */
+  box: readonly [number, number, number, number];
+}) {
+  const [x, y, w, h] = box;
+  const shapes = [d, ...fur];
   return (
     <>
       <defs>
         <clipPath id={clip}>
-          <path d={d} />
+          {shapes.map((p) => (
+            <path key={p} d={p} />
+          ))}
         </clipPath>
       </defs>
-      <path
-        d={d}
-        fill={FUR}
-        stroke={OUTLINE}
-        strokeWidth={STROKE}
-        strokeLinejoin="round"
-        paintOrder="stroke"
-      />
-      <path d={d} fill={`url(#${uid}-sheen)`} />
-      <path d={d} fill={`url(#${uid}-shade)`} />
-      <path d={d} fill={`url(#${uid}-warm)`} />
-      <path d={d} fill={`url(#${uid}-moon)`} />
+      {/* проход 1: обводки всех частей; проход 2: заливки — контур единый */}
+      {shapes.map((p) => (
+        <path
+          key={`o${p}`}
+          d={p}
+          fill={OUTLINE}
+          stroke={OUTLINE}
+          strokeWidth={STROKE}
+          strokeLinejoin="round"
+        />
+      ))}
+      {shapes.map((p) => (
+        <path key={`f${p}`} d={p} fill={FUR} />
+      ))}
+      <g clipPath={`url(#${clip})`}>
+        <rect x={x} y={y} width={w} height={h} fill={`url(#${uid}-sheen)`} />
+        <rect x={x} y={y} width={w} height={h} fill={`url(#${uid}-shade)`} />
+        <rect x={x} y={y} width={w} height={h} fill={`url(#${uid}-warm)`} />
+        <rect x={x} y={y} width={w} height={h} fill={`url(#${uid}-moon)`} />
+      </g>
     </>
   );
 }
@@ -161,9 +191,15 @@ export function CatTail({
   );
   return (
     <>
+      {TAIL_FUR.map((d) => (
+        <path key={`o${d}`} d={d} fill={OUTLINE} stroke={OUTLINE} strokeWidth={STROKE} strokeLinejoin="round" />
+      ))}
       {seg(TAIL_BASE, 23, OUTLINE)}
       {seg(TAIL_MID, 19, OUTLINE)}
       {curl(seg(TAIL_CURL, 15, OUTLINE), "outline")}
+      {TAIL_FUR.map((d) => (
+        <path key={`f${d}`} d={d} fill={FUR} />
+      ))}
       {seg(TAIL_BASE, 17.5, FUR)}
       {seg(TAIL_MID, 13.5, FUR)}
       {curl(
@@ -223,7 +259,7 @@ export function CatFlame({
 export function CatBody({ uid }: { uid: string }) {
   return (
     <>
-      <Volume d={BODY_PATH} uid={uid} clip={`${uid}-bodyclip`} />
+      <Volume d={BODY_PATH} uid={uid} clip={`${uid}-bodyclip`} fur={BODY_FRINGE} box={[50, 112, 100, 78]} />
       {/* тень от большой головы на груди — голова «висит» над телом */}
       <g clipPath={`url(#${uid}-bodyclip)`}>
         <ellipse cx={100} cy={122} rx={46} ry={10} fill={FUR_DARK} opacity={0.5} />
@@ -308,8 +344,20 @@ export function CatEar({
   const outer = side === "l" ? EAR_L : EAR_R;
   const inner = side === "l" ? EAR_L_INNER : EAR_R_INNER;
   const strands = side === "l" ? EAR_STRANDS.slice(0, 2) : EAR_STRANDS.slice(2);
+  const fur = side === "l" ? EAR_FUR.slice(0, 2) : EAR_FUR.slice(2);
   return (
     <>
+      {fur.map((d) => (
+        <path
+          key={d}
+          d={d}
+          fill={FUR}
+          stroke={OUTLINE}
+          strokeWidth={STROKE}
+          strokeLinejoin="round"
+          paintOrder="stroke"
+        />
+      ))}
       <path
         d={outer}
         fill={FUR}
@@ -356,7 +404,7 @@ export function CatHead({ uid }: { uid: string }) {
         strokeLinejoin="round"
         paintOrder="stroke"
       />
-      <Volume d={HEAD_PATH} uid={uid} clip={`${uid}-headclip`} />
+      <Volume d={HEAD_PATH} uid={uid} clip={`${uid}-headclip`} fur={HEAD_FRINGE} box={[28, 26, 144, 112]} />
       {/* хохолок поверх кромки головы — без шва */}
       <path d={CROWN_TUFT} fill={FUR} />
       <path d={CROWN_TUFT} fill={`url(#${uid}-sheen)`} opacity={0.9} />
