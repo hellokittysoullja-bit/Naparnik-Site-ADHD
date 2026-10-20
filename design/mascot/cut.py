@@ -25,6 +25,22 @@ for sy in range(0,H,12):
             else:
                 arr=np.asarray(nw).copy(); arr[arr==60]=200; nw=Image.fromarray(arr,'L').copy()
 bg=np.asarray(nw)==128
+# Белые «карманы» бумаги, зажатые между чернильными линиями у самого края силуэта (между
+# лапами, в зазубринах меха): к краю картинки они не привязаны, flood-fill их не берёт и
+# они оставались непрозрачными белыми крупинками. Если светлый кусочек лежит рядом с фоном —
+# это бумага, а не блик (блики в глазах далеко от края и остаются).
+try:
+    from scipy import ndimage as ndi
+    lightpx=(mn>195)&(~bg)
+    lab,nl=ndi.label(lightpx)
+    dist_bg=ndi.distance_transform_edt(~bg)
+    sizes=ndi.sum(lightpx,lab,range(1,nl+1))
+    mind=ndi.minimum(dist_bg,lab,range(1,nl+1))
+    kill=np.zeros(nl+1,bool)
+    kill[1:]=(sizes<2500)&(mind<22)
+    bg=bg|kill[lab]
+except ImportError:
+    pass
 near=np.asarray(Image.fromarray((bg*255).astype(np.uint8)).filter(ImageFilter.MaxFilter(9)))>0
 # Край чернильного контура — сглаженный переход «чернила → белая бумага». Светло-серые
 # пиксели кромки раньше считались непрозрачными и давали белую кайму на тёмном фоне.
