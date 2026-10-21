@@ -25,7 +25,11 @@ export function MascotLab() {
   const paneHost = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
   const [size, setSize] = useState(360);
-  useEffect(() => { setSize(Math.min(420, window.innerWidth - 24)); }, []);
+  // ?size=185 — рендер в масштабе героя лендинга (проверка «как на телефоне»)
+  useEffect(() => {
+    const q = Number(new URLSearchParams(window.location.search).get("size"));
+    setSize(q > 0 ? q : Math.min(420, window.innerWidth - 24));
+  }, []);
 
   useEffect(() => {
     if (!cat || !paneHost.current) return;

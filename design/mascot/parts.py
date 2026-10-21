@@ -178,19 +178,35 @@ if os.path.exists(EYESC):
     # без штрихов, зеркальное замощение, апсемплинг до рабочего масштаба) ровно столько, чтобы std
     # совпал с родным мехом вокруг глаз
     _m1 = np.asarray(Image.open(os.path.join(ROOT, 'design/mascot/export/naparnik-cat.png')).convert('RGBA')).astype(np.float32)
-    _hf1 = np.clip(_m1[..., :3] - boxblur(_m1[..., :3], 10), -14, 14)   # ±3,5σ зерна: ни точек туши, ни мазков
+    _hf1 = np.clip(_m1[..., :3] - boxblur(_m1[..., :3], 3), -8, 8)   # только зерно бумаги (< 3 px, ±8): ни штрихов, ни отметин
     _l1 = _m1[..., :3].mean(2)
+    _H1, _W1 = _l1.shape
     _ok1 = (_m1[..., 3] > 250) & (_l1 > 50) & (_l1 < 100) & (np.abs(_m1[..., 0] - _m1[..., 2]) < 18)
     _ok1 = ndi.binary_erosion(_ok1, iterations=3)
+    # донор — только мех ГОЛОВЫ (лоб, щёки): на груди и животе рисунок с завитками «ɔ», у глаз их нет
+    _hm = Image.new('L', (_W1, _H1), 0)
+    ImageDraw.Draw(_hm).polygon([(250, 90), (900, 90), (915, 470), (935, 560), (880, 600), (820, 588), (700, 598), (600, 602), (470, 596), (400, 590), (250, 590)], fill=255)
+    _ok1 &= ndi.binary_erosion(np.asarray(_hm) > 127, iterations=20)   # без кромки с пучками-«зигзагами» и ушей
+    # донор — кольцо меха ВОКРУГ глаз (80–160 px от центра): латка статистически = тому, что её окружает
+    _yy1, _xx1 = np.mgrid[0:_H1, 0:_W1]
+    _near = np.zeros((_H1, _W1), bool)
+    for _cx, _cy in EYES.values():
+        _rr = np.hypot((_xx1 - _cx) / RX, (_yy1 - _cy) / RY) * RX
+        _near |= (_rr > 80) & (_rr < 220)
+    _ok1 &= _near & (np.arange(_H1)[:, None] > 250)
     # мозаика случайных блоков 72×72 родного меха с окном Ханна (шаг 36, перекрытие): зерно без
     # повторов и зеркальной симметрии — замощение одного блока читалось узором при усилении контраста
-    _H1, _W1 = _l1.shape
     _rng = np.random.default_rng(7)
-    _B, _ST = 96, 48   # крупные блоки: в латке остаются и крупные мазки (8–20 px), не только мелкое зерно
+    _B, _ST = 48, 24   # блоки: в латке остаются и крупные мазки (8–20 px), не только мелкое зерно
     _win = np.hanning(_B + 2)[1:-1]; _win = np.outer(_win, _win)[..., None]
     _acc = np.zeros((_H1 + _B, _W1 + _B, 3), np.float64); _wsum = np.zeros((_H1 + _B, _W1 + _B, 1), np.float64)
-    _cand = np.argwhere(_ok1[:-_B, :-_B])
+    _cand = np.argwhere(_ok1[:-_B:4, :-_B:4]) * 4
     _cand = _cand[_ok1[_cand[:, 0] + _B - 1, _cand[:, 1] + _B - 1] & _ok1[_cand[:, 0], _cand[:, 1] + _B - 1] & _ok1[_cand[:, 0] + _B - 1, _cand[:, 1]]]
+    # только блоки чистого зерна: без тёмных отметин (минимум зерна по блоку > −6) — иначе один и тот же
+    # блок с «лапкой» у усов повторяется по всей латке
+    _l1hf = _hf1.mean(2)
+    _cand = np.array([c for c in _cand if _l1hf[c[0]:c[0] + _B, c[1]:c[1] + _B].min() > -6 and _l1hf[c[0]:c[0] + _B, c[1]:c[1] + _B].max() < 8])
+    print('eye grain donor blocks:', len(_cand))
     for _y in range(0, _H1, _ST):
         for _x in range(0, _W1, _ST):
             _sy, _sx = _cand[_rng.integers(len(_cand))]
@@ -207,6 +223,8 @@ if os.path.exists(EYESC):
     target = hf_ref[_ann].std(); s_ec = hi_ec[_inn].std(); s_cl = grain_clone[_inn].std()
     g = float(np.sqrt(max(target ** 2 - s_ec ** 2, 0.0)) / max(s_cl, 1e-6))
     print('eye grain: родной мех std %.2f, кадр модели %.2f, зерно 1x-мастера %.2f → вес %.2f' % (target, s_ec, s_cl, g))
+    # основа латки — мех кадра модели (нарисован именно под глазами, без отметин и завитков, но
+    # слишком гладкий); мелкое зерно бумаги (1–3 px) добирается мозаикой меха вокруг глаз
     patch = low_head + hi_ec + grain_clone * g
     # выравнивание по полосам частот: в латке энергия каждой полосы (1–3, 3–8, 8–20 px) делается
     # равной энергии той же полосы в родном мехе вокруг глаза — по построению, независимо от источников;
@@ -220,16 +238,20 @@ if os.path.exists(EYESC):
         gs = lambda x, sg: ndi.gaussian_filter(x, (sg * S, sg * S, 0))
         pyr_p = [gs(pc, sg) for sg in _scales]
         pyr_c = [gs(gc, sg) for sg in _scales]
+        ec_c = (low_head + hi_ec)[crop].astype(np.float32)
+        pyr_e = [gs(ec_c, sg) for sg in _scales]
         pyr_r = [gs(rc, sg) for sg in _scales]
-        # крупные мазки (8–40 px): радиальное зеркало родного меха вокруг глаза — точка на радиусе r
-        # берёт мех с радиуса 2·R0 − r (непрерывно на границе, масштаб мазков родной, без замощения);
-        # где за зеркалом не мех (ухо, усы) — мозаика
+        # мазки 8–20 px: радиальное зеркало родного меха вокруг глаза — точка на радиусе r берёт мех с
+        # радиуса 2·R0 − r (непрерывно на границе, масштаб мазков родной, без замощения); где за
+        # зеркалом не мех (ухо, усы) — мозаика. Полоса 20–40 px (пятна акварели) берётся из мозаики
+        # вполсилы: у зеркала на этом масштабе выходят концентрические «завихрения», у лба — тёмные
+        # отметины; ровнее — лучше, чем узор
         R0 = RX + 10
         yy_c, xx_c = np.mgrid[by0:by1, bx0:bx1].astype(np.float64)
         dx_, dy_ = (xx_c - sc(cx)) / (RX * S), (yy_c - sc(cy)) / (RY * S)
         rn = np.sqrt(dx_ ** 2 + dy_ ** 2) * RX + 1e-6
         rm = 2 * R0 - rn
-        ys_ = sc(cy) + dy_ / rn * rm * (RY * S) * (RY / RY)
+        ys_ = sc(cy) + dy_ / rn * rm * (RY * S)
         xs_ = sc(cx) + dx_ / rn * rm * (RX * S)
         ok_src = ndi.map_coordinates(FUR_OK.astype(np.float32), [ys_, xs_], order=0, mode='nearest') > 0.5
         mir = np.stack([ndi.map_coordinates(rgb[..., ch], [ys_, xs_], order=1, mode='nearest') for ch in range(3)], -1).astype(np.float32)
@@ -241,15 +263,25 @@ if os.path.exists(EYESC):
         fixed = np.broadcast_to(rc[_a].mean(0), pc.shape).astype(np.float32)
         gains = []
         for j in range(len(_scales) - 1):
-            bp = (pyr_p[j] - pyr_p[j + 1]) if j == 0 else (pyr_c[j] - pyr_c[j + 1]) if j == 1 else (pyr_s[j] - pyr_s[j + 1])
+            # 1–3 px: кадр модели + мозаика (зерно бумаги); крупнее — только кадр модели
+            # (мозаика на этих масштабах приносит чужие отметины: завитки, пучки, «гусиные лапки» усов)
+            bp = (pyr_p[j] - pyr_p[j + 1]) if j == 0 else (pyr_e[j] - pyr_e[j + 1])
+            # кадр модели рисует под глазами мелкие тёмные отметины-«лапки» (штрихи 2–3 px); зерно
+            # бумаги симметрично, отметины — только тёмные: тёмные выбросы срезаем, светлые оставляем
+            bp = np.clip(bp, -3.0, 6.0)
             br = pyr_r[j] - pyr_r[j + 1]
             gn = float(br[_a].mean(1).std() / max(bp[_i].mean(1).std(), 1e-6))
-            gn = min(gn, (3.0, 3.0, 2.0, 1.5)[j])
+            gn = min(gn, (3.0, 1.5, 1.0, 1.0)[j])
             gains.append(gn)
             fixed = fixed + bp * gn
         fixed = fixed + (pc - pyr_p[0])  # всё мельче 1 px — как есть
         patch[crop] = pc * (1 - zone_f) + fixed * zone_f
-        del pyr_p, pyr_c, pyr_r, pyr_s, mir
+        if os.environ.get('DBG') and cx == EYES['L'][0]:
+            def _dump(name, arr):
+                a_ = arr.mean(2) if arr.ndim == 3 else arr
+                Image.fromarray(np.clip((a_ - a_.mean()) * 6 + 128, 0, 255).astype(np.uint8)).save('/tmp/claude-0/shots/dbg_%s.png' % name)
+            _dump('low_head', low_head[crop]); _dump('hi_ec', hi_ec[crop]); _dump('grain', gc); _dump('pc', pc); _dump('fixed', fixed); _dump('ec_rgb', ec_rgb[crop]); _dump('rgb', rgb[crop])
+        del pyr_p, pyr_c, pyr_r, pyr_s, pyr_e, mir
         print('eye patch bands (1-3, 3-8, 8-20, 20-40 px) gains:', ' '.join('%.2f' % v for v in gains))
     # тон: среднее латки = среднее кольца родного меха вокруг (без «светлого/тёмного диска»)
     for cx, cy in EYES.values():
