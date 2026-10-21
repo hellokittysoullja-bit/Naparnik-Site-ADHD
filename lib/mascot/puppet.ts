@@ -439,7 +439,7 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
       const x = xs[i], y = ys[i];
       const h = Math.max(th[i], 0) / 2;
       // кромка 1 px; у схода на нет (толщина < 1) лента стягивается в ноль — хвостов-волосков нет
-      const outer = Math.min(h + 0.5, th[i]), inner = Math.max(h - 0.5, 0);
+      const outer = Math.min(h + 0.35, th[i]), inner = Math.max(h - 0.35, 0);
       const yy = [y - outer, y - inner, y + inner, y + outer];
       for (let j = 0; j < 4; j++) {
         v[(i * 4 + j) * 2] = m.a * x + m.c * yy[j] + m.tx;

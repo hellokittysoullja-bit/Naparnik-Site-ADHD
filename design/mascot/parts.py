@@ -260,7 +260,12 @@ if os.path.exists(EYESC):
         _a = (ell(cx, cy, RX + 36, RY + 36) & ~ell(cx, cy, RX + 12, RY + 12) & FUR_OK)[crop]   # ближнее кольцо: с тенью глазницы
         _i = ell(cx, cy, RX - 2, RY - 2)[crop]
         zone_f = soft(ell(cx, cy, RX + 20, RY + 20), 5)[crop][..., None]   # вся латка до пера eye_blend
-        fixed = np.broadcast_to(rc[_a].mean(0), pc.shape).astype(np.float32)
+        # освещение: не плоское среднее (латка читалась светлым диском на фоне тени глазницы — у усов мех
+        # на 6/255 темнее, чем над глазом), а экстраполированный клоном окружающий мех (низкие частоты),
+        # подтянутый по среднему к ближнему кольцу
+        base = gs(low_head[crop].astype(np.float32), 20)
+        base = base + (rc[_a].mean(0) - base[_i].mean(0))
+        fixed = base
         gains = []
         for j in range(len(_scales) - 1):
             # 1–3 px: кадр модели + мозаика (зерно бумаги); крупнее — только кадр модели

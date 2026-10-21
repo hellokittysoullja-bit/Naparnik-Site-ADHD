@@ -178,6 +178,18 @@ for k in EYES:
             for i in range(N):
                 t = 2 * (i - e0) / max(e1 - e0, 1) - 1
                 d['up'][i] = round(d['up'][i] + 0.025 * (xs_[e1] - xs_[e0]) * max(0.0, 1 - t * t), 2)
+        # лента не выходит за контур: колонки дальше RX + 3 от центра — толщина 0 (без «хвостов»-шипов)
+        cxk = EYES[k][0]
+        for arr in (d['tu'], d['tl']):
+            for i in range(N):
+                if abs(xs_[i] - cxk) > RX + 3:
+                    arr[i] = 0.0
+        if key in ARC:
+            # концы дуг — мягкий сход (крайние колонки 0,6 и 0,85 толщины), не рубленый торец
+            for arr, ext in ((d['tu'], d['extu']), (d['tl'], d['extl'])):
+                e0, e1 = ext
+                for i, f_ in ((e0, 0.6), (e0 + 1, 0.85), (e1, 0.6), (e1 - 1, 0.85)):
+                    if 0 <= i < N: arr[i] = round(arr[i] * f_, 2)
         for arr, ext in ((d['tu'], d['extu']), (d['tl'], d['extl'])):
             for i in range(N):
                 if i < ext[0] or i > ext[1]:
