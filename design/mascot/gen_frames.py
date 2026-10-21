@@ -48,7 +48,7 @@ def call(method, path, payload=None, tries=8):
             if attempt == tries - 1:
                 raise
             print("retry", path, type(e).__name__, getattr(e, "code", ""), flush=True)
-            time.sleep(15 * (attempt + 1))
+            time.sleep(40 * (attempt + 1))
 
 
 def _call(method, path, payload=None):
