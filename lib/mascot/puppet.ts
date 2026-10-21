@@ -349,8 +349,11 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     const nnx = Math.cos(th) / am;
     const nny = Math.sin(th) / (bm * kEff);
     const nl = Math.hypot(nnx, nny) || 1e-6;
-    out.x = px + (d * nnx) / nl;
-    out.y = qy + (d * nny) / nl;
+    // при смыкании два штриха ложатся друг на друга: толщину каждого слегка ужимаем, чтобы
+    // закрытая линия была ~2 толщины штриха (как в нарисованных закрытых глазах), а не 4
+    const dw = d * (0.55 + 0.45 * kEff);
+    out.x = px + (dw * nnx) / nl;
+    out.y = qy + (dw * nny) / nl;
   };
   /** та же деформация для маски: внутренний край штриха, при закрытии — пусто */
   const squashMask = (k: "L" | "R", x: number, y: number, out: { x: number; y: number }) => {
