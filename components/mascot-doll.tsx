@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { preload } from "react-dom";
 import { useReducedMotion } from "motion/react";
 import { MascotSvg, type MascotAction, type MascotExpression } from "@/components/mascot-svg";
 import { DollAnimator, drawDollFx, drawDollShadow, setDollFxColor, type DollAction } from "@/lib/rig/doll";
@@ -47,6 +48,8 @@ export function MascotDoll(props: Props) {
 }
 
 function DollCanvas({ expression = "calm", action = "idle", size = 160, label, className, interactive = true }: Props) {
+  // постер первого кадра — в <head> как preload с высоким приоритетом (и при SSR): кот виден с первой отрисовки
+  preload("/mascot/poster/neutral.webp", { as: "image", fetchPriority: "high" });
   const reduce = useReducedMotion();
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -155,9 +158,11 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
       onPointerDown={interactive ? () => anim.current?.poke() : undefined}
     >
       {state === "loading" || !view || !cat ? (
-        // первый кадр до загрузки рига — тот же эталонный рисунок неподвижно, на своём месте
+        // первый кадр до загрузки рига — тот же эталонный рисунок неподвижно, на своём месте: лёгкая копия
+        // эталона (900 px, webp ≈ 86 КБ, предзагружена из layout) — PNG 1,3 МБ на 3G качался 13 с и
+        // проявлялся полосами сверху вниз (уши → голова → тело)
         // eslint-disable-next-line @next/next/no-img-element
-        <img src="/mascot/states/neutral.png" alt="" draggable={false}
+        <img src="/mascot/poster/neutral.webp" alt="" draggable={false} fetchPriority="high" loading="eager" decoding="async"
           style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
       ) : null}
       <canvas ref={canvas} style={{ width: "100%", height: "100%", display: state === "doll" ? "block" : "none" }} />

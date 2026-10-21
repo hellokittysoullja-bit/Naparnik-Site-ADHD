@@ -10,6 +10,7 @@
 
 Запуск: LAMA_ONNX=/путь/lama_fp32.onnx python3 design/mascot/doll_build.py   (модель Carve/LaMa-ONNX, Apache-2.0)
 Нужны numpy, scipy, opencv, Pillow, onnxruntime. CPU, бесплатно, один раз."""
+import io
 import json
 import os
 
@@ -414,7 +415,14 @@ def main():
         small = cv2.resize(pm, (tw_, th_), interpolation=cv2.INTER_AREA)
         a2 = small[..., 3:4]; rgb = np.where(a2 > 0, small[..., :3] / np.maximum(a2 / 255, 1e-3), 0)
         im = Image.fromarray(np.dstack([np.clip(rgb, 0, 255), np.clip(a2, 0, 255)]).astype(np.uint8), "RGBA")
-        im.save(os.path.join(OUT, name + ".webp"), lossless=True, quality=100, method=6)
+        # крупные слои (тело, хвост, глаза) — lossy q95: без потерь они весили 380 КБ и на 3G грузились
+        # 9 с, q95 — ~110 КБ при средней разнице < 1/255; мелкие (огонёк, рты, дуги) — без потерь, у
+        # огонька lossy портит градиент (4/255). exact — альфа без «протечки» цвета
+        _buf = io.BytesIO(); im.save(_buf, "WEBP", lossless=True, quality=100, method=6)
+        if len(_buf.getvalue()) < 20000:
+            im.save(os.path.join(OUT, name + ".webp"), lossless=True, quality=100, method=6)
+        else:
+            im.save(os.path.join(OUT, name + ".webp"), quality=95, method=6, exact=True)
         parts.append(dict(name=name, tex=name + ".webp", box=[x0, y0, x1, y1], verts=verts, idx=idx))
 
     add("tail", tail, tail_w, GRID["tail"])
