@@ -376,9 +376,9 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     const shine = sprite(`shine_${k}`, face, group);
     const ring = meshFor(`ring_${k}`, 12, 12, () => [face, 1, null]);
     ring.deform = (_i, x, y, out) => squash(k, x, y, out);
-    const closed = sprite(`closed_${k}`, face);
+    // «^ ^» — дуги, сгенерированные по рисунку: подмешиваются в конце счастливого прищура
+    const closed = rig.parts[`happy_${k}`] ? sprite(`happy_${k}`, face) : sprite(`closed_${k}`, face);
     closed.alpha = 0;
-    closed.visible = false; // кадры закрытых глаз больше не нужны: закрытие — сам контур
     eyes[k] = { group, mask, ring, pupil, shine, closed, c: e.c, rx: e.rx, ry: e.ry, orx: e.orx, ory: e.ory };
   }
   const maskPt = { x: 0, y: 0 };
@@ -678,6 +678,10 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
       lidState[k].happy = ov.closed;
       // зрачок никогда не пересекает край радужки: запас = радиус радужки − полуразмер зрачка − 4
       const pw = P(`pupil_${k}`).w / 2, ph = P(`pupil_${k}`).h / 2;
+      // счастливый прищур: контур схлопывается, в последней трети кроссфейд на нарисованные «^ ^»
+      const hap = smoothstep((ov.closed - 0.6) / 0.35);
+      e.closed.alpha = hap;
+      e.ring.mesh.alpha = 1 - hap;
       const px = clamp(gx * L.pupil, -(e.rx - pw - 4), e.rx - pw - 4);
       const py = clamp(gy * L.pupilY, -(e.ry - ph - 4), e.ry - ph - 4);
       e.pupil.x += px; e.pupil.y += py;
