@@ -8,7 +8,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from tone import punch
 ROOT=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC=os.path.join(ROOT,'design/mascot/reference.png')
-OUT=os.path.join(ROOT,'public/mascot/')
+FULL=bool(os.environ.get('MASCOT_FULL'))
+OUT=os.environ.get('MASCOT_OUT') or os.path.join(ROOT,'public/mascot/')
+if not OUT.endswith('/'): OUT+='/'
 im=np.asarray(Image.open(SRC).convert('RGB')).astype(np.float32)
 H,W=im.shape[:2]
 mn=im.min(2)
@@ -88,8 +90,9 @@ def save(name, rgbx, a, box):
     rgbx=punch(rgbx)  # тон для тёмного фона (design/mascot/tone.py)
     arr=np.dstack([rgbx[y0:y1,x0:x1],np.clip(a[y0:y1,x0:x1],0,1)*255]).astype(np.uint8)
     img=Image.fromarray(arr,'RGBA')
-    img=img.resize(((x1-x0)//2,(y1-y0)//2),Image.LANCZOS)  # 50%: хватает для 2x DPR до ~300px
-    img.save(OUT+name+'.webp','WEBP',quality=88,method=6)
+    if not FULL: img=img.resize(((x1-x0)//2,(y1-y0)//2),Image.LANCZOS)  # 50%: хватает для 2x DPR до ~300px
+    if FULL: img.save(OUT+name+'.png')  # полный размер — для Rive (design/mascot/rive)
+    else: img.save(OUT+name+'.webp','WEBP',quality=88,method=6)
     print(name, box, img.size)
 
 # ── разметка частей (координаты исходника 1264×848) ──
