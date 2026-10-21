@@ -58,6 +58,11 @@ fg=np.where(vis[...,None],fg,fg[idx2[0],idx2[1]])
 # 5. лёгкое сглаживание альфы только в полосе кромки (без размытия контуров внутри)
 a_s=np.asarray(Image.fromarray((alpha*255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.6*S)))/255
 alpha=np.where(near|paper,a_s,alpha)
+# 5б. отдельные карандашные точки у края, не связанные с котом (острова альфы < 60 px при 1x):
+# не часть силуэта — убираем, иначе они читаются как светлая кайма
+_lab,_n=ndi.label(alpha>0.02); _sz=np.bincount(_lab.ravel()); _keep=np.zeros(_n+1,bool); _keep[_sz>=60*S*S]=True; _keep[0]=False
+_island=(alpha>0.02)&~_keep[_lab]
+alpha=np.where(_island,0.0,alpha); print('isolated specks removed:',int(_island.sum()))
 rgba=np.dstack([fg*255,alpha*255]).round().astype(np.uint8)
 Image.fromarray(rgba,'RGBA').save(OUT+NAME+'.png')
 # ── контроль ──

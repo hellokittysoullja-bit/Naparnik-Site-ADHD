@@ -165,14 +165,36 @@ if os.path.exists(EYESC):
             off = rgb[ring_z].mean(0) - ec_rgb[ring_z].mean(0)
             zone_e = ell(cx, cy, RX + 20, RY + 20)
             ec_rgb = np.where(zone_e[..., None], np.clip(ec_rgb + off, 0, 255), ec_rgb)
-    f = soft(ndi.binary_erosion(eye_hole, iterations=3 * S), 4)[..., None]
-    head_rgb = head_rgb * (1 - f) + ec_rgb * f
+    # смешивание по частотам: низкие (тон/освещение) — из свёрточной латки, которая по построению
+    # непрерывна с окружающим мехом; высокие (мазки, зерно) — из кадра модели. Ни шва, ни диска.
+    RB = 10 * S
+    low_head = boxblur(head_rgb, RB)
+    hi_ec = ec_rgb - boxblur(ec_rgb, RB)
+    f = soft(ndi.binary_erosion(eye_hole, iterations=1 * S), 7)[..., None]  # широкое перо: без скачка текстуры
+    head_rgb = head_rgb * (1 - f) + np.clip(low_head + hi_ec, 0, 255) * f
 # рот: вместо свёрточной латки — Clone Stamp со сдвигом: мех подбородка на 44 px ниже (настоящие
 # мазки, без «мыла»), мягкий край
 _src = ec_rgb if os.path.exists(EYESC) else rgb  # источник — кадр «без глаз»: над носом там нет колец глаз
 chin = np.roll(_src, 74 * S, axis=0)  # мех между глазами выше носа — ровный, без носа и теней
-fm = soft(mouth_hole, 2.5)[..., None]
-head_rgb = head_rgb * (1 - fm) + chin * fm
+fm = soft(mouth_hole, 5)[..., None]
+head_rgb = head_rgb * (1 - fm) + np.clip(boxblur(head_rgb, 10 * S) + (chin - boxblur(chin, 10 * S)), 0, 255) * fm
+# объективная проверка латок: тон (среднее латки − кольцо меха вокруг) и шов (градиент на границе / градиент меха)
+def patch_metrics(name, hole_mask, img):
+    inner = ndi.binary_erosion(hole_mask, iterations=4 * S)
+    ring = ndi.binary_dilation(hole_mask, iterations=14 * S) & ~ndi.binary_dilation(hole_mask, iterations=4 * S) & FUR_OK
+    tone = np.abs(img[inner].mean(0) - img[ring].mean(0)).mean()
+    gy, gx = np.gradient(img.mean(2))
+    g = np.hypot(gx, gy)
+    edge = ndi.binary_dilation(hole_mask, iterations=2 * S) & ~ndi.binary_erosion(hole_mask, iterations=2 * S)
+    seam = g[edge].mean() / max(g[ring].mean(), 1e-6)
+    # та же полоса на ОРИГИНАЛЕ (без латки): естественный градиент меха у глаз выше, чем в кольце,
+    # поэтому честная мера шва — отношение к оригиналу, а не к кольцу
+    gy0, gx0 = np.gradient(rgb.mean(2)); g0 = np.hypot(gx0, gy0)
+    base = g0[edge].mean() / max(g0[ring].mean(), 1e-6)
+    print('patch %-6s tone diff %.2f/255 (цель <2)  seam/original %.2f (цель <=1.15; абс. %.2f, оригинал %.2f)' % (name, tone, seam / base, seam, base))
+for _k, (_cx, _cy) in EYES.items():
+    patch_metrics('eye' + _k, ell(_cx, _cy, RX + 16, RY + 16), head_rgb)
+patch_metrics('mouth', mouth_hole, head_rgb)
 _w = np.clip(eye_blend, 0, 1)
 head_rgb = np.where((eye_hole & ~mouth_hole)[..., None], head_rgb * _w[..., None] + rgb * (1 - _w[..., None]), head_rgb)
 add('head', head_rgb, alpha * HEAD * notail * (1 - EAR_CUT), 9)
