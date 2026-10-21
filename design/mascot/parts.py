@@ -127,36 +127,58 @@ add('ear_R', rgb, alpha * EAR_R * notail, 3)
 
 # 9. голова: без ушей, глаза и рот залатаны мехом (под дугой закрытого глаза — мех, не дыра)
 eye_hole = np.zeros((H, W), bool)
+eye_blend = np.zeros((H, W), np.float32)  # перо: латка плавно переходит в родной мех, границы не видно
 for cx, cy in EYES.values():
-    eye_hole |= ell(cx, cy, RX + 6, RY + 6)
+    eye_hole |= ell(cx, cy, RX + 16, RY + 16)
+    eye_blend = np.maximum(eye_blend, soft(ell(cx, cy, RX + 10, RY + 10), 3))
 mouth_ink = np.zeros((H, W), bool)
 mouth_ink[sc(MOUTH_BOX[1]):sc(MOUTH_BOX[3]), sc(MOUTH_BOX[0]):sc(MOUTH_BOX[2])] = True
 mouth_ink &= lum < 48  # тушь (~22), не мех (~63)
 mouth_hole = ndi.binary_dilation(mouth_ink, iterations=4 * S)
 head_rgb = clone(rgb, eye_hole | mouth_hole, FUR_OK & ~eye_hole & ~mouth_hole, tex=(570, 250, 660, 340))  # зерно — мех лба
+_w = np.clip(eye_blend, 0, 1)
+head_rgb = np.where((eye_hole & ~mouth_hole)[..., None], head_rgb * _w[..., None] + rgb * (1 - _w[..., None]), head_rgb)
 add('head', head_rgb, alpha * HEAD * notail * (1 - EAR_CUT), 9)
 
-# 10-12. глаза: радужка целиком зелёная (под зрачком — цвет), зрачок без блика, блик отдельно
+# 10-13. глаза по схеме Live2D: контур (толстая тушь) — отдельный слой-сетка, который движок
+# сплющивает к нижней дуге (закрытый глаз = сам контур), заливка радужки целиком зелёная
+# (под зрачком — цвет), зрачок без блика, блик отдельно; радужка/зрачок/блик режутся маской той же
+# формы, что и контур. Век-«дисков» нет — нечему давать артефакты.
 for k, (cx, cy) in EYES.items():
     inner = ell(cx, cy, RX - 9, RY - 9)
     pupil = inner & (lum < 90)
     shine = inner & (rgb.min(2) > 200) & ell(cx + 20, cy - 25, 22, 22)
     pupil_m = ndi.binary_dilation(pupil | shine, iterations=4 * S)  # с запасом: антиалиас края зрачка не остаётся «призраком»
-    iris_rgb = clone(rgb, pupil_m, inner & ~pupil_m & (rgb[..., 1] > rgb[..., 0]), tex=(cx - 50, cy - 30, cx - 22, cy + 30), gain=0.6, flat=True)  # донор — только зелёное
-    add('iris_' + k, iris_rgb, alpha * soft(ell(cx, cy, RX + 6, RY + 6), 0.7), 10)
+    green = inner & ~pupil_m & (rgb[..., 1] > rgb[..., 0])
+    # заливка под зрачком: построчная интерполяция между зелёным слева и справа —
+    # вертикальный градиент радужки сохраняется, «призрака» зрачка нет
+    fill_rgb = rgb.copy()
+    hole = ell(cx, cy, RX - 3, RY - 3) & ~green
+    ys_, xs_ = np.nonzero(hole)
+    for yrow in np.unique(ys_):
+        row_g = np.nonzero(green[yrow])[0]
+        if len(row_g) < 2:
+            continue
+        xs_row = xs_[ys_ == yrow]
+        for xcol in xs_row:
+            left = row_g[row_g < xcol]; right = row_g[row_g > xcol]
+            if len(left) and len(right):
+                a_, b_ = left[-1], right[0]; t_ = (xcol - a_) / (b_ - a_)
+                fill_rgb[yrow, xcol] = rgb[yrow, a_] * (1 - t_) + rgb[yrow, b_] * t_
+            elif len(left):
+                fill_rgb[yrow, xcol] = rgb[yrow, left[-1]]
+            else:
+                fill_rgb[yrow, xcol] = rgb[yrow, right[0]]
+    # контур: тёмные пиксели кольца между внутренним краем радужки и мехом (+ антиалиас), без усов
+    zone = ell(cx, cy, RX + 10, RY + 10) & ~ell(cx, cy, RX - 16, RY - 16)
+    sat_ = rgb.max(2) - rgb.min(2)
+    ink_px = zone & (lum < 120) & ~((sat_ > 60) & (rgb[..., 0] > rgb[..., 1] + 30))
+    ring_a = soft(ndi.binary_dilation(ink_px, iterations=S), 0.6) * zone
+    add('ring_' + k, rgb, alpha * ring_a, 13)
+    add('iris_' + k, fill_rgb, alpha * soft(ell(cx, cy, RX - 3, RY - 3), 0.7), 10)
     pupil_rgb = np.where(ndi.binary_dilation(shine, iterations=S)[..., None], rgb[pupil & ~shine].mean(0), rgb)
-    add('pupil_' + k, pupil_rgb, soft(pupil_m & inner, 0.8), 11)
+    add('pupil_' + k, pupil_rgb, soft(ndi.binary_dilation(pupil | shine, iterations=S) & inner, 0.8), 11)
     add('shine_' + k, rgb, soft(ndi.binary_dilation(shine, iterations=S), 0.5), 12)
-    # 13. веко: овал меха чуть больше радужки + «ресничная линия» снизу
-    lid_m = ell(cx, cy, RX + 12, RY + 12)
-    lid_rgb = clone(rgb, lid_m, FUR_OK & ~lid_m & ell(cx, cy, RX + 90, RY + 90), tex=(570, 250, 660, 340))
-    lash = Image.new('L', (W, H), 0)
-    d = ImageDraw.Draw(lash)
-    d.arc([sc(cx - RX - 8), sc(cy - RY - 8), sc(cx + RX + 8), sc(cy + RY + 8)], 10, 170, fill=255, width=int(5 * S))
-    lash_a = soft(np.asarray(lash).astype(np.float32) / 255, 0.6)
-    ink = rgb[pupil & ~shine].mean(0)
-    lid_rgb = lid_rgb * (1 - lash_a[..., None]) + ink * lash_a[..., None]
-    add('lid_' + k, lid_rgb, soft(lid_m, 0.8), 13)
 
 # 14. закрытые глаза — кадры, сгенерированные по оригиналу (from_gen.py), не рисованные дуги
 def gen_layer(key, box):
@@ -204,13 +226,13 @@ PIVOTS = {
     'body': (600, 768), 'head': (610, 590), 'ear_L': (470, 255), 'ear_R': (735, 245),
     'paw_L': (495, 600), 'paw_R': (745, 690), 'tail': (825, 697), 'flame': (972, 415), 'chest': (600, 640),
     'iris_L': EYES['L'], 'iris_R': EYES['R'], 'pupil_L': EYES['L'], 'pupil_R': EYES['R'], 'shine_L': EYES['L'], 'shine_R': EYES['R'],
-    'lid_L': EYES['L'], 'lid_R': EYES['R'], 'closed_L': EYES['L'], 'closed_R': EYES['R'],
+    'ring_L': EYES['L'], 'ring_R': EYES['R'], 'closed_L': EYES['L'], 'closed_R': EYES['R'],
     'mouth_smile': (615, 486), 'mouth_open': (615, 486), 'mouth_o': (615, 486), 'mouth_flat': (615, 486), 'mouth_sad': (615, 486),
 }
 TAIL_JOINTS = [(825, 697), (900, 702), (975, 705), (1040, 690), (1085, 655), (1100, 600), (1095, 545), (1075, 490)]
 PAD = 4
 rig = {'canvas': {'w': 1264, 'h': 848}, 'scale': EXPORT, 'parts': {}, 'tail_joints': TAIL_JOINTS,
-       'eyes': {'L': {'c': EYES['L'], 'rx': RX, 'ry': RY}, 'R': {'c': EYES['R'], 'rx': RX, 'ry': RY}}}
+       'eyes': {'L': {'c': EYES['L'], 'rx': RX - 3, 'ry': RY - 3, 'orx': RX + 10, 'ory': RY + 10}, 'R': {'c': EYES['R'], 'rx': RX - 3, 'ry': RY - 3, 'orx': RX + 10, 'ory': RY + 10}}}
 composite = np.zeros((H, W, 4), np.float32)
 for name, rgbx, a, z in sorted(layers, key=lambda t: t[3]):
     ys, xs = np.nonzero(a > 0.01)
@@ -238,7 +260,7 @@ for name, rgbx, a, z in sorted(layers, key=lambda t: t[3]):
 json.dump(rig, open(os.path.join(ROOT, 'public/mascot/rig.json'), 'w'), indent=1)
 
 # проверка «Difference»: сборка всех слоёв против мастера (без лат — они под другими слоями)
-hide = {'closed_L', 'closed_R', 'mouth_open', 'mouth_o', 'mouth_flat', 'mouth_sad', 'lid_L', 'lid_R'}
+hide = {'closed_L', 'closed_R', 'mouth_open', 'mouth_o', 'mouth_flat', 'mouth_sad'}
 composite = np.zeros((H, W, 4), np.float32)
 for name, rgbx, a, z in sorted(layers, key=lambda t: t[3]):
     if name in hide: continue

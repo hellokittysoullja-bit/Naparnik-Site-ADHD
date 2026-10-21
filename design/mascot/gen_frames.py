@@ -29,10 +29,29 @@ FRAMES = {
     "head-left": KEEP + "the cat's head is turned about 30 degrees to the viewer's left (three-quarter view), looking toward the left, ears and cheek fluff following the turn; the body, paws, tail and flame stay exactly as in the reference.",
     "head-right": KEEP + "the cat's head is turned about 30 degrees to the viewer's right (three-quarter view), looking toward the right, ears and cheek fluff following the turn; the body, paws, tail and flame stay exactly as in the reference.",
     "paw-up": KEEP + "the cat's left front paw (viewer's left) is raised in a friendly wave, pads facing the viewer.",
+    # кадры для куклы (parts.py / puppet.ts): веки по ступеням, эмоции глаз, лапа с ногой
+    "lids-25": KEEP + "both upper eyelids are lowered to cover the top quarter of the green irises; the lids are the same dark grey fur with the same thick ink outline along the lid edge.",
+    "lids-50": KEEP + "both upper eyelids are lowered to cover the top half of the green irises (half-closed, relaxed look); lids are the same dark grey fur with the same thick ink outline along the lid edge.",
+    "lids-75": KEEP + "both upper eyelids are lowered to cover three quarters of the green irises (almost closed); lids are the same dark grey fur with the same thick ink outline along the lid edge.",
+    "eyes-happy": KEEP + "both eyes are closed in a happy squint, drawn as two upward-curved thick ink arcs (like ^ ^), no iris visible.",
+    "eyes-sad": KEEP + "both eyes look sad: the upper eyelids slant down toward the outer corners covering the upper part of the irises, the ink outline follows the slanted lids; mouth is a small downward curve.",
+    "wave-pose": KEEP + "the cat's front paw on the viewer's left is raised up beside its cheek in a friendly wave with the paw pads facing the viewer, the short furry leg visible coming out from the chest fur; the other paw, body, head, tail and flame stay exactly as in the reference.",
 }
 
 
-def call(method, path, payload=None):
+def call(method, path, payload=None, tries=8):
+    # шлюз иногда отвечает 5xx/рвёт соединение — ждём и повторяем
+    for attempt in range(tries):
+        try:
+            return _call(method, path, payload)
+        except Exception as e:  # noqa: BLE001
+            if attempt == tries - 1:
+                raise
+            print("retry", path, type(e).__name__, getattr(e, "code", ""), flush=True)
+            time.sleep(15 * (attempt + 1))
+
+
+def _call(method, path, payload=None):
     req = urllib.request.Request(
         BASE + path, method=method,
         data=json.dumps(payload).encode() if payload is not None else None,

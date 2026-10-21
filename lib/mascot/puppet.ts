@@ -24,7 +24,7 @@ type Rig = {
   scale: number;
   parts: Record<string, Part>;
   tail_joints: [number, number][];
-  eyes: Record<"L" | "R", { c: [number, number]; rx: number; ry: number }>;
+  eyes: Record<"L" | "R", { c: [number, number]; rx: number; ry: number; orx: number; ory: number }>;
 };
 
 export const VIEW = { x: 250, y: -85, size: 910 };
@@ -285,14 +285,9 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
   earMesh("ear_L", earL);
   earMesh("ear_R", earR);
   // 5. тело: сетка с деформером дыхания (грудь раздувается сильнее низа) и squash
-  const breathState = { amt: 0 };
-  const bodySkin = meshFor("body", 8, 8, () => [body, 1, null]);
-  bodySkin.deform = (_i, x, y, out) => {
-    const h = smoothstep((768 - y) / 300); // 0 у пола, 1 у груди
-    const k = 1 + breathState.amt * (preset.breath.bottom + (preset.breath.chest - preset.breath.bottom) * h);
-    out.x = 600 + (x - 600) * (1 + (k - 1) * 0.4);
-    out.y = 768 + (y - 768) * k;
-  };
+  // 5. тело: сетка на кости тела; дыхание — масштаб кости от земли (грудка, голова и лапы
+  // едут вместе с телом — швов нет), грудь поднимается сильнее низа сама собой
+  meshFor("body", 8, 8, () => [body, 1, null]);
   // 6-8. лапы, грудка, голова
   sprite("paw_R", pawR);
   const pawLSprite = sprite("paw_L", shoulderL);
@@ -308,32 +303,68 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     world.setChildIndex(pawLSprite, up ? world.getChildIndex(headSprite) : world.getChildIndex(chestSprite));
   };
 
-  /* глаза: радужка → маска → (зрачок, веко); блик поверх; закрытые — поверх всего */
-  type Eye = { iris: PixiSprite; pupil: PixiSprite; lid: PixiSprite; shine: PixiSprite; closed: PixiSprite; mask: PixiGraphics; group: PixiContainer; c: [number, number]; ry: number };
+  /* глаза по схеме Live2D: контур — сетка, сплющивается к нижней дуге (закрытый глаз = контур,
+     схлопнутый в дугу; «^ ^» — к верхней); заливка радужки, зрачок и блик — под маской ТОЙ ЖЕ
+     формы, что и контур. Никаких век-дисков. */
+  type Eye = { group: PixiContainer; mask: PixiGraphics; ring: Skin; pupil: PixiSprite; shine: PixiSprite; closed: PixiSprite; c: [number, number]; rx: number; ry: number; orx: number; ory: number };
   const eyes: Record<"L" | "R", Eye> = {} as Record<"L" | "R", Eye>;
-  const faceOffset = { x: 0, y: 0 };
+  // состояние век на кадр: open 0..1, slant (наклон, внешний угол вниз при >0), happy — схлопывание к верхней дуге
+  const lidState = { L: { open: 1, slant: 0, happy: 0 }, R: { open: 1, slant: 0, happy: 0 } };
+  const squash = (k: "L" | "R", x: number, y: number, out: { x: number; y: number }) => {
+    const e = eyes[k];
+    const st = lidState[k];
+    const [cx, cy] = e.c;
+    const sl = st.slant * (k === "L" ? -1 : 1); // внешний угол: у L — слева, у R — справа
+    const kk = clamp(st.open + sl * ((x - cx) / e.orx), 0.02, 1);
+    // якорь — ВНУТРЕННИЙ край штриха: сам штрих (между внутренним и внешним краем) остаётся
+    // толстой дугой, а всё остальное схлопывается на него. Закрытый глаз = дуга той же туши.
+    if (st.happy > 0.001) {
+      // счастливый прищур «^»: всё, что ниже верхней дуги, подтягивается к ней
+      const top = cy - e.ry;
+      const kh = clamp(1 - st.happy, 0.02, 1);
+      out.x = x;
+      out.y = y <= top ? y : top + (y - top) * kh;
+      return;
+    }
+    const anchor = cy + e.ry; // нижняя дуга контура остаётся на месте
+    out.x = x;
+    out.y = y >= anchor ? y : anchor - (anchor - y) * kk;
+  };
   for (const k of ["L", "R"] as const) {
     const e = rig.eyes[k];
-    const iris = sprite(`iris_${k}`, face);
     const group: PixiContainer = new Container();
     world.addChild(group);
     const mask: PixiGraphics = new Graphics();
     group.addChild(mask);
     group.mask = mask;
+    sprite(`iris_${k}`, face, group);
     const pupil = sprite(`pupil_${k}`, face, group);
-    const lid = sprite(`lid_${k}`, face, group);
-    const shine = sprite(`shine_${k}`, face);
+    const shine = sprite(`shine_${k}`, face, group);
+    const ring = meshFor(`ring_${k}`, 12, 12, () => [face, 1, null]);
+    ring.deform = (_i, x, y, out) => squash(k, x, y, out);
     const closed = sprite(`closed_${k}`, face);
     closed.alpha = 0;
-    eyes[k] = { iris, pupil, lid, shine, closed, mask, group, c: e.c, ry: e.ry };
+    closed.visible = false; // кадры закрытых глаз больше не нужны: закрытие — сам контур
+    eyes[k] = { group, mask, ring, pupil, shine, closed, c: e.c, rx: e.rx, ry: e.ry, orx: e.orx, ory: e.ory };
   }
+  const maskPt = { x: 0, y: 0 };
   const drawMasks = () => {
     for (const k of ["L", "R"] as const) {
-      const e = rig.eyes[k];
+      const e = eyes[k];
       const m = face.skin;
-      const cx = m.a * e.c[0] + m.c * e.c[1] + m.tx;
-      const cy = m.b * e.c[0] + m.d * e.c[1] + m.ty;
-      eyes[k].mask.clear().ellipse(cx, cy, e.rx + 4, e.ry + 4).fill(0xffffff);
+      const g = e.mask.clear();
+      // эллипс заливки, сплющенный той же функцией, что и контур, затем — в мир через кость лица
+      const N = 40;
+      for (let i = 0; i <= N; i++) {
+        const a = (i / N) * Math.PI * 2;
+        const x = e.c[0] + Math.cos(a) * (e.rx + 1);
+        const y = e.c[1] + Math.sin(a) * (e.ry + 1);
+        squash(k, x, y, maskPt);
+        const wx = m.a * maskPt.x + m.c * maskPt.y + m.tx;
+        const wy = m.b * maskPt.x + m.d * maskPt.y + m.ty;
+        if (i === 0) g.moveTo(wx, wy); else g.lineTo(wx, wy);
+      }
+      g.closePath().fill(0xffffff);
     }
   };
   /* рот: варианты, кроссфейд */
@@ -400,13 +431,13 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
   };
   const look = { tx: 0, ty: 0, held: false };
   // поза настроения: все поля ключуются в каждом настроении — ничего не «залипает»
-  type Pose = { headRot: number; headY: number; earL: number; earR: number; lidY: number; lidRot: number; tailAmp: number; breathMul: number; pupil: number; bodyRot: number };
+  type Pose = { headRot: number; headY: number; earL: number; earR: number; lidOpen: number; lidSlant: number; tailAmp: number; breathMul: number; pupil: number; bodyRot: number };
   const POSES: Record<Mood, Pose> = {
-    idle: { headRot: 0, headY: 0, earL: 0, earR: 0, lidY: preset.lids.idle.y, lidRot: 0, tailAmp: 1, breathMul: 1, pupil: 1, bodyRot: 0 },
-    think: { headRot: 0.14, headY: 0, earL: 0.08, earR: -0.05, lidY: preset.lids.think.y, lidRot: 0, tailAmp: 0.7, breathMul: 1, pupil: 1, bodyRot: 0 },
-    sad: { headRot: 0.05, headY: 10, earL: -0.6, earR: 0.6, lidY: preset.lids.sad.y, lidRot: preset.lids.sad.rot, tailAmp: 0.4, breathMul: 1.4, pupil: 0.95, bodyRot: 0 },
-    sleep: { headRot: 0.1, headY: 14, earL: -0.2, earR: 0.2, lidY: 1, lidRot: 0, tailAmp: 0.3, breathMul: 1.8, pupil: 1, bodyRot: 0 },
-    focused: { headRot: 0, headY: 0, earL: 0.05, earR: -0.05, lidY: preset.lids.focused.y, lidRot: 0, tailAmp: 0.8, breathMul: 0.9, pupil: 1, bodyRot: 0 },
+    idle: { headRot: 0, headY: 0, earL: 0, earR: 0, lidOpen: 1 - preset.lids.idle.y, lidSlant: 0, tailAmp: 1, breathMul: 1, pupil: 1, bodyRot: 0 },
+    think: { headRot: 0.14, headY: 0, earL: 0.08, earR: -0.05, lidOpen: 1 - preset.lids.think.y, lidSlant: 0, tailAmp: 0.7, breathMul: 1, pupil: 1, bodyRot: 0 },
+    sad: { headRot: 0.05, headY: 10, earL: -0.6, earR: 0.6, lidOpen: 1 - preset.lids.sad.y, lidSlant: preset.lids.sad.rot, tailAmp: 0.4, breathMul: 1.4, pupil: 0.95, bodyRot: 0 },
+    sleep: { headRot: 0.1, headY: 14, earL: -0.2, earR: 0.2, lidOpen: 0, lidSlant: 0, tailAmp: 0.3, breathMul: 1.8, pupil: 1, bodyRot: 0 },
+    focused: { headRot: 0, headY: 0, earL: 0.05, earR: -0.05, lidOpen: 1 - preset.lids.focused.y, lidSlant: 0, tailAmp: 0.8, breathMul: 0.9, pupil: 1, bodyRot: 0 },
   };
   const pose: Pose = { ...POSES.idle };
   let moodNow: Mood = "idle";
@@ -415,8 +446,6 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     moodNow = m;
     gsap.to(pose, { ...POSES[m], duration: preset.states.crossfade, ease: "sine.inOut", overwrite: true });
     setMouth(MOUTH_FOR[m]);
-    const closed = m === "sleep" ? 1 : 0;
-    gsap.to([eyes.L.closed, eyes.R.closed], { alpha: closed, duration: 0.15, delay: closed ? 0.12 : 0 });
   };
   // оверлей одноразовых действий — складывается с позой
   const ov = { bodyY: 0, bodySX: 1, bodySY: 1, headRot: 0, headY: 0, earL: 0, earR: 0, shoulder: 0, pawY: 0, closed: 0, chestY: 0 };
@@ -529,7 +558,8 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     const period = preset.breath.period * pose.breathMul;
     const ph = (t / period) % 1;
     const breath = ph < 0.4 ? smoothstep(ph / 0.4) : ph < 0.4 + preset.breath.hold ? 1 : 1 - smoothstep((ph - 0.4 - preset.breath.hold) / (0.6 - preset.breath.hold));
-    breathState.amt = breath;
+    body.scaleY = 1 + breath * preset.breath.chest;
+    body.scaleX = 1 + breath * preset.breath.bottom;
     const phR = ((t - 0.14) / period + 1) % 1;
     const breathR = phR < 0.4 ? smoothstep(phR / 0.4) : phR < 0.4 + preset.breath.hold ? 1 : 1 - smoothstep((phR - 0.4 - preset.breath.hold) / (0.6 - preset.breath.hold));
 
@@ -604,32 +634,24 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     pawDrawOrder();
     drawMasks();
 
-    // глаза: зрачок внутри радужки (с ограничением), веко по маске, блик на месте
+    // глаза: веки = сплющивание контура и маски (состояние на кадр), зрачок внутри радужки, блик на месте
     const L = preset.look;
+    const open = Math.min(pose.lidOpen, 1 - blinkState.t);
     for (const k of ["L", "R"] as const) {
       const e = eyes[k];
+      lidState[k].open = open;
+      lidState[k].slant = pose.lidSlant;
+      lidState[k].happy = ov.closed;
       const px = clamp(gx * L.pupil, -26, 26);
       const py = clamp(gy * L.pupilY, -22, 22);
       e.pupil.x += px; e.pupil.y += py;
       const dil = pupilDil.v * pose.pupil;
       e.pupil.scale.set(texScale * dil);
       e.pupil.x -= (P(`pupil_${k}`).w * (dil - 1)) / 2; e.pupil.y -= (P(`pupil_${k}`).h * (dil - 1)) / 2;
-      // веко: открыто — целиком над глазом; закрыто — центр на центре глаза
-      const lidY = Math.max(pose.lidY, blinkState.t, ov.closed);
-      const travel = (e.ry + P(`lid_${k}`).h / 2 + 6);
-      const hide = -travel;
-      e.lid.y += hide + travel * lidY;
-      const rot = pose.lidRot * (k === "L" ? -1 : 1);
-      if (rot) {
-        const cx = e.lid.x + (P(`lid_${k}`).w / 2), cy = e.lid.y + (P(`lid_${k}`).h / 2);
-        e.lid.pivot.set(P(`lid_${k}`).w * rig.scale / 2, P(`lid_${k}`).h * rig.scale / 2);
-        e.lid.position.set(cx, cy);
-        e.lid.rotation += rot;
-      } else {
-        e.lid.pivot.set(0, 0);
-      }
-      e.closed.alpha = Math.max(e.closed.alpha, ov.closed);
     }
+    // контур и маска считаются после обновления состояния век
+    skinMeshes();
+    drawMasks();
     drawDebug();
   };
   let prevBodyY = 0;
