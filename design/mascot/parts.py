@@ -257,7 +257,7 @@ if os.path.exists(EYESC):
         mir = np.stack([ndi.map_coordinates(rgb[..., ch], [ys_, xs_], order=1, mode='nearest') for ch in range(3)], -1).astype(np.float32)
         mir = np.where((ok_src & (rn < R0 + 4))[..., None], mir, gc + rc.mean())
         pyr_s = [gs(mir, sg) for sg in _scales]
-        _a = (ell(cx, cy, RX + 46, RY + 46) & ~ell(cx, cy, RX + 20, RY + 20) & FUR_OK)[crop]
+        _a = (ell(cx, cy, RX + 36, RY + 36) & ~ell(cx, cy, RX + 12, RY + 12) & FUR_OK)[crop]   # ближнее кольцо: с тенью глазницы
         _i = ell(cx, cy, RX - 2, RY - 2)[crop]
         zone_f = soft(ell(cx, cy, RX + 20, RY + 20), 5)[crop][..., None]   # вся латка до пера eye_blend
         fixed = np.broadcast_to(rc[_a].mean(0), pc.shape).astype(np.float32)
@@ -315,6 +315,13 @@ for _k, (_cx, _cy) in EYES.items():
     patch_metrics('eye' + _k, ell(_cx, _cy, RX + 16, RY + 16), head_rgb)
 patch_metrics('mouth', mouth_hole, head_rgb)
 _w = np.clip(eye_blend, 0, 1)
+# усы заходят в зону латки (дыра 88 px от центра глаза): оранжевые штрихи с их обводкой защищаем —
+# там остаётся оригинал (иначе корни усов размываются и теряют чёрную обводку)
+_or = (rgb[..., 0] > 150) & (rgb[..., 0] > rgb[..., 2] + 60) & (alpha > 0.5)
+_prot = ndi.binary_dilation(_or, iterations=4 * S)
+for _cx, _cy in EYES.values():
+    _prot &= ~ell(_cx, _cy, RX + 6, RY + 6)
+_w = _w * (1 - soft(_prot, 2)[..., ])
 head_rgb = np.where((eye_hole & ~mouth_hole)[..., None], head_rgb * _w[..., None] + rgb * (1 - _w[..., None]), head_rgb)
 add('head', head_rgb, alpha * HEAD * notail * (1 - EAR_CUT), 9)
 
@@ -411,6 +418,13 @@ if os.path.exists(WAVE):
     wv = np.asarray(Image.open(WAVE).convert('RGBA')).astype(np.float32)
     zone_m = (ARM > 0.5) & (yy > sc(596))
     f = soft(zone_m, 3)[..., None]
+    # тон кадра модели — к меху тела вокруг зоны (иначе латка читается светлым пятном под лапой)
+    _ring_b = ndi.binary_dilation(zone_m, iterations=30 * S) & ~ndi.binary_dilation(zone_m, iterations=6 * S) & FUR_OK & (BODY_ZONE > 0.5)
+    _wv_fur = zone_m & (wv[..., 3] > 240) & (wv[..., :3].mean(2) > 40) & (wv[..., :3].mean(2) < 120)
+    if _ring_b.sum() > 50 and _wv_fur.sum() > 50:
+        _off_b = rgb[_ring_b].mean(0) - wv[..., :3][_wv_fur].mean(0)
+        wv = wv.copy(); wv[..., :3] = np.clip(wv[..., :3] + _off_b, 0, 255)
+        print('body patch tone offset %.1f' % np.abs(_off_b).mean())
     body_rgb = body_rgb * (1 - f) + wv[..., :3] * f
     body_alpha = alpha * (1 - f[..., 0]) + (wv[..., 3] / 255) * f[..., 0]
     print('body patch from generated wave pose')

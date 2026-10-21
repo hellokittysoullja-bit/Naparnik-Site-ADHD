@@ -81,7 +81,7 @@
         "open": 0.45
       }
     },
-    "lagR": 0.006,
+    "lagR": 0.004,
     "ampJitter": 0.03,
     "refractory": 0.6,
     "attentiveMul": 3.3,

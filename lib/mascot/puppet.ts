@@ -342,7 +342,7 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     const g = c.getContext("2d")!;
     for (let y = 0; y < 32; y++) {
       const a = y < 16 ? (y + 0.5) / 16 : (31.5 - y) / 16;
-      g.fillStyle = `rgba(9,11,7,${Math.min(1, a).toFixed(3)})`;
+      g.fillStyle = `rgba(12,15,5,${Math.min(1, a).toFixed(3)})`;
       g.fillRect(0, y, 1, 1);
     }
     return Tex.from(c);
@@ -471,11 +471,15 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
         bot[i] = Math.min(e.lo[i] - e.tl[i] / 2 - shrink, eB);
         if (bot[i] - top[i] > 1) { if (first < 0) first = i; last = i; }
       }
-      if (first < 0) { g.rect(e.c[0], e.c[1], 0.01, 0.01).fill(0xffffff); e.group.alpha = 0; continue; }
-      // последние 4 px просвета: радужка темнеет под тушь — яркой зелёно-белой волосинки между веками нет
+      if (first < 0) { g.rect(e.c[0], e.c[1], 0.01, 0.01).fill(0xffffff); e.group.tint = 0x0c0f05; continue; }
+      // последние 6 px просвета: радужка ТЕМНЕЕТ В ТУШЬ (а не растворяется в мех — серая полоска
+      // между веками читалась «двойным веком»): щель выглядит как сходящаяся линия
       let gap = 0;
       for (let i = first; i <= last; i++) gap = Math.max(gap, bot[i] - top[i]);
-      e.group.alpha = smoothstep(gap / 4);
+      const kInk = smoothstep(gap / 6);
+      e.group.alpha = 1;
+      const c = Math.round(255 * kInk);
+      e.group.tint = (Math.max(c, 12) << 16) | (Math.max(c, 15) << 8) | Math.max(c, 5);
       for (let i = first; i <= last; i++) {
         const x = e.xs[i], y = Math.min(top[i], bot[i]);
         const wx = m.a * x + m.c * y + m.tx, wy = m.b * x + m.d * y + m.ty;
@@ -557,7 +561,7 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     idle: { headRot: 0, headY: 0, earL: 0, earR: 0, lidOpen: 1 - preset.lids.idle.y, lidSad: 0, tailAmp: 1, breathMul: 1, dilate: 0.3, bodyRot: 0 },
     think: { headRot: 0.14, headY: 0, earL: 0.08, earR: -0.05, lidOpen: 1 - preset.lids.think.y, lidSad: 0, tailAmp: 0.7, breathMul: 1, dilate: 0.2, bodyRot: 0 },
     sad: { headRot: 0.05, headY: 10, earL: -0.6, earR: 0.6, lidOpen: 1 - preset.lids.sad.y, lidSad: 1, tailAmp: 0.4, breathMul: 1.4, dilate: 0.1, bodyRot: 0 },
-    sleep: { headRot: 0.1, headY: 14, earL: -0.2, earR: 0.2, lidOpen: 0, lidSad: 0, tailAmp: 0.3, breathMul: 1.8, dilate: 0, bodyRot: 0 },
+    sleep: { headRot: 0.05, headY: 14, earL: -0.2, earR: 0.2, lidOpen: 0, lidSad: 0, tailAmp: 0.3, breathMul: 1.8, dilate: 0, bodyRot: 0 },
     focused: { headRot: 0, headY: 0, earL: 0.05, earR: -0.05, lidOpen: 1 - preset.lids.focused.y, lidSad: 0, tailAmp: 0.8, breathMul: 0.9, dilate: 0.5, bodyRot: 0 },
   };
   const pose: Pose = { ...POSES.idle };
@@ -867,6 +871,15 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
       e.shineAtt.offset.x = nose * 0.6; e.shineAtt.offset.y = down * 0.6;
       e.irisAtt.offset.x = nose * 0.3; e.irisAtt.offset.y = down * 0.3;
       e.pupilAtt.sx = 1 + RC.dilate * clamp(pose.dilate + dil.v, 0, 1);
+      // блик: половинка белой точки на кромке века читается как глюк — гаснет, когда веко дошло до его середины
+      {
+        const sp = P(`shine_${k}`);
+        const sx = sp.x + sp.w / 2 + e.shineAtt.offset.x, syc = sp.y + sp.h / 2 + e.shineAtt.offset.y;
+        const u = clamp(((sx - e.xs[0]) / (e.xs[NC - 1] - e.xs[0])) * (NC - 1), 0, NC - 1);
+        const i0 = Math.floor(u), fr = u - i0;
+        const lidEdge = (i0 >= NC - 1 ? e.up[NC - 1] + e.tu[NC - 1] / 2 : (e.up[i0] + e.tu[i0] / 2) * (1 - fr) + (e.up[i0 + 1] + e.tu[i0 + 1] / 2) * fr);
+        e.shine.alpha = 1 - smoothstep((lidEdge - (syc - sp.h * 0.25)) / (sp.h * 0.5));
+      }
       // нижняя лента появляется поверх СВОЕГО же штриха контура (тушь на туши — невидимо) до того,
       // как контур начнёт складываться; верхняя — как только веко отходит от контура
       e.ring.mesh.alpha = 1 - smoothstep((squash - 0.6) / 0.3); // сложенный контур лежит под лентами — гаснет невидимо (видны только сжатые уголки)

@@ -159,9 +159,25 @@ for k, (cx, cy) in EYES.items():
 for k in EYES:
     ks = out['eyes'][k]['keys']
     o = ks['open']
+    xs_ = np.linspace(EYES[k][0] - RX - PAD, EYES[k][0] + RX + PAD, N)
     for key, d in ks.items():
         if key not in ARC and key != 'open':
             d['lo'], d['tl'], d['extl'] = list(o['lo']), list(o['tl']), list(o['extl'])
+        if key in ('lids25', 'lids50', 'half', 'sad'):
+            # штрих века упирается в контур: охват продлеваем на 2 колонки в обе стороны (толщина соседа),
+            # конец ленты прячется под тушью контура — щели между веком и контуром нет
+            e0, e1 = d['extu']
+            for i in (e0 - 1, e0 - 2):
+                if i >= 0: d['tu'][i] = d['tu'][e0]
+            for i in (e1 + 1, e1 + 2):
+                if i < N: d['tu'][i] = d['tu'][e1]
+            d['extu'] = [max(0, e0 - 2), min(N - 1, e1 + 2)]
+        if key in ('lids25', 'lids50', 'half'):
+            # веко — не линейка: лёгкий провис 2,5 % ширины глаза к центру (кадры модели рисуют его плоским)
+            e0, e1 = d['extu']
+            for i in range(N):
+                t = 2 * (i - e0) / max(e1 - e0, 1) - 1
+                d['up'][i] = round(d['up'][i] + 0.025 * (xs_[e1] - xs_[e0]) * max(0.0, 1 - t * t), 2)
         for arr, ext in ((d['tu'], d['extu']), (d['tl'], d['extl'])):
             for i in range(N):
                 if i < ext[0] or i > ext[1]:
