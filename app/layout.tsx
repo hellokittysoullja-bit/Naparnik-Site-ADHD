@@ -1,20 +1,11 @@
 import { Analytics } from "@vercel/analytics/next";
 import type { Metadata, Viewport } from "next";
-import { Manrope, JetBrains_Mono } from "next/font/google";
-import { preload } from "react-dom";
+import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-// Шрифты первого экрана: display "block" вместо "swap" — текст ждёт свой шрифт (до 3 с), а не рисуется
-// запасным Arial с последующей подменой и сдвигом строк (CLS ≈ 0,04 на slow 3G). На 4G шрифты успевают
-// до первой отрисовки, на 3G приходят на ~0,4 с позже неё — внутри входной анимации героя (hero-rise 0,55 с
-// с задержками), так что ожидание не видно. (Перечислять статические начертания бесполезно: Manrope
-// у Google переменный, на любой набор весов приходит тот же файл.)
-const manrope = Manrope({
-  subsets: ["latin", "cyrillic"],
-  display: "block",
-  variable: "--font-manrope",
-});
-
+// Manrope и Caveat — свои (public/fonts, app/fonts.css, генератор design/fonts/build.py): статические начертания
+// по весам и алфавитам плюс вшитые в CSS подмножества под символы первого экрана — текст героя рисуется
+// своим шрифтом с первой отрисовки на любой сети. Здесь из next/font остался только моноширинный.
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin", "cyrillic"],
   variable: "--font-jetbrains-mono",
@@ -23,12 +14,6 @@ const jetbrainsMono = JetBrains_Mono({
   preload: false,
 });
 
-// Рукописный Caveat — свой, в public/fonts (OFL): у Google его файлы для двух алфавитов весили 151 КБ — самое
-// тяжёлое на первом экране (Manrope — 38 КБ). Здесь статические 400 и 500 (на сайте только они), каждый
-// порезан на кириллицу + пунктуацию и латиницу (unicode-range): первому экрану хватает одного файла
-// caveat-500-cyr (55 КБ, preload ниже), остальные подтянутся, только если встретится такой текст.
-// Сборка: fontTools instancer + pyftsubset, контекстные альтернативы (calt) сохранены — без них меняется
-// 5,6 % пикселей рукописного текста. @font-face и запасной "Caveat Fallback" — в globals.css.
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://ai-rc-one.vercel.app"),
@@ -66,8 +51,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // кириллический Caveat — в <head> как preload (как шрифты next/font): первый экран ждёт его с display: block
-  preload("/fonts/caveat-500-cyr.woff2", { as: "font", type: "font/woff2", crossOrigin: "anonymous" });
+  // preload шрифтов здесь нет намеренно: первый экран лендинга рисуется вшитыми в CSS подмножествами, а четыре
+  // файла Manrope в preload (48 КБ) отнимали полосу у самого CSS на slow 3G (первая отрисовка 3,2 → 6,2 с).
+  // Остальной текст лендинга ниже сгиба подтянет файлы по мере надобности; экраны /app предзагружают
+  // своё в app/app/layout.tsx.
   return (
     <html
       lang="ru"
@@ -77,7 +64,7 @@ export default function RootLayout({
       // при переходах между страницами — data-атрибут снимает конфликт, сам
       // scroll-behavior по-прежнему приходит из CSS и уважает reduced-motion.
       data-scroll-behavior="smooth"
-      className={`bg-background ${manrope.variable} ${jetbrainsMono.variable}`}
+      className={`bg-background ${jetbrainsMono.variable}`}
     >
       <body className="antialiased font-sans">
         {children}
