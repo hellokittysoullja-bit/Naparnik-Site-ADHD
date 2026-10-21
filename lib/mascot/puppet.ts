@@ -334,9 +334,13 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     const sl = st.slant * (k === "L" ? 1 : -1); // грусть: внутренний угол выше, внешний ниже (у L внешний — слева)
     const happy = st.happy > 0.001;
     const open = happy ? 1 - st.happy : st.open;
-    const kk = clamp(open + sl * ((px - cx) / am), 0, 1);
-    // линия закрытия: нижняя треть (верхнее веко опускается), для «^» — верхняя треть
-    const yA = happy ? cy - 0.6 * bm : cy + 0.6 * bm;
+    const kk = clamp(open, 0, 1);
+    // линия закрытия — не горизонталь, а линия века: для грусти наклонена (прямая, как в
+    // рисунке), для «^ ^» — «домик» с вершиной в центре; обе половины сходятся к ней без излома
+    const t = (px - cx) / am;
+    const yA = happy
+      ? cy - 0.3 * bm - 0.4 * bm * (1 - Math.abs(t))
+      : cy + 0.6 * bm + sl * bm * t;
     const moving = happy ? py > yA : py < yA; // половина, которая едет к линии закрытия
     const ks = 1 - 0.45 * (1 - kk); // «стоящая» половина чуть распрямляется, дуга остаётся
     const qy = moving ? yA + (py - yA) * kk : yA + (py - yA) * ks;

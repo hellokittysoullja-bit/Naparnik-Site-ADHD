@@ -56,7 +56,7 @@ def boxblur(x, r):
 TEXR = 9
 
 
-def clone(img, hole, valid, tex=None, gain=0.9, flat=False):
+def clone(img, hole, valid, tex=None, gain=0.9, flat=False, texr=None):
     """«Clone Stamp»: низкие частоты — заливка от краёв внутрь по донорам (valid), зерно акварели —
     высокие частоты из донорского блока tex=(x0,y0,x1,y1) (1x), замощённого по дыре: без радиальных
     «лучей» от ближайшего пикселя и без «мыла». Меняется ТОЛЬКО дыра."""
@@ -70,8 +70,9 @@ def clone(img, hole, valid, tex=None, gain=0.9, flat=False):
         newly = (known < 1) & (den > 0.15)
         out = np.where(newly[..., None], num / np.maximum(den, 1e-6)[..., None], out)
         known = np.where(newly, 1.0, known)
-    out = boxblur(out, TEXR * S)  # низкие частоты латки
-    hf = img - boxblur(img, TEXR * S)  # мазки кисти + зерно (всё, что мельче TEXR px)
+    r_tex = (texr or TEXR) * S
+    out = boxblur(out, r_tex)  # низкие частоты латки
+    hf = img - boxblur(img, r_tex)  # мазки кисти + зерно (всё, что мельче r_tex px)
     if tex is None:
         idx = ndi.distance_transform_edt(~valid, return_distances=False, return_indices=True)
         grain = hf[idx[0], idx[1]]
@@ -79,7 +80,11 @@ def clone(img, hole, valid, tex=None, gain=0.9, flat=False):
         x0, y0, x1, y1 = (sc(v) for v in tex)
         block = hf[y0:y1, x0:x1]
         bh, bw = block.shape[:2]
-        grain = block[(yy + 7 * S) % bh, (xx + 11 * S) % bw]
+        # зеркальное замощение: на стыках блоков нет разрывов текстуры (прямое замощение давало швы)
+        def refl(i, n):
+            m = i % (2 * n)
+            return np.where(m < n, m, 2 * n - 1 - m)
+        grain = np.clip(block[refl(yy + 7 * S, bh), refl(xx + 11 * S, bw)], -26, 26)  # мех ±20; точки туши (±60) не размножаются
     if flat:  # ровная заливка медианой доноров (радужка): без светлого «призрака» зрачка
         out = np.broadcast_to(np.median(img[valid], axis=0), img.shape).astype(np.float64)
     out = np.where(hole[..., None], out + grain * gain, img)
@@ -135,7 +140,21 @@ mouth_ink = np.zeros((H, W), bool)
 mouth_ink[sc(MOUTH_BOX[1]):sc(MOUTH_BOX[3]), sc(MOUTH_BOX[0]):sc(MOUTH_BOX[2])] = True
 mouth_ink &= lum < 48  # тушь (~22), не мех (~63)
 mouth_hole = ndi.binary_dilation(mouth_ink, iterations=4 * S)
-head_rgb = clone(rgb, eye_hole | mouth_hole, FUR_OK & ~eye_hole & ~mouth_hole, tex=(570, 250, 660, 340))  # зерно — мех лба
+head_rgb = clone(rgb, eye_hole | mouth_hole, FUR_OK & ~eye_hole & ~mouth_hole, tex=(572, 236, 658, 326), texr=12)  # мазки и зерно — чистый мех лба (без туши)
+# Мех под глазами — из кадра «глаза закрыты», сгенерированного по оригиналу (gen_frames.py →
+# align_gen.py → upscale.py → matte.py): там под глазами настоящий мех этого же рисунка. Тонкие дуги
+# закрытых глаз в нём латаются клоном (узкие — клон идеален), а не весь глаз.
+EYESC = os.path.join(ROOT, 'design/mascot/export/eyes-closed%s.png' % ('' if S == 1 else f'@{S}x'))
+if os.path.exists(EYESC):
+    ec = np.asarray(Image.open(EYESC).convert('RGBA')).astype(np.float32)
+    ec_rgb, ec_lum = ec[..., :3], ec[..., :3].mean(2)
+    arcs = eye_hole & (ec_lum < 75)
+    arcs = ndi.binary_dilation(arcs, iterations=3 * S)
+    ec_fur = (ec[..., 3] > 240) & (ec_lum > 40) & (ec_lum < 120) & (np.abs(ec_rgb[..., 0] - ec_rgb[..., 2]) < 22)
+    ec_rgb = clone(ec_rgb, arcs, ec_fur & ~arcs, tex=(572, 236, 658, 326), texr=6)
+    f = soft(ndi.binary_erosion(eye_hole, iterations=4 * S), 3)[..., None]
+    head_rgb = head_rgb * (1 - f) + ec_rgb * f
+    print('eye patch from generated eyes-closed frame')
 _w = np.clip(eye_blend, 0, 1)
 head_rgb = np.where((eye_hole & ~mouth_hole)[..., None], head_rgb * _w[..., None] + rgb * (1 - _w[..., None]), head_rgb)
 add('head', head_rgb, alpha * HEAD * notail * (1 - EAR_CUT), 9)

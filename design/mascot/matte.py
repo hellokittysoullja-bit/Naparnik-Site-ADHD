@@ -47,7 +47,7 @@ fg=np.clip((im-(1-a3)*1.0)/a3,0,1)              # распремножение �
 fg=np.where(alpha[...,None]>0.02,fg,im)
 # 3. попиксельно: всё, что у кромки осталось светло-серым (бумага между волосками) → ближайший плотный мех
 edge=ndi.distance_transform_edt(alpha>0.1)<=14*S
-lg=((fg.mean(2)>0.55)&(sat<0.15)&edge&(alpha>0.02))&~in_eye
+lg=((fg.mean(2)>0.45)&(sat<0.15)&edge&(alpha>0.02))&~in_eye
 donor=(alpha>0.95)&(fg.mean(2)<0.5)&(fg.mean(2)>0.12)&(sat<0.2)&~ndi.binary_dilation(lg,iterations=2*S)
 idx=ndi.distance_transform_edt(~donor,return_distances=False,return_indices=True)
 fg[lg]=fg[idx[0][lg],idx[1][lg]]
