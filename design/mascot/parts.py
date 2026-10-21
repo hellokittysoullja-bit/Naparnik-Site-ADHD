@@ -174,7 +174,10 @@ for k, (cx, cy) in EYES.items():
     sat_ = rgb.max(2) - rgb.min(2)
     ink_px = zone & (lum < 120) & ~((sat_ > 60) & (rgb[..., 0] > rgb[..., 1] + 30))
     ring_a = soft(ndi.binary_dilation(ink_px, iterations=S), 0.6) * zone
-    add('ring_' + k, rgb, alpha * ring_a, 13)
+    # зеленоватый антиалиас у внутреннего края — в цвет туши: при смыкании он не даёт зелёной кромки
+    ink_c = np.percentile(rgb[ink_px & (lum < 60)], 30, axis=0)
+    ring_rgb = np.where((((rgb[..., 1] > rgb[..., 0] + 15) | (lum > 95)) & zone)[..., None], ink_c, rgb)
+    add('ring_' + k, ring_rgb, alpha * ring_a, 13)
     add('iris_' + k, fill_rgb, alpha * soft(ell(cx, cy, RX - 3, RY - 3), 0.7), 10)
     pupil_rgb = np.where(ndi.binary_dilation(shine, iterations=S)[..., None], rgb[pupil & ~shine].mean(0), rgb)
     add('pupil_' + k, pupil_rgb, soft(ndi.binary_dilation(pupil | shine, iterations=S) & inner, 0.8), 11)
@@ -211,7 +214,19 @@ r_, a_ = stroke(lambda d: d.arc([sc(mx - 24), sc(my - 4), sc(mx + 24), sc(my + 2
 arm_hole = ARM > 0.5
 pawR_hole = PAW_R > 0.5
 body_rgb = clone(rgb, arm_hole | pawR_hole, FUR_OK & ~arm_hole & ~pawR_hole & (BODY_ZONE > 0.5), tex=(600, 600, 740, 740))  # зерно — мех живота
-add('body', body_rgb, alpha * notail * BODY_ZONE * (1 - PAW_R), 4)
+body_alpha = alpha.copy()
+# Мех тела под поднятой лапой — не клон, а кадр, сгенерированный по оригиналу с поднятой лапой
+# (gen_frames.py «wave-pose» → align_gen.py → upscale.py → matte.py): настоящий мех и настоящий
+# край силуэта там, где в оригинале была лапа. Верх зоны (под грудкой) остаётся клоном.
+WAVE = os.path.join(ROOT, 'design/mascot/export/wave-pose%s.png' % ('' if S == 1 else f'@{S}x'))
+if os.path.exists(WAVE):
+    wv = np.asarray(Image.open(WAVE).convert('RGBA')).astype(np.float32)
+    zone_m = (ARM > 0.5) & (yy > sc(596))
+    f = soft(zone_m, 3)[..., None]
+    body_rgb = body_rgb * (1 - f) + wv[..., :3] * f
+    body_alpha = alpha * (1 - f[..., 0]) + (wv[..., 3] / 255) * f[..., 0]
+    print('body patch from generated wave pose')
+add('body', body_rgb, body_alpha * notail * BODY_ZONE * (1 - PAW_R), 4)
 add('paw_R', rgb, alpha * PAW_R, 5)
 # нога: столбик над лапкой дорисован мехом тела (под грудкой), лапка — родная
 leg_zone = ARM * (1 - PAW_L)

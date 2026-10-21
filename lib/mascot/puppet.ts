@@ -310,25 +310,51 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
   const eyes: Record<"L" | "R", Eye> = {} as Record<"L" | "R", Eye>;
   // состояние век на кадр: open 0..1, slant (наклон, внешний угол вниз при >0), happy — схлопывание к верхней дуге
   const lidState = { L: { open: 1, slant: 0, happy: 0 }, R: { open: 1, slant: 0, happy: 0 } };
+  /* Сплющивание глаза с постоянным весом штриха: точка раскладывается на положение вдоль
+     ОСЕВОЙ линии контура (угол) и отступ от неё (толщина). Осевая линия сжимается к линии
+     закрытия (нижняя треть; для «^» — верхняя), отступ возвращается по нормали сжатой кривой —
+     штрих не истончается, закрытый глаз = та же тушь одной толстой дугой. */
   const squash = (k: "L" | "R", x: number, y: number, out: { x: number; y: number }) => {
     const e = eyes[k];
     const st = lidState[k];
     const [cx, cy] = e.c;
+    const am = (e.rx + e.orx) / 2; // полуоси осевой линии штриха
+    const bm = (e.ry + e.ory) / 2;
+    const nx = (x - cx) / am;
+    const ny = (y - cy) / bm;
+    const r = Math.hypot(nx, ny) || 1e-6;
+    const th = Math.atan2(ny, nx);
+    const d = (r - 1) * ((am + bm) / 2); // отступ от осевой линии, px рисунка
+    const px = cx + Math.cos(th) * am;
+    const py = cy + Math.sin(th) * bm;
     const sl = st.slant * (k === "L" ? -1 : 1); // внешний угол: у L — слева, у R — справа
-    const kk = clamp(st.open + sl * ((x - cx) / e.orx), 0.02, 1);
-    // якорь — ВНУТРЕННИЙ край штриха: сам штрих (между внутренним и внешним краем) остаётся
-    // толстой дугой, а всё остальное схлопывается на него. Закрытый глаз = дуга той же туши.
-    if (st.happy > 0.001) {
-      // счастливый прищур «^»: всё, что ниже верхней дуги, подтягивается к ней
-      const top = cy - e.ry;
-      const kh = clamp(1 - st.happy, 0.02, 1);
-      out.x = x;
-      out.y = y <= top ? y : top + (y - top) * kh;
-      return;
-    }
-    const anchor = cy + e.ry; // нижняя дуга контура остаётся на месте
-    out.x = x;
-    out.y = y >= anchor ? y : anchor - (anchor - y) * kk;
+    const happy = st.happy > 0.001;
+    const open = happy ? 1 - st.happy : st.open;
+    const kk = clamp(open + sl * ((px - cx) / am), 0, 1);
+    // линия закрытия: нижняя треть (верхнее веко опускается), для «^» — верхняя треть
+    const yA = happy ? cy - 0.6 * bm : cy + 0.6 * bm;
+    const moving = happy ? py > yA : py < yA; // половина, которая едет к линии закрытия
+    const ks = 1 - 0.45 * (1 - kk); // «стоящая» половина чуть распрямляется, дуга остаётся
+    const qy = moving ? yA + (py - yA) * kk : yA + (py - yA) * ks;
+    const kEff = Math.max(moving ? kk : ks, 0.04);
+    // нормаль сжатого эллипса: n ∝ (cos/a, sin/(b·k))
+    const nnx = Math.cos(th) / am;
+    const nny = Math.sin(th) / (bm * kEff);
+    const nl = Math.hypot(nnx, nny) || 1e-6;
+    out.x = px + (d * nnx) / nl;
+    out.y = qy + (d * nny) / nl;
+  };
+  /** та же деформация для маски: внутренний край штриха, при закрытии — пусто */
+  const squashMask = (k: "L" | "R", x: number, y: number, out: { x: number; y: number }) => {
+    // радужка прячется чуть раньше, чем штрихи сомкнутся: щели между веками не бывает
+    const st = lidState[k];
+    const open = st.happy > 0.001 ? 1 - st.happy : st.open;
+    const saved = { open: st.open, happy: st.happy };
+    const m = clamp((open - 0.2) / 0.8, 0, 1);
+    if (st.happy > 0.001) st.happy = 1 - m; else st.open = m;
+    squash(k, x, y, out);
+    st.open = saved.open; st.happy = saved.happy;
+    if (m <= 0) { out.x = eyes[k].c[0]; out.y = eyes[k].c[1]; } // вырожденный полигон — радужки не видно
   };
   for (const k of ["L", "R"] as const) {
     const e = rig.eyes[k];
@@ -357,9 +383,9 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
       const N = 40;
       for (let i = 0; i <= N; i++) {
         const a = (i / N) * Math.PI * 2;
-        const x = e.c[0] + Math.cos(a) * (e.rx + 1);
-        const y = e.c[1] + Math.sin(a) * (e.ry + 1);
-        squash(k, x, y, maskPt);
+        const x = e.c[0] + Math.cos(a) * (e.rx + 2);
+        const y = e.c[1] + Math.sin(a) * (e.ry + 2);
+        squashMask(k, x, y, maskPt);
         const wx = m.a * maskPt.x + m.c * maskPt.y + m.tx;
         const wy = m.b * maskPt.x + m.d * maskPt.y + m.ty;
         if (i === 0) g.moveTo(wx, wy); else g.lineTo(wx, wy);

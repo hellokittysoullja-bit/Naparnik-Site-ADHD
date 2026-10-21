@@ -2,7 +2,7 @@
 # (веса x4plus_anime_6B — для рисованной графики), на CPU, без зависимостей basicsr/realesrgan:
 # архитектура RRDBNet записана здесь целиком. Увеличивается ОРИГИНАЛ на белом, потом
 # вырезка matte.py при S=4 — иначе SR размажет альфу и цвета кромки.
-#   python3 design/mascot/upscale.py <RealESRGAN_x4plus_anime_6B.pth> → design/mascot/export/reference@4x.png
+#   python3 design/mascot/upscale.py <RealESRGAN_x4plus_anime_6B.pth> [вход.png] [выход.png]  (по умолчанию reference → export/reference@4x.png)
 import os, sys, numpy as np, torch, torch.nn as nn, torch.nn.functional as F
 from PIL import Image
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -38,7 +38,9 @@ class RRDBNet(nn.Module):
 
 sd = torch.load(sys.argv[1], map_location='cpu'); sd = sd.get('params_ema', sd.get('params', sd))
 net = RRDBNet(); net.load_state_dict(sd, strict=True); net.eval()
-im = np.asarray(Image.open(os.path.join(ROOT, 'design/mascot/reference.png')).convert('RGB')).astype(np.float32) / 255
+SRC = sys.argv[2] if len(sys.argv) > 2 else os.path.join(ROOT, 'design/mascot/reference.png')
+DST = sys.argv[3] if len(sys.argv) > 3 else os.path.join(ROOT, 'design/mascot/export/reference@4x.png')
+im = np.asarray(Image.open(SRC).convert('RGB')).astype(np.float32) / 255
 H, W, _ = im.shape; T, P = 256, 16  # тайлы с нахлёстом, чтобы не съесть память
 out = np.zeros((H * 4, W * 4, 3), np.float32)
 x = torch.from_numpy(im).permute(2, 0, 1)[None]
@@ -50,5 +52,5 @@ with torch.no_grad():
             o = net(x[:, :, py0:py1, px0:px1])[0].permute(1, 2, 0).numpy()
             out[y0 * 4:y1 * 4, x0 * 4:x1 * 4] = o[(y0 - py0) * 4:(y1 - py0) * 4, (x0 - px0) * 4:(x1 - px0) * 4]
         print('row', y0, flush=True)
-Image.fromarray((np.clip(out, 0, 1) * 255).round().astype(np.uint8)).save(os.path.join(ROOT, 'design/mascot/export/reference@4x.png'))
+Image.fromarray((np.clip(out, 0, 1) * 255).round().astype(np.uint8)).save(DST)
 print('ok', out.shape)
