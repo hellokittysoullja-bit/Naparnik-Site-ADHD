@@ -31,6 +31,7 @@ EAR_L = dict(base=(318, 255), tip=(215, 95), r=135)
 EAR_R = dict(base=(690, 220), tip=(805, 25), r=150)
 TAIL = [(850, 862), (1000, 896), (1150, 880), (1262, 800), (1300, 690), (1262, 585), (1180, 525), (1088, 492)]
 FLAME_BASE = (1085, 475)
+CURL = (1120, 600, 95)          # центр и радиус завитка хвоста
 NOSE = (545, 526)
 MOUTH = (545, 576)
 CHEEK_ROI = ((215, 495, 335, 590), (755, 495, 875, 590))
@@ -104,11 +105,22 @@ def eye_parts(rgba, eyes, H, W):
         irimg[..., :3][pm] = fill[pm]
         # зрачок — спрайт: чёрный + его край; блик — белый
         soft = lambda m, r=1.2: ndi.gaussian_filter(m.astype(np.float32), r)
-        pup = np.zeros_like(rgba); pa = soft(pupil | (ndi.binary_closing(pupil, iterations=6) & ~hl)) * iris
+        # зрачок — целиком, вместе с местом под бликом: блик рисуется отдельным слоем и стоит на месте, а
+        # зрачок под ним ходит; если вырезать блик из зрачка, при взгляде в сторону в зрачке видна «выемка»
+        # форма зрачка — выпуклая оболочка тёмной области: «укус» блика заполняется, а сам блик (он выступает за
+        # край зрачка на радужку) в зрачок не попадает — иначе на зрачке остаётся горб
+        hull = cv2.convexHull(np.argwhere(pupil)[:, ::-1].astype(np.int32))
+        pmask = np.zeros((H, W), np.uint8); cv2.fillConvexPoly(pmask, hull, 1)
+        pup = np.zeros_like(rgba); pa = soft(pmask.astype(bool)) * iris
         pup[..., :3] = np.array([12, 12, 14]); pup[..., 3] = pa * 255
         hli = np.zeros_like(rgba); hli[..., :3] = 252; hli[..., 3] = soft(hl, 0.9) * 255
-        eye = np.zeros_like(rgba); eye[..., :3] = irimg[..., :3]; eye[..., 3] = soft(whole, 0.8) * 255
-        parts.append(dict(c=(cx, cy), r=(rx, ry), whole=whole, eye=eye, pupil=pup, hl=hli))
+        # рыжие полоски щёк, заходящие в рамку глаза, остаются у тела: иначе при моргании сплющиваются вместе с глазом
+        f = rgba[..., :3].astype(np.int32)
+        stripe = (f[..., 0] > 190) & (f[..., 1] > 90) & (f[..., 1] < 175) & (f[..., 2] < 100) & (f[..., 0] - f[..., 1] > 50)
+        stripe = ndi.binary_dilation(stripe & ~iris, iterations=2) & ~iris
+        eye = np.zeros_like(rgba); eye[..., :3] = irimg[..., :3]; eye[..., 3] = soft(whole & ~stripe, 0.8) * 255
+        parts_stripe = stripe
+        parts.append(dict(c=(cx, cy), r=(rx, ry), whole=whole & ~parts_stripe, eye=eye, pupil=pup, hl=hli))
     return parts
 
 
@@ -236,7 +248,11 @@ def split_tail(rgba, H, W):
     """Хвост — связная плотная область справа от основания (не прямоугольник: усы заканчиваются в просвете между
     головой и хвостом, и прямоугольник отдавал их кончики хвосту — при качании хвоста усы рвались). Плотная маска
     сжимается на 3 px (тонкие усы отрываются), берётся компонента хвоста и наращивается обратно на 5 px по рисунку.
-    Огонёк — верх этой компоненты."""
+
+    Огонёк — по форме пламени (яркое ядро + обводка), а не полосой «всё выше y»: полоса срезала верх хвоста, и при
+    качании срезанный кусок уезжал с огоньком — тёмный клин. Слои ПЕРЕКРЫВАЮТСЯ, а не стыкуются встык: хвост
+    заходит под тело на 14 px и под основание огонька на 8 px. Встык два слоя со сглаженными краями дают на шве
+    тонкую линию фона даже в покое (покрытие a1 + a2(1 - a1) < 1)."""
     YY, XX = np.mgrid[0:H, 0:W]
     al = rgba[..., 3] > 0
     solid = rgba[..., 3] > 200
@@ -245,8 +261,21 @@ def split_tail(rgba, H, W):
     lab, _ = ndi.label(er)
     T = lab == lab[TAIL[2][1], TAIL[2][0]]
     T = ndi.binary_dilation(T, iterations=5) & al & ~((XX < 852) & (YY > 760))
-    flame = T & (YY < 482)
-    return T & ~flame, flame
+    f = rgba[..., :3].astype(np.int32); lum = f.mean(2)
+    core = (f[..., 0] > 200) & (lum > 150) & (YY < 480) & (XX > 990) & al
+    lab, n = ndi.label(core)
+    if n:
+        core = lab == (1 + int(np.argmax(ndi.sum(core, lab, range(1, n + 1)))))
+    F = ndi.binary_fill_holes(ndi.binary_dilation(core, iterations=9)) & al & (YY < 492)
+    fys = np.nonzero(F)[0]; fbot = fys.max() if len(fys) else 0
+    under_body = al & (XX >= 838) & (XX < 852) & (YY >= 770)
+    body_cut = (T | F) & ~under_body
+    # нижние слои заходят на 3 px под верхние по всему шву: верхний слой кончается жёстко над непрозрачным нижним,
+    # и при билинейной выборке линии фона на шве нет. Под огоньком хвост — только у основания (внутренность огонька
+    # не дублируется в хвосте, иначе при качании огонька под ним был бы виден второй огонёк)
+    tail = ndi.binary_dilation(T | under_body, iterations=3) & al & ~(ndi.binary_erosion(F, iterations=3) & (YY < fbot - 8))
+    flame = ndi.binary_dilation(F, iterations=3) & al
+    return tail, flame, body_cut
 
 
 def grid_mesh(alpha, step, weights_fn, box_pad=4):
@@ -299,10 +328,10 @@ def main():
     box = (cx - side // 2, cy - side // 2, cx - side // 2 + side, cy - side // 2 + side)
     fur = lama_fill(N[..., :3], hide, model, box)
     body = N.copy(); body[..., :3] = fur
-    tail_m, flame_m = split_tail(N, H, W)
+    tail_m, flame_m, body_cut = split_tail(N, H, W)
     tail = N.copy(); tail[..., 3] *= tail_m
     flame = N.copy(); flame[..., 3] *= flame_m
-    body[..., 3] = np.where(tail_m | flame_m, 0, body[..., 3])
+    body[..., 3] = np.where(body_cut, 0, body[..., 3])
 
     hp = happy_patch(N, eyes, H, W)
     sp, dy = sleep_patch(N, eyes, H, W)
@@ -344,8 +373,13 @@ def main():
         _, i, t = best
         s = (seg[i] + t * (seg[i + 1] - seg[i])) / seg[-1]       # доля длины хвоста
         if s < .04: return {B["chest"]: 1.0}
-        k = min(i, len(P) - 2)
-        return {B[f"tail{k}"]: 1 - t * .5, B[f"tail{k + 1}"]: t * .5}
+        # внутренность завитка (вокруг его центра) — последней кости: по ближайшему отрезку она попадала на внешнюю
+        # дугу, и при качании завиток складывался клином
+        if np.hypot(x - CURL[0], y - CURL[1]) < CURL[2]:
+            return {B[f"tail{len(P) - 1}"]: 1.0}
+        # вес непрерывен через сустав: в опоре кости k — целиком кость k, к опоре k+1 — целиком k+1
+        # (прежние 1 - t/2 и t/2 давали разрыв весов на каждом суставе — хвост мялся)
+        return {B[f"tail{i}"]: 1 - t, B[f"tail{i + 1}"]: t}
 
     def head_w(x, y): return {B["head"]: 1.0}
     def flame_w(x, y): return {B["flame"]: 1.0}
@@ -373,7 +407,8 @@ def main():
         crop[sy0 - y0:sy1 - y0, sx0 - x0:sx1 - x0] = img[sy0:sy1, sx0:sx1]
         for k in range(0, len(verts), 12):
             verts[k + 2] = round((verts[k] - x0) / (x1 - x0), 5); verts[k + 3] = round((verts[k + 1] - y0) / (y1 - y0), 5)
-        tw_, th_ = max(1, int(round((x1 - x0) * TEX_SCALE))), max(1, int(round((y1 - y0) * TEX_SCALE)))
+        sc = TEX_SCALE if name in ("body", "tail") else 1.0       # глаза, рот, огонёк — в полном разрешении (резкость)
+        tw_, th_ = max(1, int(round((x1 - x0) * sc))), max(1, int(round((y1 - y0) * sc)))
         # премультиплицированная выборка при уменьшении, затем обратно (без ореола на краях)
         pm = crop.copy(); pm[..., :3] *= pm[..., 3:4] / 255
         small = cv2.resize(pm, (tw_, th_), interpolation=cv2.INTER_AREA)
@@ -387,7 +422,10 @@ def main():
     add("body", body, body_w, GRID["body"])
     for side, e in zip(("l", "r"), ep):
         cx, cy = e["c"]; rx, ry = e["r"]
-        eb = (int(cx - rx - 22), int(cy - ry - 22), int(cx + rx + 23), int(cy + ry + 23))   # общая рамка частей глаза
+        # общая рамка частей глаза; по высоте она симметрична относительно опоры века (cy + 0.24 ry): движок сжимает
+        # часть к центру её рамки, и глаз при моргании сходится к линии века, а не к середине (как у куклы в роликах)
+        ly = cy + 0.24 * ry; hh = ry + 22 + 0.24 * ry
+        eb = (int(cx - rx - 22), int(ly - hh), int(cx + rx + 23), int(ly + hh + 1))
         add(f"eye-{side}", e["eye"], head_w, None, eb)
         add(f"pupil-{side}", e["pupil"], head_w, None, eb)
         add(f"hl-{side}", e["hl"], head_w, None, eb)

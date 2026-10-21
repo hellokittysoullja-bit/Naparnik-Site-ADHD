@@ -10,7 +10,8 @@ import type { PartState, RigData } from "./types";
  */
 export type DollExpression = "calm" | "happy" | "focused" | "sleepy" | "excited" | "listening";
 export type DollAction = "idle" | "wave" | "think" | "celebrate";
-export type DollFx = { kind: "stars" | "zzz"; k: number; t0: number } | null;
+export type DollFxItem = { kind: "stars" | "zzz"; k: number; t0: number };
+export type DollFx = DollFxItem[];
 
 const D2R = Math.PI / 180;
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
@@ -28,6 +29,17 @@ function noise(x: number, seed: number) {
 /** fBm: без периода, хвост и огонёк не повторяются */
 export function fbm(x: number, seed: number) {
   return (noise(x, seed) + 0.5 * noise(x * 2.03, seed + 7) + 0.25 * noise(x * 4.1, seed + 13)) / 1.75 * 1.9;
+}
+
+/** Детерминированный генератор (mulberry32): с одним зерном кот двигается одинаково — проверка повторяема */
+function rng(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 class Spring {
@@ -52,7 +64,14 @@ export class DollAnimator {
   action: DollAction = "idle";
   gaze: { x: number; y: number } | null = null;
   reduced = false;
-  fx: DollFx = null;
+  fx: DollFx = [];
+  private rand: () => number;
+  private lively = 1;
+  private starsK = 0;
+  private zzzK = 0;
+  private starsT0 = 0;
+  private zzzT0 = 0;
+  private pokeAt = -9;
 
   t = 0;
   private gx = new Spring(150, 17);
@@ -64,17 +83,18 @@ export class DollAnimator {
   private hop = new Spring(140, 10);
   private happyK = 0;
   private sleepK = 0;
-  private faceStart = { happy: -9, sleep: -9 };
   private blinks: number[] = [];
-  private nextBlink = 1.2 + Math.random() * 2;
-  private earAt = 3 + Math.random() * 4;
-  private glanceAt = 2 + Math.random() * 3;
+  private nextBlink = 1.2;
+  private earAt = 3;
+  private glanceAt = 2;
   private glanceUntil = -1;
   private glance = 0;
   private hopAt = -9;
   private waveAt = -9;
 
-  constructor(rig: RigData & { eyes?: number[][] }) {
+  constructor(rig: RigData & { eyes?: number[][] }, seed = Math.floor(Math.random() * 2 ** 31)) {
+    this.rand = rng(seed);
+    this.nextBlink = 1.2 + this.rand() * 2; this.earAt = 3 + this.rand() * 4; this.glanceAt = 2 + this.rand() * 3;
     this.pose = new Pose(rig);
     rig.bones.forEach((b, i) => (this.B[b.name] = i));
     for (let i = 0; this.B[`tail${i}`] !== undefined; i++) this.tail.push(this.B[`tail${i}`]);
@@ -92,7 +112,7 @@ export class DollAnimator {
 
   /** касание: присед с отскоком, уши, быстрое моргание */
   poke() {
-    this.squash.v = -30;
+    this.pokeAt = this.t;                      // присед: цель на 90 мс вниз, пружина возвращает с перелётом (без рывка за кадр)
     this.earL.v -= 260; this.earR.v += 260;
     this.blinks.push(this.t + 0.05);
   }
@@ -114,18 +134,15 @@ export class DollAnimator {
 
     // ----- лицо: переходы веселого 0.3 с, сна 0.7 с; в reduced motion — сразу
     const stepK = (k: number, on: boolean, dur: number) => (still ? (on ? 1 : 0) : clamp01(k + (on ? dt : -dt) / dur));
-    const hk0 = this.happyK, sk0 = this.sleepK;
     this.happyK = stepK(this.happyK, f.happy, 0.3);
     this.sleepK = stepK(this.sleepK, f.sleep, 0.7);
-    if (hk0 === 0 && this.happyK > 0) this.faceStart.happy = t;
-    if (sk0 === 0 && this.sleepK > 0) this.faceStart.sleep = t;
     const hk = sm(this.happyK), sk = this.sleepK;
 
     // ----- моргание: вниз 80 мс, пауза 50, вверх 170 (как у куклы в роликах); иногда двойное
     if (!still && t >= this.nextBlink) {
       this.blinks.push(t);
-      if (Math.random() < 0.15) this.blinks.push(t + 0.32);
-      this.nextBlink = t + 2.5 + Math.random() * 3;
+      if (this.rand() < 0.15) this.blinks.push(t + 0.32);
+      this.nextBlink = t + 2.5 + this.rand() * 3;
     }
     this.blinks = this.blinks.filter((b) => t - b < 0.4);
     let lid = 0;
@@ -136,13 +153,15 @@ export class DollAnimator {
       else if (d >= 0.13 && d < 0.3) lid = Math.max(lid, 1 - sm((d - 0.13) / 0.17));
     }
     lid = Math.max(lid, sm(Math.min(1, sk * 2)));                 // в сон: веки смыкаются первыми
-    const eyesGone = sk > 0.66;
+    // глаза уходят под дуги плавно: веко сомкнуто к sk 0.5, сплющенный глаз и штрих века гаснут на 0.45–0.66,
+    // пока дуги проявляются (0.4–0.65) — ни на одном кадре нет ни «пустого» лица, ни скачка
+    const eyeFade = 1 - sm((sk - 0.45) / 0.21);
 
     // ----- взгляд
     if (!still && !this.gaze && t > this.glanceAt) {
-      this.glance = [-0.7, -0.4, 0.4, 0.7][Math.floor(Math.random() * 4)];
-      this.glanceUntil = t + 1 + Math.random() * 1.2; this.glanceAt = this.glanceUntil + 2.5 + Math.random() * 3;
-      if (Math.abs(this.glance) >= 0.6) this.blinks.push(t - 0.02);   // большой перевод взгляда — под веком
+      this.glance = [-0.7, -0.4, 0.4, 0.7][Math.floor(this.rand() * 4)];
+      this.glanceUntil = t + 1 + this.rand() * 1.2; this.glanceAt = this.glanceUntil + 2.5 + this.rand() * 3;
+      if (Math.abs(this.glance) >= 0.6) this.blinks.push(t);   // большой перевод взгляда — под веком
     }
     const g = this.gaze ?? { x: t < this.glanceUntil ? this.glance : 0, y: 0 };
     this.gx.target = Math.max(-1, Math.min(1, g.x)); this.gy.target = Math.max(-1, Math.min(1, g.y));
@@ -155,18 +174,21 @@ export class DollAnimator {
     P.rot[B.head] = (tilt - 3.4 * sm(sk)) * D2R;
 
     // ----- уши: подёргивание раз в 6–11 с (и на касание)
-    if (!still && t > this.earAt) { (Math.random() < 0.5 ? this.earL : this.earR).v += Math.random() < 0.5 ? -230 : 230; this.earAt = t + 6 + Math.random() * 5; }
+    if (!still && t > this.earAt) { (this.rand() < 0.5 ? this.earL : this.earR).v += this.rand() < 0.5 ? -230 : 230; this.earAt = t + 6 + this.rand() * 5; }
     P.rot[B["ear-l"]] = (still ? 0 : this.earL.step(dt)) * D2R * 0.6;
     P.rot[B["ear-r"]] = (still ? 0 : this.earR.step(dt)) * D2R * 0.6;
 
     // ----- хвост: бегущая волна по цепочке, огонёк держится вертикально
-    const lively = this.action === "celebrate" ? 1.8 : f.happy ? 1.3 : f.sleep ? 0.45 : 1;
+    // амплитуда проверена крайними позами: при 4° на звено завиток мнётся; потолок ~1.6° на звено (≈10° на хвост)
+    const livelyT = this.action === "celebrate" ? 1.35 : f.happy ? 1.15 : f.sleep ? 0.45 : 1;
+    this.lively += (livelyT - this.lively) * Math.min(1, dt * 1.5);       // смена настроения — плавно, не скачком хвоста
+    const lively = this.lively;
     let acc = 0;
     this.tail.forEach((bi, i) => {
-      const a = still ? 0 : 1.6 * lively * Math.tanh(fbm(t / 3.1 - i * 0.18, 53)) * (0.4 + i / this.tail.length);
+      const a = still ? 0 : 1.15 * lively * Math.tanh(fbm(t / 3.1 - i * 0.18, 53)) * (0.4 + i / this.tail.length);
       P.rot[bi] = a * D2R; acc += a;
     });
-    P.rot[B.flame] = -acc * 0.8 * D2R;
+    P.rot[B.flame] = -acc * 0.5 * D2R;             // огонёк тянется вверх, но держится за кончик хвоста
     const fl = this.parts.get("flame")!;
     fl.sx = 1 + (still ? 0 : 0.05 * fbm(t * 3.7, 23)); fl.sy = 1 + (still ? 0 : 0.08 * fbm(t * 4.1, 37));
     fl.dx = still ? 0 : 2.5 * fbm(t * 2.3, 11);
@@ -178,32 +200,55 @@ export class DollAnimator {
     this.hop.target = !still && hopT >= 0 && hopT < 0.32 ? -70 : 0;
     if (!still && this.action === "celebrate" && hopT > 2.2) this.hopAt = t;
     P.ty[B.root] = still ? 0 : this.hop.step(dt);
+    this.squash.target = !still && t - this.pokeAt >= 0 && t - this.pokeAt < 0.09 ? -14 : 0;
     const sq = still ? 0 : this.squash.step(dt);
     P.sy[B.root] *= 1 + sq * 0.02; P.sx[B.root] *= 1 - sq * 0.01;
 
     // ----- глаза
     const R = this.eyeR;
     for (const s of ["l", "r"]) {
-      const eyeOp = eyesGone ? 0 : 1;
+      const eyeOp = eyeFade;
       const sy = Math.max(0.03, 1 - lid * 0.97);
       for (const n of [`eye-${s}`, `hl-${s}`]) { const p = this.parts.get(n)!; p.opacity = eyeOp; p.sy = sy; p.dx = 0; p.dy = 0; }
       const pu = this.parts.get(`pupil-${s}`)!;
       pu.opacity = eyeOp; pu.sy = sy; pu.sx = 1;
       pu.dx = lx * R * 0.26; pu.dy = ly * R * 0.2 * sy;
       const ld = this.parts.get(`lid-${s}`)!;
-      ld.opacity = eyesGone ? 0 : sm((lid - 0.7) / 0.3);
+      ld.opacity = eyeFade * sm((lid - 0.7) / 0.3);
     }
     this.parts.get("happy")!.opacity = hk * (1 - sm(sk * 3));
     this.parts.get("sleep")!.opacity = sm((sk - 0.4) / 0.25);
 
-    // ----- эффекты: звёздочки у радости, Z у сна (у «слушает» глаза закрыты, но Z нет)
-    if (this.sleepK > 0.02 && f.z) this.fx = { kind: "zzz", k: sm(this.sleepK), t0: this.faceStart.sleep + 0.4 };
-    else if (this.happyK > 0.02 && (this.expression === "excited" || this.expression === "happy" || this.action === "celebrate"))
-      this.fx = { kind: "stars", k: hk, t0: this.faceStart.happy };
-    else this.fx = null;
+    // ----- эффекты: звёздочки у радости, Z у сна (у «слушает» глаза закрыты, но Z нет); появляются и гаснут
+    // плавно (0.4 с), а не исчезают за кадр при смене настроения
+    const wantStars = this.expression === "excited" || this.expression === "happy" || this.action === "celebrate";
+    const wantZ = f.z;
+    const ramp = (k: number, on: boolean) => (still ? (on ? 1 : 0) : clamp01(k + (on ? dt : -dt) / 0.4));
+    if (this.starsK === 0 && wantStars) this.starsT0 = t;
+    if (this.zzzK === 0 && wantZ) this.zzzT0 = t + 0.4;
+    this.starsK = ramp(this.starsK, wantStars); this.zzzK = ramp(this.zzzK, wantZ);
+    this.fx = [];
+    if (this.starsK > 0) this.fx.push({ kind: "stars", k: sm(this.starsK), t0: this.starsT0 });
+    if (this.zzzK > 0) this.fx.push({ kind: "zzz", k: sm(this.zzzK), t0: this.zzzT0 });
 
     P.update();
   }
+}
+
+/** Мягкая контактная тень под лапами (как у прежнего кота): рисуется ПОД котом, в прыжке меньше и светлее. */
+export function drawDollShadow(ctx: CanvasRenderingContext2D, a: DollAnimator, cat: number[], view: number[], w: number, h: number) {
+  const [vx, vy, vw, vh] = view;
+  const lift = Math.max(0, -a.pose.ty[0]) / 90;
+  const cx = (cat[0] + cat[2] * 0.62) / 1.62, cy = cat[3] - 8, rx = (cat[2] - cat[0]) * 0.36 * (1 - 0.25 * lift), ry = 26 * (1 - 0.25 * lift);
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-over";
+  ctx.setTransform(w / vw, 0, 0, h / vh, (-vx * w) / vw, (-vy * h) / vh);
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx);
+  g.addColorStop(0, `rgba(0,0,0,${0.32 * (1 - 0.5 * lift)})`); g.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = g;
+  ctx.translate(cx, cy); ctx.scale(1, ry / rx); ctx.translate(-cx, -cy);
+  ctx.beginPath(); ctx.arc(cx, cy, rx, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------- звёздочки и Z (Canvas 2D, координаты рисунка)
@@ -233,14 +278,17 @@ function star(ctx: CanvasRenderingContext2D, x: number, y: number, R: number, ro
 
 /** Нарисовать звёздочки или Z поверх кота. view — окно рисунка (как у рига), w x h — пиксели холста. */
 export function drawDollFx(ctx: CanvasRenderingContext2D, fx: DollFx, t: number, view: number[], w: number, h: number) {
-  if (!fx) return;
+  for (const f of fx) drawFxItem(ctx, f, t, view, w, h);
+}
+
+function drawFxItem(ctx: CanvasRenderingContext2D, fx: DollFxItem, t: number, view: number[], w: number, h: number) {
   const [vx, vy, vw, vh] = view;
   ctx.save();
   ctx.setTransform(w / vw, 0, 0, h / vh, (-vx * w) / vw, (-vy * h) / vh);
   ctx.fillStyle = FX_COLOR; ctx.strokeStyle = FX_COLOR; ctx.lineCap = "round"; ctx.lineJoin = "round";
   const tt = t - fx.t0;
   if (fx.kind === "stars") {
-    const pop = easeBack(fx.k * 1.15);
+    const pop = easeBack(fx.k);
     for (const [x, y, R, ph, per, dph] of STARS) {
       const tw = 0.55 + 0.45 * Math.sin(Math.PI * (tt / per + ph)) ** 2;
       const dy = 6 * Math.sin(2 * Math.PI * (tt / 3.1 + dph)), dx = 4 * Math.sin(2 * Math.PI * (tt / 4.3 + dph));

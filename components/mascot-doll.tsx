@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
 import { MascotSvg, type MascotAction, type MascotExpression } from "@/components/mascot-svg";
-import { DollAnimator, drawDollFx, type DollAction } from "@/lib/rig/doll";
+import { DollAnimator, drawDollFx, drawDollShadow, type DollAction } from "@/lib/rig/doll";
 import { RigRenderer } from "@/lib/rig/renderer";
 import type { RigData } from "@/lib/rig/types";
 
@@ -116,6 +116,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
       const dt = (now - last) / 1000; last = now;
       a.update(dt);
       r.draw(ctx, Math.min(px, 1024), Math.min(px, 1024), a.pose.skin, a.parts);
+      if (rg.cat) drawDollShadow(ctx, a, rg.cat, rg.view, px, px);
       drawDollFx(ctx, a.fx, a.t, rg.view, px, px);
       if (!reduce && inView) raf = requestAnimationFrame(frame);
     };
