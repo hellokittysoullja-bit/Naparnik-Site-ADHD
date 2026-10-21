@@ -1,6 +1,7 @@
 import { Analytics } from "@vercel/analytics/next";
 import type { Metadata, Viewport } from "next";
-import { Manrope, JetBrains_Mono, Caveat } from "next/font/google";
+import { Manrope, JetBrains_Mono } from "next/font/google";
+import { preload } from "react-dom";
 import "./globals.css";
 
 // Шрифты первого экрана: display "block" вместо "swap" — текст ждёт свой шрифт (до 3 с), а не рисуется
@@ -22,14 +23,12 @@ const jetbrainsMono = JetBrains_Mono({
   preload: false,
 });
 
-const caveat = Caveat({
-  subsets: ["latin", "cyrillic"],
-  display: "block",
-  // запасной шрифт описан вручную в globals.css ("Caveat Fallback"): size-adjust подобран по реальным
-  // строкам первого экрана (pwfont.mjs), а не по средней ширине символа — переносы совпадают точнее
-  adjustFontFallback: false,
-  variable: "--font-caveat",
-});
+// Рукописный Caveat — свой, в public/fonts (OFL): у Google его файлы для двух алфавитов весили 151 КБ — самое
+// тяжёлое на первом экране (Manrope — 38 КБ). Здесь статические 400 и 500 (на сайте только они), каждый
+// порезан на кириллицу + пунктуацию и латиницу (unicode-range): первому экрану хватает одного файла
+// caveat-500-cyr (55 КБ, preload ниже), остальные подтянутся, только если встретится такой текст.
+// Сборка: fontTools instancer + pyftsubset, контекстные альтернативы (calt) сохранены — без них меняется
+// 5,6 % пикселей рукописного текста. @font-face и запасной "Caveat Fallback" — в globals.css.
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://ai-rc-one.vercel.app"),
@@ -67,6 +66,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // кириллический Caveat — в <head> как preload (как шрифты next/font): первый экран ждёт его с display: block
+  preload("/fonts/caveat-500-cyr.woff2", { as: "font", type: "font/woff2", crossOrigin: "anonymous" });
   return (
     <html
       lang="ru"
@@ -76,7 +77,7 @@ export default function RootLayout({
       // при переходах между страницами — data-атрибут снимает конфликт, сам
       // scroll-behavior по-прежнему приходит из CSS и уважает reduced-motion.
       data-scroll-behavior="smooth"
-      className={`bg-background ${manrope.variable} ${jetbrainsMono.variable} ${caveat.variable}`}
+      className={`bg-background ${manrope.variable} ${jetbrainsMono.variable}`}
     >
       <body className="antialiased font-sans">
         {children}

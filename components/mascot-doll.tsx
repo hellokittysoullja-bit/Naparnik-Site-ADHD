@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { preload } from "react-dom";
 import { useReducedMotion } from "motion/react";
 import { MascotSvg, type MascotAction, type MascotExpression } from "@/components/mascot-svg";
 import { DollAnimator, drawDollFx, drawDollShadow, setDollFxColor, type DollAction } from "@/lib/rig/doll";
@@ -51,8 +50,6 @@ export function MascotDoll(props: Props) {
 }
 
 function DollCanvas({ expression = "calm", action = "idle", size = 160, label, className, interactive = true, inlinePoster = false }: Props) {
-  // постер первого кадра — в <head> как preload с высоким приоритетом (и при SSR): кот виден с первой отрисовки
-  if (inlinePoster) preload("/mascot/poster/neutral.webp", { as: "image", fetchPriority: "high" });
   const reduce = useReducedMotion();
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);   // кот: WebGL прямо здесь
@@ -66,6 +63,17 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
   const [ready, setReady] = useState(0);
   const [inView, setInView] = useState(true);
   const [px, setPx] = useState(0);
+  // у героя внешний постер 900 px запрашивается только после шрифтов первого экрана: на 3G он делил полосу
+  // с ними поровну (HTTP/1.1, 6 соединений) и отодвигал текст на 1,3 с; инлайн 480 px до тех пор на месте
+  const [posterReady, setPosterReady] = useState(!inlinePoster);
+  useEffect(() => {
+    if (!inlinePoster || posterReady) return;
+    let alive = true;
+    const go = () => { if (alive) setPosterReady(true); };
+    const t = window.setTimeout(go, 3000);
+    document.fonts?.ready.then(go);
+    return () => { alive = false; window.clearTimeout(t); };
+  }, [inlinePoster, posterReady]);
 
   // размер холста — по фактическому размеру на странице (класс size-[clamp(...)] на первом экране меняет его)
   useEffect(() => {
@@ -211,8 +219,10 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
             <img src={MASCOT_POSTER_INLINE} alt="" draggable={false} aria-hidden
               style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
           ) : null}
-          <img src="/mascot/poster/neutral.webp" alt="" draggable={false} fetchPriority={inlinePoster ? "high" : "auto"} loading={inlinePoster ? "eager" : "lazy"} decoding="async"
-            style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
+          {posterReady ? (
+            <img src="/mascot/poster/neutral.webp" alt="" draggable={false} loading={inlinePoster ? "eager" : "lazy"} decoding="async"
+              style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
+          ) : null}
         </>
       ) : null}
       {state === "doll" ? (

@@ -4,6 +4,42 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Рукописный Caveat (свой, public/fonts, см. app/layout.tsx): статические 400 и 500, каждый порезан на
+   кириллицу с пунктуацией и латиницу (unicode-range) — браузер берёт только нужные сочетания. Первому
+   экрану (герой — везде 500) хватает одного файла caveat-500-cyr (55 КБ), он в preload. display: block, как у Manrope. */
+@font-face {
+  font-family: "Caveat";
+  src: url("/fonts/caveat-400-cyr.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116, U+0020-0040, U+005B-0060, U+007B-007E, U+00A0, U+00AB, U+00BB, U+2010-2015, U+2018-201F, U+2026, U+2122;
+}
+@font-face {
+  font-family: "Caveat";
+  src: url("/fonts/caveat-400-lat.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+  unicode-range: U+0041-005A, U+0061-007A, U+00C0-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-200F, U+2016-2017, U+2020-2025, U+2027-206F, U+20AC, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Caveat";
+  src: url("/fonts/caveat-500-cyr.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116, U+0020-0040, U+005B-0060, U+007B-007E, U+00A0, U+00AB, U+00BB, U+2010-2015, U+2018-201F, U+2026, U+2122;
+}
+@font-face {
+  font-family: "Caveat";
+  src: url("/fonts/caveat-500-lat.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+  unicode-range: U+0041-005A, U+0061-007A, U+00C0-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-200F, U+2016-2017, U+2020-2025, U+2027-206F, U+20AC, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 /* Запасной шрифт для рукописного Caveat на время загрузки (display: block, до 3 с). Метрики Caveat:
    ascent 0.96, descent 0.30 em; size-adjust 73 % подобран по строкам первого экрана (pwfont.mjs):
    сумма сдвигов узлов героя 66 px при автоматических 76.94 % → 52 px. */
@@ -19,7 +55,7 @@
 @theme inline {
   --font-sans: var(--font-manrope), system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), monospace;
-  --font-hand: var(--font-caveat), "Caveat Fallback", cursive;
+  --font-hand: "Caveat", "Caveat Fallback", cursive;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
