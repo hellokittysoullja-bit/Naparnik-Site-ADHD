@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import { Button } from "@/components/ui/button";
-import { MascotSvg } from "@/components/mascot-svg";
+import { MascotDoll as MascotSvg } from "@/components/mascot-doll";
 import { SPRING_ITEM } from "@/lib/motion";
 
 /**

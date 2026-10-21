@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, CalendarCheck, Play, Sparkles } from "lucide-react";
 import { CompanionChat } from "@/components/companion-chat";
 import { EmphasisText } from "@/components/emphasis-text";
-import { MascotSvg, type MascotExpression } from "@/components/mascot-svg";
+import { MascotDoll as MascotSvg } from "@/components/mascot-doll";
+import { type MascotExpression } from "@/components/mascot-svg";
 import {
   getCompanionName,
   getFinds,

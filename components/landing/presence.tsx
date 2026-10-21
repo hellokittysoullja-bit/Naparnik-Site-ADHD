@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, useReducedMotion } from "motion/react";
-import { MascotSvg } from "@/components/mascot-svg";
+import { MascotDoll as MascotSvg } from "@/components/mascot-doll";
 import { SPRING_REVEAL, SPRING_ITEM } from "@/lib/motion";
 
 /**

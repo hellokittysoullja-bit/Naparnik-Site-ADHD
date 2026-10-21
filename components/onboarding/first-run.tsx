@@ -18,7 +18,8 @@ import {
   Sparkles,
   type LucideIcon,
 } from 'lucide-react'
-import { MascotSvg, type MascotExpression } from '@/components/mascot-svg'
+import { MascotDoll as MascotSvg } from '@/components/mascot-doll';
+import { type MascotExpression } from '@/components/mascot-svg'
 import { EmphasisText } from '@/components/emphasis-text'
 import { HoldToStart } from '@/components/onboarding/hold-to-start'
 import { getPatterns } from '@/lib/memory'

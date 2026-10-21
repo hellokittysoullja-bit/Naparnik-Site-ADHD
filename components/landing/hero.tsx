@@ -10,7 +10,8 @@ import {
   useSpring,
 } from "motion/react";
 import { ArrowRight, Loader2 } from "lucide-react";
-import { MascotSvg, type MascotExpression } from "@/components/mascot-svg";
+import { MascotDoll as MascotSvg } from "@/components/mascot-doll";
+import { type MascotExpression } from "@/components/mascot-svg";
 import { GroundPool, HeroScene, Moon } from "@/components/hero-scene";
 import { SPRING_PARALLAX, SPRING_SNAPPY } from "@/lib/motion";
 import { playPurr } from "@/lib/reward-sound";
