@@ -3,8 +3,14 @@ import type { Metadata, Viewport } from "next";
 import { Manrope, JetBrains_Mono, Caveat } from "next/font/google";
 import "./globals.css";
 
+// Шрифты первого экрана: display "block" вместо "swap" — текст ждёт свой шрифт (до 3 с), а не рисуется
+// запасным Arial с последующей подменой и сдвигом строк (CLS ≈ 0,04 на slow 3G). На 4G шрифты успевают
+// до первой отрисовки, на 3G приходят на ~0,4 с позже неё — внутри входной анимации героя (hero-rise 0,55 с
+// с задержками), так что ожидание не видно. (Перечислять статические начертания бесполезно: Manrope
+// у Google переменный, на любой набор весов приходит тот же файл.)
 const manrope = Manrope({
   subsets: ["latin", "cyrillic"],
+  display: "block",
   variable: "--font-manrope",
 });
 
@@ -18,6 +24,10 @@ const jetbrainsMono = JetBrains_Mono({
 
 const caveat = Caveat({
   subsets: ["latin", "cyrillic"],
+  display: "block",
+  // запасной шрифт описан вручную в globals.css ("Caveat Fallback"): size-adjust подобран по реальным
+  // строкам первого экрана (pwfont.mjs), а не по средней ширине символа — переносы совпадают точнее
+  adjustFontFallback: false,
   variable: "--font-caveat",
 });
 

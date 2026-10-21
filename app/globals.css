@@ -4,10 +4,22 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Запасной шрифт для рукописного Caveat на время загрузки (display: block, до 3 с). Метрики Caveat:
+   ascent 0.96, descent 0.30 em; size-adjust 73 % подобран по строкам первого экрана (pwfont.mjs):
+   сумма сдвигов узлов героя 66 px при автоматических 76.94 % → 52 px. */
+@font-face {
+  font-family: "Caveat Fallback";
+  src: local("Arial");
+  size-adjust: 73%;
+  ascent-override: 131.5%;
+  descent-override: 41.1%;
+  line-gap-override: 0%;
+}
+
 @theme inline {
   --font-sans: var(--font-manrope), system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), monospace;
-  --font-hand: var(--font-caveat), cursive;
+  --font-hand: var(--font-caveat), "Caveat Fallback", cursive;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
