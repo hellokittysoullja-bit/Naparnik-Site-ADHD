@@ -139,20 +139,33 @@ for cx, cy in EYES.values():
 mouth_ink = np.zeros((H, W), bool)
 mouth_ink[sc(MOUTH_BOX[1]):sc(MOUTH_BOX[3]), sc(MOUTH_BOX[0]):sc(MOUTH_BOX[2])] = True
 mouth_ink &= lum < 48  # тушь (~22), не мех (~63)
-mouth_hole = ndi.binary_dilation(mouth_ink, iterations=4 * S)
+mouth_soft = mouth_ink | (np.zeros((H, W), bool))
+mouth_hole = ndi.binary_dilation(mouth_ink, iterations=7 * S)  # с запасом: антиалиас «ω» (lum 48..90) не просвечивает
 head_rgb = clone(rgb, eye_hole | mouth_hole, FUR_OK & ~eye_hole & ~mouth_hole, tex=(572, 236, 658, 326), texr=12)  # мазки и зерно — чистый мех лба (без туши)
 # Мех под глазами — из кадра «глаза закрыты», сгенерированного по оригиналу (gen_frames.py →
 # align_gen.py → upscale.py → matte.py): там под глазами настоящий мех этого же рисунка. Тонкие дуги
 # закрытых глаз в нём латаются клоном (узкие — клон идеален), а не весь глаз.
-EYESC = os.path.join(ROOT, 'design/mascot/export/eyes-closed%s.png' % ('' if S == 1 else f'@{S}x'))
+SFX = '' if S == 1 else f'@{S}x'
+NOEYES = os.path.join(ROOT, 'design/mascot/export/no-eyes%s.png' % SFX)   # кадр «без глаз»: чистый мех, клон не нужен
+EYESC = NOEYES if os.path.exists(NOEYES) else os.path.join(ROOT, 'design/mascot/export/eyes-closed%s.png' % SFX)
 if os.path.exists(EYESC):
     ec = np.asarray(Image.open(EYESC).convert('RGBA')).astype(np.float32)
     ec_rgb, ec_lum = ec[..., :3], ec[..., :3].mean(2)
-    arcs = eye_hole & (ec_lum < 75)
-    arcs = ndi.binary_dilation(arcs, iterations=3 * S)
     ec_fur = (ec[..., 3] > 240) & (ec_lum > 40) & (ec_lum < 120) & (np.abs(ec_rgb[..., 0] - ec_rgb[..., 2]) < 22)
-    ec_rgb = clone(ec_rgb, arcs, ec_fur & ~arcs, tex=(572, 236, 658, 326), texr=6)
-    f = soft(ndi.binary_erosion(eye_hole, iterations=4 * S), 3)[..., None]
+    if EYESC != NOEYES:
+        arcs = eye_hole & (ec_lum < 42)                     # тушь дуг (~25); мех ~60 не трогаем
+        arcs = ndi.binary_dilation(arcs, iterations=6 * S)
+        ec_rgb = clone(ec_rgb, arcs, ec_fur & ~arcs, tex=None, texr=6)
+    print('eye fur source:', os.path.basename(EYESC))
+    # тон сгенерированного кадра чуть отличается от оригинала: выравниваем по кольцу меха вокруг глаза
+    # (среднее по каналам), чтобы латка не читалась диском
+    for cx, cy in EYES.values():
+        ring_z = ell(cx, cy, RX + 44, RY + 44) & ~ell(cx, cy, RX + 18, RY + 18) & FUR_OK & ec_fur
+        if ring_z.sum() > 50:
+            off = rgb[ring_z].mean(0) - ec_rgb[ring_z].mean(0)
+            zone_e = ell(cx, cy, RX + 20, RY + 20)
+            ec_rgb = np.where(zone_e[..., None], np.clip(ec_rgb + off, 0, 255), ec_rgb)
+    f = soft(ndi.binary_erosion(eye_hole, iterations=3 * S), 4)[..., None]
     head_rgb = head_rgb * (1 - f) + ec_rgb * f
     print('eye patch from generated eyes-closed frame')
 _w = np.clip(eye_blend, 0, 1)

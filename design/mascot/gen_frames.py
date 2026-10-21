@@ -35,6 +35,7 @@ FRAMES = {
     "lids-75": KEEP + "both upper eyelids are lowered to cover three quarters of the green irises (almost closed); lids are the same dark grey fur with the same thick ink outline along the lid edge.",
     "eyes-happy": KEEP + "both eyes are closed in a happy squint, drawn as two upward-curved thick ink arcs (like ^ ^), no iris visible.",
     "eyes-sad": KEEP + "both eyes look sad: the upper eyelids slant down toward the outer corners covering the upper part of the irises, the ink outline follows the slanted lids; mouth is a small downward curve.",
+    "no-eyes": KEEP + "the cat has NO eyes drawn at all: where the eyes would be there is only the same smooth dark grey watercolor fur as on the forehead and cheeks, no outlines, no green, no eyelids; nose, mouth, whiskers, ears, body, tail and flame stay exactly as in the reference.",
     "wave-pose": KEEP + "the cat's front paw on the viewer's left is raised up beside its cheek in a friendly wave with the paw pads facing the viewer, the short furry leg visible coming out from the chest fur; the other paw, body, head, tail and flame stay exactly as in the reference.",
 }
 
