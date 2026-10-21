@@ -851,7 +851,10 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     const L = preset.look, RC = preset.react;
     for (const k of ["L", "R"] as const) {
       const e = eyes[k];
-      const open = Math.min(pose.lidOpen, 1 - bl[k]);
+      // моргание идёт от ТЕКУЩЕГО уровня века (в прищуре/«думает» веко уже опущено): амплитуда
+      // умножается, а не обрезается min'ом — иначе из полуприкрытого глаза видимое закрытие занимало
+      // 24 мс вместо 80, а открытие 36 вместо 175
+      const open = pose.lidOpen * (1 - bl[k]);
       const kk = 1 - clamp(open, 0, 1);
       const closedness = Math.max(kk, ov.closed, smileSt.v);
       // контур стоит, пока веко скользит внутри него (до полуприкрытого), затем складывается в дугу
@@ -951,7 +954,8 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     debug,
     mood: () => moodNow,
     _internals: {
-      ov, bones, attached, eyes,
+      ov, bones, attached, eyes, bl,
+      blinkInfo: () => (blinkTl ? { dur: blinkTl.duration(), ts: blinkTl.timeScale(), gts: gsap.globalTimeline.timeScale(), mul: sched().durMul, T: preset.blink.types.normal, children: blinkTl.getChildren().map((c) => [c.duration(), c.startTime()]) } : null),
       step: (dt: number) => {
         if (clock.virtual === null) {
           clock.virtual = performance.now();

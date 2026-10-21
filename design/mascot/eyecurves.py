@@ -172,7 +172,7 @@ for k in EYES:
             for i in (e1 + 1, e1 + 2):
                 if i < N: d['tu'][i] = d['tu'][e1]
             d['extu'] = [max(0, e0 - 2), min(N - 1, e1 + 2)]
-        if key in ('lids25', 'lids50', 'half'):
+        if key in ('lids25', 'lids50', 'half', 'sad'):
             # веко — не линейка: лёгкий провис 2,5 % ширины глаза к центру (кадры модели рисуют его плоским)
             e0, e1 = d['extu']
             for i in range(N):

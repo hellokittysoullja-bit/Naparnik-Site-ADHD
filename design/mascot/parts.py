@@ -397,13 +397,20 @@ def stroke(draw_fn):
     a = soft(np.asarray(m).astype(np.float32) / 255, 0.6)
     grain = _blk[(yy + 3 * S) % _blk.shape[0], (xx + 5 * S) % _blk.shape[1]]
     # тёмное зерно — в полную силу, светлое — приглушённо: штрих остаётся тушью, но не «ровной»
-    g = np.minimum(grain, 0) * 0.8 + np.maximum(grain, 0) * 0.25
+    # только тёмное зерно и вполсилы: светлое зерно и модуляция альфы давали рваный штрих со
+    # «ступенькой» и разрывом посередине (видно на телефоне в состоянии сна)
+    g = np.minimum(grain, 0) * 0.4
     col = np.clip(np.broadcast_to(ink, (H, W, 3)) + g, 0, 255).astype(np.float32)
-    a = np.clip(a * (1 + np.minimum(grain.mean(2), 0) / 90.0), 0, 1)
     return col, a
 mx, my = (MOUTH_BOX[0] + MOUTH_BOX[2]) / 2, 484
-r_, a_ = stroke(lambda d: d.line([(sc(mx - 22), sc(my)), (sc(mx + 22), sc(my))], fill=255, width=int(4 * S))); add('mouth_flat', r_, a_, 15)
-r_, a_ = stroke(lambda d: d.arc([sc(mx - 24), sc(my - 4), sc(mx + 24), sc(my + 28)], 200, 340, fill=255, width=int(4 * S))); add('mouth_sad', r_, a_, 15)
+def _flat(d):
+    # спокойный рот: чуть провисшая линия с круглыми концами (не линейка с квадратными торцами)
+    pts = [(sc(mx - 22 + 44 * i / 12), sc(my + 2.5 * (1 - (2 * i / 12 - 1) ** 2))) for i in range(13)]
+    d.line(pts, fill=255, width=int(5 * S), joint='curve')
+    for (x_, y_) in (pts[0], pts[-1]):
+        d.ellipse([x_ - 2.5 * S, y_ - 2.5 * S, x_ + 2.5 * S, y_ + 2.5 * S], fill=255)
+r_, a_ = stroke(_flat); add('mouth_flat', r_, a_, 15)
+r_, a_ = stroke(lambda d: d.arc([sc(mx - 24), sc(my - 4), sc(mx + 24), sc(my + 28)], 200, 340, fill=255, width=int(5 * S))); add('mouth_sad', r_, a_, 15)
 
 # 5-8. тело, лапы, нога, грудка
 arm_hole = ARM > 0.5
