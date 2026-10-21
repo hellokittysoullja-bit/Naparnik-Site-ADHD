@@ -672,8 +672,10 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
       lidState[k].open = open;
       lidState[k].slant = pose.lidSlant;
       lidState[k].happy = ov.closed;
-      const px = clamp(gx * L.pupil, -26, 26);
-      const py = clamp(gy * L.pupilY, -22, 22);
+      // зрачок никогда не пересекает край радужки: запас = радиус радужки − полуразмер зрачка − 4
+      const pw = P(`pupil_${k}`).w / 2, ph = P(`pupil_${k}`).h / 2;
+      const px = clamp(gx * L.pupil, -(e.rx - pw - 4), e.rx - pw - 4);
+      const py = clamp(gy * L.pupilY, -(e.ry - ph - 4), e.ry - ph - 4);
       e.pupil.x += px; e.pupil.y += py;
       const dil = pupilDil.v * pose.pupil;
       e.pupil.scale.set(texScale * dil);

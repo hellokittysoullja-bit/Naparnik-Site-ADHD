@@ -202,10 +202,21 @@ add('mouth_smile', rgb, mouth_a, 15)
 for key, nm in (('mouthopen', 'mouth_open'), ('moutho', 'mouth_o')):
     r_, a_ = gen_layer(key, (539, 427, 691, 563)); add(nm, r_, a_, 15)
 ink = np.percentile(rgb[mouth_ink], 20, axis=0)  # самая тёмная тушь
+# зерно туши: высокие частоты родного штриха «ω», замощённые по новому штриху, + чуть
+# рваный край (альфа модулируется тем же зерном) — рисованные рты, а не векторные линии
+_mb = mouth_ink
+_ink_hf = (rgb - np.asarray(Image.fromarray(rgb.astype(np.uint8)).filter(ImageFilter.GaussianBlur(2 * S)))).astype(np.float32)
+_ys, _xs = np.nonzero(_mb); _bx = (_xs.min(), _ys.min(), _xs.max() + 1, _ys.max() + 1)
+_blk = _ink_hf[_bx[1]:_bx[3], _bx[0]:_bx[2]]
 def stroke(draw_fn):
     m = Image.new('L', (W, H), 0); draw_fn(ImageDraw.Draw(m))
     a = soft(np.asarray(m).astype(np.float32) / 255, 0.6)
-    return np.broadcast_to(ink, (H, W, 3)).astype(np.float32), a
+    grain = _blk[(yy + 3 * S) % _blk.shape[0], (xx + 5 * S) % _blk.shape[1]]
+    # тёмное зерно — в полную силу, светлое — приглушённо: штрих остаётся тушью, но не «ровной»
+    g = np.minimum(grain, 0) * 0.8 + np.maximum(grain, 0) * 0.25
+    col = np.clip(np.broadcast_to(ink, (H, W, 3)) + g, 0, 255).astype(np.float32)
+    a = np.clip(a * (1 + np.minimum(grain.mean(2), 0) / 90.0), 0, 1)
+    return col, a
 mx, my = (MOUTH_BOX[0] + MOUTH_BOX[2]) / 2, 484
 r_, a_ = stroke(lambda d: d.line([(sc(mx - 22), sc(my)), (sc(mx + 22), sc(my))], fill=255, width=int(4 * S))); add('mouth_flat', r_, a_, 15)
 r_, a_ = stroke(lambda d: d.arc([sc(mx - 24), sc(my - 4), sc(mx + 24), sc(my + 28)], 200, 340, fill=255, width=int(4 * S))); add('mouth_sad', r_, a_, 15)
