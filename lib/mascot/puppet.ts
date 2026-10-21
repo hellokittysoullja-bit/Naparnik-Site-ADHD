@@ -27,6 +27,11 @@ type Rig = {
   eyes: Record<"L" | "R", { c: [number, number]; rx: number; ry: number; orx: number; ory: number }>;
 };
 
+/** кейформы глаза (design/mascot/eyecurves.py): по N колонкам — осевая y и толщина верхнего (up/tu)
+ *  и нижнего (lo/tl) штрихов, o — открытость ключа (1 — открыт, 0 — дуга закрытого глаза) */
+type EyeKey = { up: number[]; lo: number[]; tu: number[]; tl: number[]; o: number };
+type EyeKeyforms = { N: number; eyes: Record<"L" | "R", { c: [number, number]; x0: number; x1: number; keys: Record<string, EyeKey> }> };
+
 export const VIEW = { x: 250, y: -85, size: 910 };
 
 export type MascotOptions = {
@@ -91,7 +96,7 @@ class Bone {
 }
 
 export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): Promise<Mascot> {
-  const [{ Application, Assets, Container, Sprite, MeshSimple, Graphics, Matrix }, { gsap }] = await Promise.all([
+  const [{ Application, Assets, Container, Sprite, MeshSimple, Graphics, Matrix, Texture: Tex }, { gsap }] = await Promise.all([
     import("pixi.js"),
     import("gsap"),
   ]);
@@ -100,6 +105,7 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
   const preset: Preset = structuredClone(defaultPreset);
   if (opts.preset) deepMerge(preset as unknown as Record<string, unknown>, opts.preset as Record<string, unknown>);
   const rig: Rig = await (await fetch(`${base}/../rig.json`)).json();
+  const eyeData: EyeKeyforms = await (await fetch(`${base}/../eyes.json`)).json();
   const reduce = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const app: PixiApp = new Application();
@@ -172,7 +178,7 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
   updateBones();
 
   /* ── визуальные слои в z-порядке; каждый следует за своей костью ── */
-  type Attached = { node: PixiContainer; bone: Bone; part: Part; offset: { x: number; y: number } };
+  type Attached = { node: PixiContainer; bone: Bone; part: Part; offset: { x: number; y: number }; scale: number };
   const attached: Attached[] = [];
   const texScale = 1 / rig.scale;
   const sprite = (name: string, b: Bone, parent: PixiContainer = world): PixiSprite => {
@@ -180,13 +186,15 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     const s: PixiSprite = new Sprite(textures[name]);
     s.scale.set(texScale);
     parent.addChild(s);
-    attached.push({ node: s, bone: b, part: p, offset: { x: 0, y: 0 } });
+    attached.push({ node: s, bone: b, part: p, offset: { x: 0, y: 0 }, scale: 1 });
     return s;
   };
   const placeAttached = () => {
     for (const a of attached) {
       tmp.copyFrom(a.bone.skin).translate(0, 0);
-      const m = tmp.clone().append(new Matrix(texScale, 0, 0, texScale, a.part.x + a.offset.x, a.part.y + a.offset.y));
+      // масштаб слоя — вокруг его центра (зрачок расширяется на месте), поверх трансформации кости
+      const sc = a.scale;
+      const m = tmp.clone().append(new Matrix(texScale * sc, 0, 0, texScale * sc, a.part.x + a.offset.x - (a.part.w * (sc - 1)) / 2, a.part.y + a.offset.y - (a.part.h * (sc - 1)) / 2));
       a.node.setFromMatrix(m);
     }
   };
@@ -309,68 +317,46 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     world.setChildIndex(pawLSprite, up ? world.getChildIndex(headSprite) : world.getChildIndex(chestSprite));
   };
 
-  /* глаза по схеме Live2D: контур — сетка, сплющивается к нижней дуге (закрытый глаз = контур,
-     схлопнутый в дугу; «^ ^» — к верхней); заливка радужки, зрачок и блик — под маской ТОЙ ЖЕ
-     формы, что и контур. Никаких век-дисков. */
-  type Eye = { group: PixiContainer; mask: PixiGraphics; ring: Skin; pupil: PixiSprite; shine: PixiSprite; closed: PixiSprite; c: [number, number]; rx: number; ry: number; orx: number; ory: number };
+  /* Глаза — кейформы-КРИВЫЕ (как в Live2D): верхний и нижний штрихи контура заданы осевой
+     линией и толщиной по колонкам, снятыми с ключевых кадров (открыт → веко на 25/40/50 % →
+     закрыт; грусть; «^ ^»). Рантайм интерполирует кривые между кейформами и рисует тушь ЛЕНТОЙ
+     (полоса-сетка с 1-px мягкой кромкой); радужка, зрачок и блик — под маской между штрихами.
+     Контур-рисунок стоит на месте, пока веко скользит внутри него, и растворяется, когда штрихи
+     сходятся в дугу. Ни сплющивания текстуры, ни дисков, ни «срезов». */
+  const NC = eyeData.N;
+  // тушь: 1×32, альфа 0 → 1 по верхней половине и 1 → 0 по нижней — линейная кромка ленты
+  const inkTexture: Texture = (() => {
+    const c = document.createElement("canvas");
+    c.width = 1; c.height = 32;
+    const g = c.getContext("2d")!;
+    for (let y = 0; y < 32; y++) {
+      const a = y < 16 ? (y + 0.5) / 16 : (31.5 - y) / 16;
+      g.fillStyle = `rgba(9,11,7,${Math.min(1, a).toFixed(3)})`;
+      g.fillRect(0, y, 1, 1);
+    }
+    return Tex.from(c);
+  })();
+  type Ribbon = { mesh: PixiMesh; v: Float32Array };
+  const ribbon = (parent: PixiContainer): Ribbon => {
+    const n = NC * 4;
+    const uvs = new Float32Array(n * 2);
+    const idx: number[] = [];
+    const vv = [0, 0.5, 0.5, 1]; // внешняя кромка (прозрачно) → тело туши → внешняя кромка
+    for (let i = 0; i < NC; i++) {
+      for (let j = 0; j < 4; j++) { uvs[(i * 4 + j) * 2] = i / (NC - 1); uvs[(i * 4 + j) * 2 + 1] = vv[j]; }
+      if (i < NC - 1) for (let j = 0; j < 3; j++) { const a0 = i * 4 + j, b0 = a0 + 1, c0 = a0 + 4, d0 = c0 + 1; idx.push(a0, c0, b0, b0, c0, d0); }
+    }
+    const mesh: PixiMesh = new MeshSimple({ texture: inkTexture, vertices: new Float32Array(n * 2), uvs, indices: new Uint32Array(idx) });
+    parent.addChild(mesh);
+    return { mesh, v: mesh.vertices as Float32Array };
+  };
+  type Eye = { group: PixiContainer; mask: PixiGraphics; ring: Skin; lid: Ribbon; low: Ribbon; pupil: PixiSprite; pupilAtt: Attached; shine: PixiSprite; c: [number, number]; rx: number; ry: number;
+    up: Float32Array; lo: Float32Array; tu: Float32Array; tl: Float32Array; xs: Float32Array; squash: number; mapY: (x: number, y: number) => number; scratchT: Float32Array; scratchB: Float32Array };
   const eyes: Record<"L" | "R", Eye> = {} as Record<"L" | "R", Eye>;
-  // состояние век на кадр: open 0..1, slant (наклон, внешний угол вниз при >0), happy — схлопывание к верхней дуге
-  const lidState = { L: { open: 1, slant: 0, happy: 0 }, R: { open: 1, slant: 0, happy: 0 } };
-  /* Сплющивание глаза с постоянным весом штриха: точка раскладывается на положение вдоль
-     ОСЕВОЙ линии контура (угол) и отступ от неё (толщина). Осевая линия сжимается к линии
-     закрытия (нижняя треть; для «^» — верхняя), отступ возвращается по нормали сжатой кривой —
-     штрих не истончается, закрытый глаз = та же тушь одной толстой дугой. */
-  const squash = (k: "L" | "R", x: number, y: number, out: { x: number; y: number }) => {
-    const e = eyes[k];
-    const st = lidState[k];
-    const [cx, cy] = e.c;
-    const am = (e.rx + e.orx) / 2; // полуоси осевой линии штриха
-    const bm = (e.ry + e.ory) / 2;
-    const nx = (x - cx) / am;
-    const ny = (y - cy) / bm;
-    const r = Math.hypot(nx, ny) || 1e-6;
-    const th = Math.atan2(ny, nx);
-    const d = (r - 1) * ((am + bm) / 2); // отступ от осевой линии, px рисунка
-    const px = cx + Math.cos(th) * am;
-    const py = cy + Math.sin(th) * bm;
-    const sl = st.slant * (k === "L" ? 1 : -1); // грусть: внутренний угол выше, внешний ниже (у L внешний — слева)
-    const happy = st.happy > 0.001;
-    const open = happy ? 1 - st.happy : st.open;
-    const kk = clamp(open, 0, 1);
-    // линия закрытия — не горизонталь, а линия века: для грусти наклонена (прямая, как в
-    // рисунке), для «^ ^» — «домик» с вершиной в центре; обе половины сходятся к ней без излома
-    const t = (px - cx) / am;
-    const yA = happy
-      ? cy - 0.3 * bm - 0.4 * bm * (1 - Math.abs(t))
-      : cy + 0.6 * bm + sl * bm * t;
-    const moving = happy ? py > yA : py < yA; // половина, которая едет к линии закрытия
-    const ks = 1 - 0.45 * (1 - kk); // «стоящая» половина чуть распрямляется, дуга остаётся
-    const qy = moving ? yA + (py - yA) * kk : yA + (py - yA) * ks;
-    const kEff = Math.max(moving ? kk : ks, 0.04);
-    // нормаль сжатого эллипса: n ∝ (cos/a, sin/(b·k))
-    const nnx = Math.cos(th) / am;
-    const nny = Math.sin(th) / (bm * kEff);
-    const nl = Math.hypot(nnx, nny) || 1e-6;
-    // при смыкании два штриха ложатся друг на друга: толщину каждого слегка ужимаем, чтобы
-    // закрытая линия была ~2 толщины штриха (как в нарисованных закрытых глазах), а не 4
-    const dw = d * (0.55 + 0.45 * kEff);
-    out.x = px + (dw * nnx) / nl;
-    out.y = qy + (dw * nny) / nl;
-  };
-  /** та же деформация для маски: внутренний край штриха, при закрытии — пусто */
-  const squashMask = (k: "L" | "R", x: number, y: number, out: { x: number; y: number }) => {
-    // радужка прячется чуть раньше, чем штрихи сомкнутся: щели между веками не бывает
-    const st = lidState[k];
-    const open = st.happy > 0.001 ? 1 - st.happy : st.open;
-    const saved = { open: st.open, happy: st.happy };
-    const m = clamp((open - 0.2) / 0.8, 0, 1);
-    if (st.happy > 0.001) st.happy = 1 - m; else st.open = m;
-    squash(k, x, y, out);
-    st.open = saved.open; st.happy = saved.happy;
-    if (m <= 0) { out.x = eyes[k].c[0]; out.y = eyes[k].c[1]; } // вырожденный полигон — радужки не видно
-  };
+  const CHAIN = ["closed", "half", "lids50", "lids25", "open"]; // по возрастанию открытости
   for (const k of ["L", "R"] as const) {
     const e = rig.eyes[k];
+    const d = eyeData.eyes[k];
     const group: PixiContainer = new Container();
     world.addChild(group);
     const mask: PixiGraphics = new Graphics();
@@ -379,29 +365,107 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     sprite(`iris_${k}`, face, group);
     const pupil = sprite(`pupil_${k}`, face, group);
     const shine = sprite(`shine_${k}`, face, group);
-    const ring = meshFor(`ring_${k}`, 12, 12, () => [face, 1, null]);
-    ring.deform = (_i, x, y, out) => squash(k, x, y, out);
-    // «^ ^» — дуги, сгенерированные по рисунку: подмешиваются в конце счастливого прищура
-    const closed = rig.parts[`happy_${k}`] ? sprite(`happy_${k}`, face) : sprite(`closed_${k}`, face);
-    closed.alpha = 0;
-    eyes[k] = { group, mask, ring, pupil, shine, closed, c: e.c, rx: e.rx, ry: e.ry, orx: e.orx, ory: e.ory };
+    // контур-рисунок: сетка; при смыкании складывается между текущими верхней и нижней кривыми
+    // (верх контура съезжает к веку, низ — к нижнему штриху, углы сжимаются к концам дуги)
+    const ring = meshFor(`ring_${k}`, 16, 16, () => [face, 1, null]);
+    const low = ribbon(world);
+    const lid = ribbon(world);
+    const xs = new Float32Array(NC);
+    for (let i = 0; i < NC; i++) xs[i] = d.x0 + ((d.x1 - d.x0) * i) / (NC - 1);
+    eyes[k] = { group, mask, ring, lid, low, pupil, pupilAtt: attached[attached.length - 2], shine, c: e.c, rx: e.rx, ry: e.ry,
+      up: new Float32Array(NC), lo: new Float32Array(NC), tu: new Float32Array(NC), tl: new Float32Array(NC), xs, squash: 0, mapY: (_x, y) => y, scratchT: new Float32Array(NC), scratchB: new Float32Array(NC) };
+    const O = d.keys.open;
+    const at = (arr: ArrayLike<number>, u: number) => { const i = Math.floor(u), f = u - i; return i >= NC - 1 ? arr[NC - 1] : arr[i] * (1 - f) + arr[i + 1] * f; };
+    // куда уезжает точка покоя (x, y) контура: верх контура съезжает к веку по мере смыкания, низ
+    // ВСЕГДА совпадает с нижним штрихом (лента лежит на нём тушь в тушь — второй линии нет), бока
+    // сжимаются между ними и чуть сходятся к центру — под толстые концы дуги
+    const ringMapY = (x: number, y: number) => {
+      const ey = eyes[k];
+      const u = clamp(((x - d.x0) / (d.x1 - d.x0)) * (NC - 1), 0, NC - 1);
+      const upT = at(O.up, u), loT = at(O.lo, u);
+      const w = (y - upT) / Math.max(loT - upT, 1);
+      // верх контура догоняет веко раньше, чем контур начнёт гаснуть (sq 0,75): гаснет уже под лентами
+      const upR = upT + (at(ey.up, u) - upT) * smoothstep(ey.squash / 0.6);
+      return upR + w * (at(ey.lo, u) - upR);
+    };
+    eyes[k].mapY = ringMapY;
+    ring.deform = (_i, x, y, out) => {
+      const sq = eyes[k].squash;
+      const xx = e.c[0] + (x - e.c[0]) * (1 - 0.12 * sq);
+      out.x = xx;
+      out.y = ringMapY(xx, y);
+    };
   }
-  const maskPt = { x: 0, y: 0 };
-  const drawMasks = () => {
+  /** интерполяция кейформов: цепочка по открытости o, затем подмес грусти и «^ ^» */
+  const evalEye = (k: "L" | "R", o: number, sadW: number, hapW: number) => {
+    const e = eyes[k];
+    const K = eyeData.eyes[k].keys;
+    let A = K.closed, B = K.open;
+    for (let i = 0; i < CHAIN.length - 1; i++) {
+      if (o <= K[CHAIN[i + 1]].o) { A = K[CHAIN[i]]; B = K[CHAIN[i + 1]]; break; }
+    }
+    const t = clamp((o - A.o) / Math.max(B.o - A.o, 1e-4), 0, 1);
+    // грусть действует, пока глаз открыт не меньше, чем в кадре грусти; при моргании уступает цепочке
+    const ws = clamp(sadW, 0, 1) * clamp((o - 0.25) / (K.sad.o - 0.25), 0, 1);
+    const wh = clamp(hapW, 0, 1);
+    const Sd = K.sad, Hp = K.happy;
+    for (let i = 0; i < NC; i++) {
+      let up = lerp(A.up[i], B.up[i], t), lo = lerp(A.lo[i], B.lo[i], t), tu = lerp(A.tu[i], B.tu[i], t), tl = lerp(A.tl[i], B.tl[i], t);
+      if (ws > 0) { up = lerp(up, Sd.up[i], ws); tu = lerp(tu, Sd.tu[i], ws); }
+      if (wh > 0) { up = lerp(up, Hp.up[i], wh); lo = lerp(lo, Hp.lo[i], wh); tu = lerp(tu, Hp.tu[i], wh); tl = lerp(tl, Hp.tl[i], wh); }
+      e.up[i] = up; e.lo[i] = lo; e.tu[i] = tu; e.tl[i] = tl;
+    }
+  };
+  /** лента по кривой: 4 вершины на колонку (мягкая кромка 1 px с каждой стороны), в мир через кость лица */
+  const writeRibbon = (r: Ribbon, xs: Float32Array, ys: Float32Array, th: Float32Array, m: PixiMatrix) => {
+    const v = r.v;
+    for (let i = 0; i < NC; i++) {
+      const x = xs[i], y = ys[i];
+      const h = Math.max(th[i], 0) / 2;
+      // кромка 1 px; у схода на нет (толщина < 1) лента стягивается в ноль — хвостов-волосков нет
+      const outer = Math.min(h + 0.5, th[i]), inner = Math.max(h - 0.5, 0);
+      const yy = [y - outer, y - inner, y + inner, y + outer];
+      for (let j = 0; j < 4; j++) {
+        v[(i * 4 + j) * 2] = m.a * x + m.c * yy[j] + m.tx;
+        v[(i * 4 + j) * 2 + 1] = m.b * x + m.d * yy[j] + m.ty;
+      }
+    }
+  };
+  const drawEyes = (shrink: number) => {
+    const m = face.skin;
     for (const k of ["L", "R"] as const) {
       const e = eyes[k];
-      const m = face.skin;
+      writeRibbon(e.lid, e.xs, e.up, e.tu, m);
+      writeRibbon(e.low, e.xs, e.lo, e.tl, m);
+      // маска радужки: внутренний эллипс контура, сложенный той же картой, что и контур, срезанный
+      // сверху/снизу внутренними кромками штрихов (с запасом под тушь) — где нет просвета, нет и маски
       const g = e.mask.clear();
-      // эллипс заливки, сплющенный той же функцией, что и контур, затем — в мир через кость лица
-      const N = 40;
-      for (let i = 0; i <= N; i++) {
-        const a = (i / N) * Math.PI * 2;
-        const x = e.c[0] + Math.cos(a) * (e.rx + 2);
-        const y = e.c[1] + Math.sin(a) * (e.ry + 2);
-        squashMask(k, x, y, maskPt);
-        const wx = m.a * maskPt.x + m.c * maskPt.y + m.tx;
-        const wy = m.b * maskPt.x + m.d * maskPt.y + m.ty;
-        if (i === 0) g.moveTo(wx, wy); else g.lineTo(wx, wy);
+      const rx = e.rx + 2, ry = e.ry + 2;
+      const top = e.scratchT, bot = e.scratchB;
+      let first = -1, last = -1;
+      for (let i = 0; i < NC; i++) {
+        const x = e.xs[i];
+        const nx = (x - e.c[0]) / rx;
+        if (Math.abs(nx) >= 1) { top[i] = 1; bot[i] = 0; continue; }
+        const dy = ry * Math.sqrt(1 - nx * nx);
+        const eT = e.mapY(x, e.c[1] - dy), eB = e.mapY(x, e.c[1] + dy);
+        top[i] = Math.max(e.up[i] + e.tu[i] / 2 + shrink, eT);
+        bot[i] = Math.min(e.lo[i] - e.tl[i] / 2 - shrink, eB);
+        if (bot[i] - top[i] > 1) { if (first < 0) first = i; last = i; }
+      }
+      if (first < 0) { g.rect(e.c[0], e.c[1], 0.01, 0.01).fill(0xffffff); e.group.alpha = 0; continue; }
+      // последние 6 px просвета: радужка темнеет под тушь — яркой зелёно-белой волосинки между веками нет
+      let gap = 0;
+      for (let i = first; i <= last; i++) gap = Math.max(gap, bot[i] - top[i]);
+      e.group.alpha = smoothstep(gap / 6);
+      for (let i = first; i <= last; i++) {
+        const x = e.xs[i], y = Math.min(top[i], bot[i]);
+        const wx = m.a * x + m.c * y + m.tx, wy = m.b * x + m.d * y + m.ty;
+        if (i === first) g.moveTo(wx, wy); else g.lineTo(wx, wy);
+      }
+      for (let i = last; i >= first; i--) {
+        const x = e.xs[i], y = Math.max(top[i], bot[i]);
+        g.lineTo(m.a * x + m.c * y + m.tx, m.b * x + m.d * y + m.ty);
       }
       g.closePath().fill(0xffffff);
     }
@@ -470,13 +534,13 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
   };
   const look = { tx: 0, ty: 0, held: false };
   // поза настроения: все поля ключуются в каждом настроении — ничего не «залипает»
-  type Pose = { headRot: number; headY: number; earL: number; earR: number; lidOpen: number; lidSlant: number; tailAmp: number; breathMul: number; pupil: number; bodyRot: number };
+  type Pose = { headRot: number; headY: number; earL: number; earR: number; lidOpen: number; lidSad: number; tailAmp: number; breathMul: number; pupil: number; bodyRot: number };
   const POSES: Record<Mood, Pose> = {
-    idle: { headRot: 0, headY: 0, earL: 0, earR: 0, lidOpen: 1 - preset.lids.idle.y, lidSlant: 0, tailAmp: 1, breathMul: 1, pupil: 1, bodyRot: 0 },
-    think: { headRot: 0.14, headY: 0, earL: 0.08, earR: -0.05, lidOpen: 1 - preset.lids.think.y, lidSlant: 0, tailAmp: 0.7, breathMul: 1, pupil: 1, bodyRot: 0 },
-    sad: { headRot: 0.05, headY: 10, earL: -0.6, earR: 0.6, lidOpen: 1 - preset.lids.sad.y, lidSlant: preset.lids.sad.rot, tailAmp: 0.4, breathMul: 1.4, pupil: 0.95, bodyRot: 0 },
-    sleep: { headRot: 0.1, headY: 14, earL: -0.2, earR: 0.2, lidOpen: 0, lidSlant: 0, tailAmp: 0.3, breathMul: 1.8, pupil: 1, bodyRot: 0 },
-    focused: { headRot: 0, headY: 0, earL: 0.05, earR: -0.05, lidOpen: 1 - preset.lids.focused.y, lidSlant: 0, tailAmp: 0.8, breathMul: 0.9, pupil: 1, bodyRot: 0 },
+    idle: { headRot: 0, headY: 0, earL: 0, earR: 0, lidOpen: 1 - preset.lids.idle.y, lidSad: 0, tailAmp: 1, breathMul: 1, pupil: 1, bodyRot: 0 },
+    think: { headRot: 0.14, headY: 0, earL: 0.08, earR: -0.05, lidOpen: 1 - preset.lids.think.y, lidSad: 0, tailAmp: 0.7, breathMul: 1, pupil: 1, bodyRot: 0 },
+    sad: { headRot: 0.05, headY: 10, earL: -0.6, earR: 0.6, lidOpen: 1 - preset.lids.sad.y, lidSad: 1, tailAmp: 0.4, breathMul: 1.4, pupil: 0.95, bodyRot: 0 },
+    sleep: { headRot: 0.1, headY: 14, earL: -0.2, earR: 0.2, lidOpen: 0, lidSad: 0, tailAmp: 0.3, breathMul: 1.8, pupil: 1, bodyRot: 0 },
+    focused: { headRot: 0, headY: 0, earL: 0.05, earR: -0.05, lidOpen: 1 - preset.lids.focused.y, lidSad: 0, tailAmp: 0.8, breathMul: 0.9, pupil: 1, bodyRot: 0 },
   };
   const pose: Pose = { ...POSES.idle };
   let moodNow: Mood = "idle";
@@ -667,36 +731,38 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     shoulderL.y = ov.pawY;
     pawR.rotation = reduce ? 0 : nz(30, 0.1) * 0.02;
 
+    // глаза: кривые на кадр (до скиннинга — контур складывается между ними)
+    const L = preset.look;
+    const open = Math.min(pose.lidOpen, 1 - blinkState.t);
+    const closedness = Math.max(1 - open, ov.closed);
+    // контур стоит, пока веко скользит внутри него (до полуприкрытого), затем складывается в дугу
+    const squash = smoothstep((closedness - 0.5) / 0.5);
+    // нижняя лента появляется поверх СВОЕГО же штриха контура (тушь на туши — невидимо) до того,
+    // как контур начнёт складываться; верхняя — как только веко отходит от контура
+    const lowA = smoothstep((closedness - 0.25) / 0.2);
+    const lidA = smoothstep(closedness / 0.06);
+    for (const k of ["L", "R"] as const) {
+      const e = eyes[k];
+      evalEye(k, open, pose.lidSad, ov.closed);
+      e.squash = squash;
+      // зрачок: взгляд и расширение — через привязку к кости (масштаб тела при прыжке сохраняется)
+      const pw = P(`pupil_${k}`).w / 2, ph = P(`pupil_${k}`).h / 2;
+      e.pupilAtt.offset.x = clamp(gx * L.pupil, -(e.rx - pw - 4), e.rx - pw - 4);
+      e.pupilAtt.offset.y = clamp(gy * L.pupilY, -(e.ry - ph - 4), e.ry - ph - 4);
+      e.pupilAtt.scale = pupilDil.v * pose.pupil;
+      e.ring.mesh.alpha = 1 - smoothstep((squash - 0.6) / 0.3); // сложенный контур лежит под лентами — гаснет невидимо (видны только сжатые уголки)
+      e.low.mesh.alpha = lowA;
+      e.lid.mesh.alpha = lidA;
+    }
+
     updateBones();
     skinMeshes();
     placeAttached();
     pawDrawOrder();
-    drawMasks();
 
-    // глаза: веки = сплющивание контура и маски (состояние на кадр), зрачок внутри радужки, блик на месте
-    const L = preset.look;
-    const open = Math.min(pose.lidOpen, 1 - blinkState.t);
-    for (const k of ["L", "R"] as const) {
-      const e = eyes[k];
-      lidState[k].open = open;
-      lidState[k].slant = pose.lidSlant;
-      lidState[k].happy = ov.closed;
-      // зрачок никогда не пересекает край радужки: запас = радиус радужки − полуразмер зрачка − 4
-      const pw = P(`pupil_${k}`).w / 2, ph = P(`pupil_${k}`).h / 2;
-      // счастливый прищур: контур схлопывается, в последней трети кроссфейд на нарисованные «^ ^»
-      const hap = smoothstep((ov.closed - 0.6) / 0.35);
-      e.closed.alpha = hap;
-      e.ring.mesh.alpha = 1 - hap;
-      const px = clamp(gx * L.pupil, -(e.rx - pw - 4), e.rx - pw - 4);
-      const py = clamp(gy * L.pupilY, -(e.ry - ph - 4), e.ry - ph - 4);
-      e.pupil.x += px; e.pupil.y += py;
-      const dil = pupilDil.v * pose.pupil;
-      e.pupil.scale.set(texScale * dil);
-      e.pupil.x -= (P(`pupil_${k}`).w * (dil - 1)) / 2; e.pupil.y -= (P(`pupil_${k}`).h * (dil - 1)) / 2;
-    }
-    // контур и маска считаются после обновления состояния век
-    skinMeshes();
-    drawMasks();
+    // радужка видна до самого смыкания (как в жизни): маска — ровно до внутренних кромок штрихов,
+    // запас 1 px под антиалиас; щели по углам срезает сложенный эллипс контура
+    drawEyes(1);
     drawDebug();
   };
   let prevBodyY = 0;
@@ -745,7 +811,7 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     debug,
     mood: () => moodNow,
     _internals: {
-      ov, bones, attached,
+      ov, bones, attached, eyes,
       step: (dt: number) => {
         if (clock.virtual === null) {
           clock.virtual = performance.now();

@@ -242,16 +242,8 @@ for k, (cx, cy) in EYES.items():
     add('pupil_' + k, pupil_rgb, soft(ndi.binary_dilation(pupil | shine, iterations=S) & inner, 0.8), 11)
     add('shine_' + k, rgb, soft(ndi.binary_dilation(shine, iterations=S), 0.5), 12)
 
-# 14a. счастливые «^ ^» — кадр, сгенерированный по оригиналу (eyes-happy → align → upscale → matte):
-# дуги той же туши; движок подмешивает их в конце счастливого прищура вместо контура
-HAPPY = os.path.join(ROOT, 'design/mascot/export/eyes-happy%s.png' % ('' if S == 1 else f'@{S}x'))
-if os.path.exists(HAPPY):
-    hp = np.asarray(Image.open(HAPPY).convert('RGBA')).astype(np.float32)
-    for k, (cx, cy) in EYES.items():
-        zone_h = ell(cx, cy, RX + 14, RY + 14)
-        add('happy_' + k, hp[..., :3], (hp[..., 3] / 255) * soft(zone_h, 3), 14)
-    print('happy eyes from generated frame')
-# 14. закрытые глаза — кадры, сгенерированные по оригиналу (from_gen.py), не рисованные дуги
+# 14. закрытые глаза и «^ ^» — не слои: движок рисует их лентами по кривым кейформов
+#     (design/mascot/eyecurves.py → public/mascot/eyes.json); gen_layer нужен для ртов
 def gen_layer(key, box):
     p = os.path.join(GEN, key + '.png')
     g = np.asarray(Image.open(p).convert('RGBA')).astype(np.float32)
@@ -261,8 +253,6 @@ def gen_layer(key, box):
         g = np.asarray(Image.fromarray(g.astype(np.uint8), 'RGBA').resize((sc(x1 - x0), sc(y1 - y0)), Image.LANCZOS)).astype(np.float32)
     full[sc(y0):sc(y1), sc(x0):sc(x1)] = g
     return full[..., :3], full[..., 3] / 255
-for k, key, box in (('L', 'eyeclosed-l', (405, 301, 605, 509)), ('R', 'eyeclosed-r', (618, 301, 818, 509))):
-    r_, a_ = gen_layer(key, box); add('closed_' + k, r_, a_, 14)
 
 # 15. рты: родное «ω», открытый и «о» — кадры по оригиналу; плоский и грустный — штрих тушью
 mouth_a = soft(ndi.binary_dilation(mouth_ink, iterations=S), 0.7)
@@ -320,7 +310,7 @@ PIVOTS = {
     'body': (600, 768), 'head': (610, 590), 'ear_L': (470, 255), 'ear_R': (735, 245),
     'paw_L': (495, 600), 'paw_R': (745, 690), 'tail': (825, 697), 'flame': (972, 415), 'chest': (600, 640),
     'iris_L': EYES['L'], 'iris_R': EYES['R'], 'pupil_L': EYES['L'], 'pupil_R': EYES['R'], 'shine_L': EYES['L'], 'shine_R': EYES['R'],
-    'ring_L': EYES['L'], 'ring_R': EYES['R'], 'closed_L': EYES['L'], 'closed_R': EYES['R'], 'happy_L': EYES['L'], 'happy_R': EYES['R'],
+    'ring_L': EYES['L'], 'ring_R': EYES['R'],
     'mouth_smile': (615, 486), 'mouth_open': (615, 486), 'mouth_o': (615, 486), 'mouth_flat': (615, 486), 'mouth_sad': (615, 486),
 }
 TAIL_JOINTS = [(825, 697), (900, 702), (975, 705), (1040, 690), (1085, 655), (1100, 600), (1095, 545), (1075, 490)]
@@ -354,7 +344,7 @@ for name, rgbx, a, z in sorted(layers, key=lambda t: t[3]):
 json.dump(rig, open(os.path.join(ROOT, 'public/mascot/rig.json'), 'w'), indent=1)
 
 # проверка «Difference»: сборка всех слоёв против мастера (без лат — они под другими слоями)
-hide = {'closed_L', 'closed_R', 'happy_L', 'happy_R', 'mouth_open', 'mouth_o', 'mouth_flat', 'mouth_sad'}
+hide = {'mouth_open', 'mouth_o', 'mouth_flat', 'mouth_sad'}
 composite = np.zeros((H, W, 4), np.float32)
 for name, rgbx, a, z in sorted(layers, key=lambda t: t[3]):
     if name in hide: continue
