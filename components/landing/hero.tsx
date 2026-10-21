@@ -10,7 +10,10 @@ import {
   useSpring,
 } from "motion/react";
 import { ArrowRight, Loader2 } from "lucide-react";
-import { MascotSvg, type MascotExpression } from "@/components/mascot-svg";
+import { type MascotExpression } from "@/components/mascot-svg";
+import { MascotStatic } from "@/components/hero-scene";
+import { MascotPuppet } from "@/components/mascot-puppet";
+import type { Mascot, Mood } from "@/lib/mascot/puppet";
 import { GroundPool, HeroScene, Moon } from "@/components/hero-scene";
 import { SPRING_PARALLAX, SPRING_SNAPPY } from "@/lib/motion";
 import { playPurr } from "@/lib/reward-sound";
@@ -173,11 +176,15 @@ export function Hero() {
   const [expression, setExpression] = useState<MascotExpression>("calm");
   // Первое впечатление: кот машет гостю через секунду после загрузки —
   // одно заметное движение в первый момент, дальше спокойный idle.
-  const [greeting, setGreeting] = useState(false);
+  // Кукла (lib/mascot/puppet.ts): до готовности WebGL стоит серверный SVG-кадр.
+  const puppet = useRef<Mascot | null>(null);
+  const [greeting, setGreeting] = useState<{ name: "wave"; key: number } | null>(null);
   useEffect(() => {
-    const t = window.setTimeout(() => setGreeting(true), 900);
+    const t = window.setTimeout(() => setGreeting({ name: "wave", key: 1 }), 900);
     return () => window.clearTimeout(t);
   }, []);
+  // настроение кота в терминах куклы: тап кукла отыгрывает сама (react), восторг — её же реакция
+  const MOOD: Record<MascotExpression, Mood> = { calm: "idle", happy: "idle", excited: "idle", focused: "focused", sleepy: "sleep", listening: "focused" };
   // CTA виден с первой секунды (не заперт за диалогом), но ответ существа
   // всё равно должен закрывать дофаминовую петлю действием, а не повисать
   // в пустоте — импульс на уже видимую кнопку вместо второй, конкурирующей
@@ -438,6 +445,7 @@ export function Hero() {
                     return;
                   }
                   setNavigating(true);
+                  void puppet.current?.play("happy"); // «Давай» → прыжок радости, пока грузится /app
                 }}
                 data-warm={ctaBoost ? "" : undefined}
                 className="btn-chunky block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:w-auto"
@@ -481,11 +489,12 @@ export function Hero() {
               aria-label="Погладить напарника"
               className="press relative z-10 cursor-pointer rounded-full outline-offset-8"
             >
-              <MascotSvg
-                expression={expression}
-                action={greeting ? "wave" : "idle"}
-                size={196}
-                label=""
+              <MascotPuppet
+                fill
+                mood={MOOD[expression]}
+                play={greeting}
+                onReady={(m) => { puppet.current = m; }}
+                fallback={<MascotStatic size={196} className="size-full" />}
                 className="size-[clamp(112px,26dvh,206px)] lg:size-[196px] lg:origin-bottom lg:scale-[1.15]"
               />
             </button>

@@ -31,6 +31,8 @@ export const VIEW = { x: 250, y: -85, size: 910 };
 
 export type MascotOptions = {
   size?: number;
+  /** заполнять контейнер (размер из CSS), а не фиксированный size */
+  fill?: boolean;
   preset?: Partial<Preset>;
   /** base URL частей (по умолчанию /mascot/parts) */
   base?: string;
@@ -92,24 +94,26 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     import("gsap"),
   ]);
   const base = opts.base ?? "/mascot/parts";
-  const size = opts.size ?? 280;
+  const size = opts.fill ? Math.max(1, el.clientWidth || opts.size || 280) : (opts.size ?? 280);
   const preset: Preset = structuredClone(defaultPreset);
   if (opts.preset) deepMerge(preset as unknown as Record<string, unknown>, opts.preset as Record<string, unknown>);
   const rig: Rig = await (await fetch(`${base}/../rig.json`)).json();
   const reduce = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const app: PixiApp = new Application();
+  // бэкбуфер — под реальный размер на экране (не 910·DPR на 200-px кота)
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
   await app.init({
     width: VIEW.size,
     height: VIEW.size,
     backgroundAlpha: 0,
     antialias: true,
-    resolution: Math.min(3, window.devicePixelRatio || 1),
+    resolution: clamp((size * dpr) / VIEW.size, 0.25, 3),
     autoDensity: true,
   });
   el.appendChild(app.canvas);
-  app.canvas.style.width = `${size}px`;
-  app.canvas.style.height = `${size}px`;
+  app.canvas.style.width = opts.fill ? "100%" : `${size}px`;
+  app.canvas.style.height = opts.fill ? "100%" : `${size}px`;
   app.canvas.style.display = "block";
   app.canvas.style.touchAction = "manipulation";
 
