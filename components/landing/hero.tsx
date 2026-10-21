@@ -273,7 +273,7 @@ export function Hero() {
     <section
       id="hero"
       // Шапки нет: hero занимает весь вьюпорт, первый экран начинается с сцены
-      className="grain grain-hero relative flex h-dvh min-h-0 flex-col items-center justify-center overflow-hidden px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] [@media(max-height:520px)]:h-auto [@media(max-height:520px)]:min-h-dvh lg:pb-20 lg:pt-6"
+      className="grain grain-hero relative flex h-dvh min-h-0 flex-col items-center justify-center overflow-hidden px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] [@media(max-height:700px)]:pt-[max(0.5rem,env(safe-area-inset-top))] [@media(max-height:520px)]:h-auto [@media(max-height:520px)]:min-h-dvh lg:pb-20 lg:pt-6"
     >
       {/* Атмосфера: ночная сцена с луной и звёздами — иммерсивный фон.
           ВАЖНО: высота сцены зафиксирована 100svh, а не inset-0. На мобильном
@@ -366,7 +366,7 @@ export function Hero() {
           {/* Промис голосом персонажа: первая фраза — боль, вторая —
             обещание от первого лица. Каракуля — под словом обещания */}
           <h1
-            className="hero-rise order-2 mt-2 text-[clamp(1.75rem,min(10vw,5.4dvh),3rem)] font-bold leading-[1.08] tracking-tight md:text-5xl lg:order-none lg:mt-0"
+            className="hero-rise order-2 mt-2 text-[clamp(1.75rem,min(10vw,5.4dvh),3rem)] font-bold leading-[1.08] tracking-tight [@media(max-height:700px)]:mt-0 md:text-5xl lg:order-none lg:mt-0"
             style={{ "--rise-delay": "0.1s" } as CSSProperties}
           >
             {/* Тёплый «прогрев» слов остывает до резкого текста ровно к
@@ -487,7 +487,7 @@ export function Hero() {
                 action={greeting ? "wave" : "idle"}
                 size={249}
                 label=""
-                className="size-[clamp(128px,calc(34dvh_-_26px),262px)] lg:size-[249px] lg:origin-bottom lg:scale-[1.15]"
+                className="size-[clamp(141px,33dvh,262px)] lg:size-[249px] lg:origin-bottom lg:scale-[1.15]"
               />
             </button>
             <GroundPool className="-mt-12 -mb-12" />
@@ -495,7 +495,7 @@ export function Hero() {
 
           {/* Живой чат-вход: он здоровается, ты отвечаешь — премиальная реплика */}
           <div
-            className="hero-rise order-4 mt-3 flex w-full flex-col gap-2.5 lg:order-none lg:mt-1"
+            className="hero-rise order-4 mt-3 flex w-full flex-col gap-2.5 [@media(max-height:700px)]:mt-1 [@media(max-height:700px)]:gap-1.5 lg:order-none lg:mt-1"
             style={{ "--rise-delay": "0.3s" } as CSSProperties}
             aria-live="polite"
           >
