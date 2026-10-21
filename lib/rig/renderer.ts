@@ -69,9 +69,34 @@ function gridOf(verts: number[], cols: number, rows: number) {
   return { verts: out, idx };
 }
 
+/** Декодированные слои рига — один раз на страницу, общие для всех экземпляров (у каждого свой контекст). */
+const imageCache = new Map<string, Promise<HTMLImageElement[]>>();
+export function loadRigImages(rig: RigData, baseUrl: string): Promise<HTMLImageElement[]> {
+  let p = imageCache.get(baseUrl);
+  if (!p) {
+    p = Promise.all(
+      rig.parts.map(
+        (part) =>
+          new Promise<HTMLImageElement>((res, rej) => {
+            const im = new Image();
+            im.onload = () => res(im);
+            im.onerror = () => rej(new Error("texture " + part.tex));
+            im.src = baseUrl + part.tex;
+          }),
+      ),
+    );
+    p.catch(() => imageCache.delete(baseUrl));
+    imageCache.set(baseUrl, p);
+  }
+  return p;
+}
+
 /**
- * Один общий WebGL-контекст на страницу: на лендинге несколько котов, а контекстов у браузера ограниченное число.
- * Кот рисуется в общий холст, затем копируется в 2D-холст своего экземпляра.
+ * WebGL-контекст прямо на видимом холсте экземпляра: кадр рисуется в него и больше никуда не копируется.
+ * Прежняя схема (один скрытый холст 1024² + drawImage в 2D-холст каждого кота) на каждом кадре гоняла
+ * 1024² пикселей через readback там, где 2D-холст не ускорен (слабые Android, software GL) — 85 % кадра
+ * уходило в drawImage. Слои кота ~5 МБ на контекст, котов на экране ≤ 6, лимит браузера 16; потерю
+ * контекста обрабатывает компонент (пересоздаёт рендер на том же холсте).
  */
 export class RigRenderer {
   readonly canvas: HTMLCanvasElement;
@@ -90,12 +115,10 @@ export class RigRenderer {
     for (const k of ["uBones", "uView", "uLocal", "uCenter", "uTex", "uOp"]) this.loc[k] = gl.getUniformLocation(prog, k);
   }
 
-  static async create(rig: RigData, baseUrl: string): Promise<RigRenderer | null> {
-    const canvas = document.createElement("canvas");
-    canvas.width = 1024;
-    canvas.height = 1024;
+  static async create(rig: RigData, baseUrl: string, canvas: HTMLCanvasElement): Promise<RigRenderer | null> {
+    const images = await loadRigImages(rig, baseUrl);
     const gl = canvas.getContext("webgl2", { premultipliedAlpha: true, alpha: true, antialias: true, preserveDrawingBuffer: false });
-    if (!gl) return null;
+    if (!gl || gl.isContextLost()) return null;
     const sh = (type: number, src: string) => {
       const s = gl.createShader(type)!;
       gl.shaderSource(s, src);
@@ -114,23 +137,21 @@ export class RigRenderer {
     gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || "link");
     const r = new RigRenderer(canvas, gl, rig, prog);
-    await r.upload(rig, baseUrl);
+    r.upload(rig, images);
     return r;
   }
 
-  private async upload(rig: RigData, baseUrl: string) {
+  /** Освободить GPU-ресурсы при размонтировании: иначе контексты копятся до лимита и браузер теряет старые. */
+  dispose() {
     const gl = this.gl;
-    const images = await Promise.all(
-      rig.parts.map(
-        (p) =>
-          new Promise<HTMLImageElement>((res, rej) => {
-            const im = new Image();
-            im.onload = () => res(im);
-            im.onerror = () => rej(new Error("texture " + p.tex));
-            im.src = baseUrl + p.tex;
-          }),
-      ),
-    );
+    for (const g of this.gpu.values()) { gl.deleteTexture(g.tex); gl.deleteVertexArray(g.vao); if (g.offBuf) gl.deleteBuffer(g.offBuf); }
+    this.gpu.clear();
+    gl.deleteProgram(this.prog);
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+  }
+
+  private upload(rig: RigData, images: HTMLImageElement[]) {
+    const gl = this.gl;
     gl.disableVertexAttribArray(4);
     gl.vertexAttrib2f(4, 0, 0);
     rig.parts.forEach((p0, i) => {
@@ -174,12 +195,11 @@ export class RigRenderer {
     gl.bindVertexArray(null);
   }
 
-  /** Нарисовать позу в общий холст размером w x h (<= 1024) и скопировать в ctx экземпляра */
-  draw(ctx: CanvasRenderingContext2D, w: number, h: number, skin: Float32Array, parts: Map<string, PartState>) {
+  /** Нарисовать позу в свой холст (его drawing buffer = w x h пикселей) */
+  draw(w: number, h: number, skin: Float32Array, parts: Map<string, PartState>) {
     const gl = this.gl;
-    const W = Math.min(w, 1024);
-    const H = Math.min(h, 1024);
-    gl.viewport(0, 0, W, H);
+    if (gl.isContextLost()) return;
+    gl.viewport(0, 0, w, h);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND);
@@ -211,8 +231,5 @@ export class RigRenderer {
       gl.drawElements(gl.TRIANGLES, g.count, gl.UNSIGNED_SHORT, 0);
     }
     gl.bindVertexArray(null);
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    // WebGL-холст снизу вверх: берём нижние H строк
-    ctx.drawImage(this.canvas, 0, this.canvas.height - H, W, H, 0, 0, ctx.canvas.width, ctx.canvas.height);
   }
 }
