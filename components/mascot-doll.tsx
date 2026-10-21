@@ -63,17 +63,6 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
   const [ready, setReady] = useState(0);
   const [inView, setInView] = useState(true);
   const [px, setPx] = useState(0);
-  // у героя внешний постер 900 px запрашивается только после шрифтов первого экрана: на 3G он делил полосу
-  // с ними поровну (HTTP/1.1, 6 соединений) и отодвигал текст на 1,3 с; инлайн 480 px до тех пор на месте
-  const [posterReady, setPosterReady] = useState(!inlinePoster);
-  useEffect(() => {
-    if (!inlinePoster || posterReady) return;
-    let alive = true;
-    const go = () => { if (alive) setPosterReady(true); };
-    const t = window.setTimeout(go, 3000);
-    document.fonts?.ready.then(go);
-    return () => { alive = false; window.clearTimeout(t); };
-  }, [inlinePoster, posterReady]);
 
   // размер холста — по фактическому размеру на странице (класс size-[clamp(...)] на первом экране меняет его)
   useEffect(() => {
@@ -219,10 +208,10 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
             <img src={MASCOT_POSTER_INLINE} alt="" draggable={false} aria-hidden
               style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
           ) : null}
-          {posterReady ? (
-            <img src="/mascot/poster/neutral.webp" alt="" draggable={false} loading={inlinePoster ? "eager" : "lazy"} decoding="async"
-              style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
-          ) : null}
+          {/* у героя внешний постер идёт обычным приоритетом картинки в кадре: первый кадр уже дал инлайн, а шрифты
+              первого экрана вшиты в CSS (app/hero-fonts.css), уступать полосу ему больше некому */}
+          <img src="/mascot/poster/neutral.webp" alt="" draggable={false} loading={inlinePoster ? "eager" : "lazy"} decoding="async"
+            style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
         </>
       ) : null}
       {state === "doll" ? (

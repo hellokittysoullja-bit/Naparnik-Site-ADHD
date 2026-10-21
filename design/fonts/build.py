@@ -5,10 +5,11 @@
 на 3G текст первого экрана появлялся на ~1 с позже кота. Здесь:
   1. статические начертания (Manrope 400/500/600/700, Caveat 400/500 — на сайте других нет), каждое порезано
      по unicode-range на кириллицу + цифры + пунктуацию (один файл закрывает русский экран) и латиницу;
-  2. для первого экрана лендинга — крошечные подмножества ровно под его символы (hero.tsx + символы, что
-     реально видны при рендере), вшитые в CSS как data: URI: текст героя рисуется своим шрифтом с первой
-     отрисовки на любой сети, без ожидания файла и без подмены запасного. Объявлены ПОСЛЕ внешних @font-face
-     той же семьи — при пересечении unicode-range побеждает позднее правило;
+  2. для первого экрана лендинга — крошечные подмножества ровно под его символы (hero.tsx), вшитые как
+     data: URI в app/hero-fonts.css (подключён только в app/page.tsx): текст героя рисуется своим шрифтом
+     с первой отрисовки на любой сети, без ожидания файла и без подмены запасного. Объявлены ПОСЛЕ внешних
+     @font-face той же семьи — при пересечении unicode-range побеждает позднее правило. Покрытие символов
+     проверяет design/fonts/check.mjs на каждом `npm run build` (prebuild);
   3. запасные "… Fallback" на local(Arial) с метриками, подогнанными под высоту строки и переносы.
 Запуск: python3 design/fonts/build.py  (нужны fonttools, brotli). Контекстные альтернативы (calt) сохранены.
 """
@@ -21,6 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 SRC = os.path.join(ROOT, "design", "fonts", "src")
 OUT = os.path.join(ROOT, "public", "fonts")
 CSS = os.path.join(ROOT, "app", "fonts.css")
+HERO_CSS = os.path.join(ROOT, "app", "hero-fonts.css")  # только лендинг (app/page.tsx), /app его не грузит
 
 # кириллица + цифры + пунктуация + кавычки — один файл на русский экран; латинские буквы — отдельно
 CYR = "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116,U+0020-0040,U+005B-0060,U+007B-007E,U+00A0,U+00AB,U+00BB,U+2010-2015,U+2018-201F,U+2026,U+2122"
@@ -85,7 +87,7 @@ def main():
     for f in os.listdir(OUT):
         if f.endswith(".woff2"): os.remove(os.path.join(OUT, f))
     css = ["/* Сгенерировано design/fonts/build.py — не править руками. Шрифты сайта: внешние файлы по весам и",
-           "   алфавитам, вшитые подмножества для первого экрана лендинга, запасные с подогнанными метриками. */", ""]
+           "   алфавитам и запасные с подогнанными метриками. Вшитые подмножества первого экрана — hero-fonts.css. */", ""]
     statics = {}
     for fam, ws in FONTS.items():
         for w in ws:
@@ -98,15 +100,20 @@ def main():
                 css += ["@font-face {", f'  font-family: "{fam}";', f'  src: url("/fonts/{name}") format("woff2");',
                         f"  font-weight: {w};", "  font-style: normal;", "  font-display: block;",
                         f"  unicode-range: {rng.replace(',', ', ')};", "}", ""]
-    css += ["/* первый экран лендинга: ровно его символы, в самом CSS — своим шрифтом с первой отрисовки */"]
+    hero = ["/* Сгенерировано design/fonts/build.py — не править руками. Первый экран лендинга: подмножества ровно под",
+            "   его символы, вшитые в CSS — текст героя своим шрифтом с первой отрисовки. Подключается только в",
+            "   app/page.tsx (после globals.css, т.е. после внешних @font-face той же семьи — при пересечении",
+            "   unicode-range побеждает позднее правило). design/fonts/check.mjs проверяет покрытие на каждом build. */", ""]
     for fam, w in HERO_FACES:
         chars = hero_chars(fam)
         data, n = cut(statics[(fam, w)], text=chars)
         b64 = base64.b64encode(data).decode()
         print(f"inline {fam} {w}: {len(data)//1024} КБ ({len(b64)//1024} КБ base64), {n} глифов, {len(chars)} символов")
-        css += ["@font-face {", f'  font-family: "{fam}";', f'  src: url("data:font/woff2;base64,{b64}") format("woff2");',
-                f"  font-weight: {w};", "  font-style: normal;", "  font-display: block;",
-                f"  unicode-range: {uranges(chars)};", "}", ""]
+        hero += ["@font-face {", f'  font-family: "{fam}";', f'  src: url("data:font/woff2;base64,{b64}") format("woff2");',
+                 f"  font-weight: {w};", "  font-style: normal;", "  font-display: block;",
+                 f"  unicode-range: {uranges(chars)};", "}", ""]
+    open(HERO_CSS, "w", encoding="utf-8").write("\n".join(hero))
+    print("hero css", os.path.getsize(HERO_CSS) // 1024, "КБ →", HERO_CSS)
     css += ["/* запасные на время загрузки внешних файлов: local(Arial) с метриками под высоту строки и переносы */"]
     for fam, (asc, desc, sa) in FALLBACK.items():
         css += ["@font-face {", f'  font-family: "{fam} Fallback";', '  src: local("Arial");', f"  size-adjust: {sa}%;",

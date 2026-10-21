@@ -1,5 +1,7 @@
 import { Hero } from "@/components/landing/hero";
 import { LandingBackdrop } from "@/components/landing/landing-backdrop";
+// вшитые подмножества шрифтов первого экрана — только здесь, /app их не грузит (design/fonts/build.py)
+import "./hero-fonts.css";
 
 // Лендинг собирается в статический HTML на этапе билда: первый кадр приходит
 // с CDN в первом же байте, без промежуточного состояния загрузки.
