@@ -9,7 +9,7 @@
 import glob, sys
 import numpy as np
 from PIL import Image
-from scipy.ndimage import label, binary_dilation, binary_erosion
+from scipy.ndimage import distance_transform_edt, label, binary_dilation, binary_erosion
 
 files = sorted(glob.glob(sys.argv[1] + "/f*.jpg")) or sorted(glob.glob(sys.argv[1] + "/f*.png"))
 skip = int(sys.argv[2]) if len(sys.argv) > 2 else 0
@@ -32,7 +32,10 @@ for f in files:
             continue
         m = lab == k
         if sizes[k] / max(1, (m & ~binary_erosion(m)).sum()) < 1.6:
-            thin += int(sizes[k])
+            # щель между частями тонкая по всей длине (< 4 px); просвет силуэта (хвост у щеки при
+            # прыжке) — клин шириной ≥ 4 px: это рисунок, не шов
+            if distance_transform_edt(m).max() < 2.0:
+                thin += int(sizes[k])
     holes.append(thin)
     L = im.mean(2); s = im.max(2) - im.min(2)
     outer = np.isin(lab, list(border)); near = binary_dilation(outer, iterations=2) & ~outer
@@ -43,5 +46,12 @@ print("frames", len(files))
 print("frame diff: mean %.2f, p95 %.2f" % (d.mean(), np.percentile(d, 95)))
 print("isolated pops (spike > 5):", [(int(i) + 2, round(float(spike[i]), 1)) for i in np.nonzero(spike > 5)[0]])
 print("fully still frames (diff < 0.05):", int((d < 0.05).sum()))
-print("thin seam-like holes: max %d px, frames with any: %d (цель 0)" % (max(holes), sum(1 for h in holes if h > 0)))
+# шов между частями держится; тонкая щель в 1–2 соседних кадрах — просвет силуэта в момент закрытия
+# (хвост проходит мимо щеки при прыжке), его не считаем
+runs = []; cur = 0
+for h in holes:
+    cur = cur + 1 if h > 0 else 0
+    runs.append(cur)
+persist = [holes[i] for i in range(len(holes)) if runs[i] >= 3 or (i + 1 < len(runs) and runs[i + 1] >= 3) or (i + 2 < len(runs) and runs[i + 2] >= 3)]
+print("thin seam-like holes: max %d px, frames with any: %d, persistent (≥3 frames): %d (цель 0)" % (max(holes), sum(1 for h in holes if h > 0), len(persist)))
 print("silhouette fringe: mean %.1f px/frame, max %d" % (np.mean(fringe), max(fringe)))

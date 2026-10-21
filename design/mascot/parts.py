@@ -221,13 +221,27 @@ if os.path.exists(EYESC):
         pyr_p = [gs(pc, sg) for sg in _scales]
         pyr_c = [gs(gc, sg) for sg in _scales]
         pyr_r = [gs(rc, sg) for sg in _scales]
+        # крупные мазки (8–40 px): радиальное зеркало родного меха вокруг глаза — точка на радиусе r
+        # берёт мех с радиуса 2·R0 − r (непрерывно на границе, масштаб мазков родной, без замощения);
+        # где за зеркалом не мех (ухо, усы) — мозаика
+        R0 = RX + 10
+        yy_c, xx_c = np.mgrid[by0:by1, bx0:bx1].astype(np.float64)
+        dx_, dy_ = (xx_c - sc(cx)) / (RX * S), (yy_c - sc(cy)) / (RY * S)
+        rn = np.sqrt(dx_ ** 2 + dy_ ** 2) * RX + 1e-6
+        rm = 2 * R0 - rn
+        ys_ = sc(cy) + dy_ / rn * rm * (RY * S) * (RY / RY)
+        xs_ = sc(cx) + dx_ / rn * rm * (RX * S)
+        ok_src = ndi.map_coordinates(FUR_OK.astype(np.float32), [ys_, xs_], order=0, mode='nearest') > 0.5
+        mir = np.stack([ndi.map_coordinates(rgb[..., ch], [ys_, xs_], order=1, mode='nearest') for ch in range(3)], -1).astype(np.float32)
+        mir = np.where((ok_src & (rn < R0 + 4))[..., None], mir, gc + rc.mean())
+        pyr_s = [gs(mir, sg) for sg in _scales]
         _a = (ell(cx, cy, RX + 46, RY + 46) & ~ell(cx, cy, RX + 20, RY + 20) & FUR_OK)[crop]
         _i = ell(cx, cy, RX - 2, RY - 2)[crop]
         zone_f = soft(ell(cx, cy, RX + 20, RY + 20), 5)[crop][..., None]   # вся латка до пера eye_blend
         fixed = np.broadcast_to(rc[_a].mean(0), pc.shape).astype(np.float32)
         gains = []
         for j in range(len(_scales) - 1):
-            bp = (pyr_p[j] - pyr_p[j + 1]) if j == 0 else (pyr_c[j] - pyr_c[j + 1])
+            bp = (pyr_p[j] - pyr_p[j + 1]) if j == 0 else (pyr_c[j] - pyr_c[j + 1]) if j == 1 else (pyr_s[j] - pyr_s[j + 1])
             br = pyr_r[j] - pyr_r[j + 1]
             gn = float(br[_a].mean(1).std() / max(bp[_i].mean(1).std(), 1e-6))
             gn = min(gn, (3.0, 3.0, 2.0, 1.5)[j])
@@ -235,7 +249,7 @@ if os.path.exists(EYESC):
             fixed = fixed + bp * gn
         fixed = fixed + (pc - pyr_p[0])  # всё мельче 1 px — как есть
         patch[crop] = pc * (1 - zone_f) + fixed * zone_f
-        del pyr_p, pyr_c, pyr_r
+        del pyr_p, pyr_c, pyr_r, pyr_s, mir
         print('eye patch bands (1-3, 3-8, 8-20, 20-40 px) gains:', ' '.join('%.2f' % v for v in gains))
     # тон: среднее латки = среднее кольца родного меха вокруг (без «светлого/тёмного диска»)
     for cx, cy in EYES.values():
