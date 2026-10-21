@@ -17,4 +17,8 @@ export type RigData = {
 };
 
 /** Состояние одного кадра для рендера: матрицы скиннинга и параметры частей */
-export type PartState = { opacity: number; dx: number; dy: number; sx: number; sy: number };
+export type PartState = {
+  opacity: number; dx: number; dy: number; sx: number; sy: number;
+  /** деформация формы части (огонёк): смещение вершины (x, y в покое) пишется в out[o], out[o + 1] */
+  warp?: (x: number, y: number, out: Float32Array, o: number) => void;
+};

@@ -52,6 +52,14 @@ class Spring {
   }
 }
 
+// колыхание огонька (px рисунка сайта): волна языков, общий ход кончика, вытягивание вверх-вниз. Формула куклы роликов,
+// но ход крупнее: в роликах кот во весь кадр (пламя ~100 px на экране, 4% хода видно), на сайте пламя 20–30 px, и те же 4%
+// меньше пикселя — не видно. Здесь ~8% высоты пламени (владелец 21.10: «более колыхается и более видно»)
+const FLAME_WAVE = 11;
+const FLAME_SWAY = 6;
+const FLAME_LIFT = 7;
+const FLAME_LAMBDA = 48;
+
 const PARTS = ["tail", "flame", "body", "eye-l", "eye-r", "pupil-l", "pupil-r", "hl-l", "hl-r", "lid-l", "lid-r", "happy", "sleep"];
 
 export class DollAnimator {
@@ -73,13 +81,14 @@ export class DollAnimator {
   private zzzT0 = 0;
   private pokeAt = -9;
   private earSide = false;
+  private earFlick2: { at: number; left: boolean; dir: number } | null = null;
 
   t = 0;
   private gx = new Spring(150, 17);
   private gy = new Spring(150, 17);
   private tilt = new Spring(70, 13);
-  private earL = new Spring(240, 11);
-  private earR = new Spring(240, 11);
+  private earL = new Spring(420, 15);   // флик: резче, чем прежде (240/11), с небольшим перелётом
+  private earR = new Spring(420, 15);
   private squash = new Spring(260, 15);
   private hop = new Spring(140, 10);
   private happyK = 0;
@@ -92,6 +101,11 @@ export class DollAnimator {
   private glance = 0;
   private hopAt = -9;
   private waveAt = -9;
+  /** огонёк: рамка в покое (верх, высота) и текущие параметры колыхания для warp */
+  private flameTop = 350;
+  private flameH = 136;
+  private flameT = 0;
+  private flameAmp = 1;
 
   constructor(rig: RigData & { eyes?: number[][] }, seed = Math.floor(Math.random() * 2 ** 31)) {
     this.rand = rng(seed);
@@ -101,8 +115,23 @@ export class DollAnimator {
     for (let i = 0; this.B[`tail${i}`] !== undefined; i++) this.tail.push(this.B[`tail${i}`]);
     this.eyeR = rig.eyes?.[0]?.[2] ?? 96;
     for (const n of PARTS) this.parts.set(n, { opacity: 1, dx: 0, dy: 0, sx: 1, sy: 1 });
+    const fb = rig.parts.find((p) => p.name === "flame")?.box;
+    if (fb) { this.flameTop = fb[1]; this.flameH = fb[3] - fb[1]; }
+    this.parts.get("flame")!.warp = this.flameWarp;
     this.update(0);
   }
+
+  /** Смещение вершины огонька (x, y — в покое): формула куклы роликов (doll_rig.py, FLAME_NOISE), пересчитанная
+   * на рамку огонька сайта. ku — от кончика (≈0.86) к основанию (≈0.04), как там на высоте пламени. */
+  private flameWarp = (x: number, y: number, out: Float32Array, o: number) => {
+    const A = this.flameAmp;
+    if (A <= 0) { out[o] = 0; out[o + 1] = 0; return; }
+    const v = clamp01((y - this.flameTop) / this.flameH), t = this.flameT;
+    const ku = Math.pow(Math.max(0, 1 - (0.1 + 0.79 * v)), 1.5) * A;
+    const yy = y - this.flameTop;
+    out[o] = ku * (FLAME_WAVE * fbm(yy / FLAME_LAMBDA - t * 2.3, 11) + FLAME_SWAY * fbm(t * 3.7, 23));
+    out[o + 1] = ku * FLAME_LIFT * fbm(t * 4.1, 37);
+  };
 
   setAction(a: DollAction) {
     if (a === this.action) return;
@@ -174,32 +203,42 @@ export class DollAnimator {
     const tilt = still ? 0 : this.tilt.step(dt);
     P.rot[B.head] = (tilt - 3.4 * sm(sk)) * D2R;
 
-    // ----- уши: подёргивание раз в 6–11 с (и на касание)
-    // подёргивание ушей по очереди раз в 4–8 с; левое ухо загнутое и короткое — его ход больше, иначе его не видно
+    // ----- уши как у живой кошки: (1) быстрый «флик» — ухо дёргается за ~0.1 с и возвращается с лёгким перелётом,
+    // иногда двойной; (2) ухо поворачивается к тому, куда смотрит кот (внимание), и плавно держит направление;
+    // (3) медленное дрожание шумом. Левое ухо загнутое и короткое — его ход больше, иначе его не видно.
     if (!still && t > this.earAt) {
       this.earSide = !this.earSide;
-      if (this.earSide) this.earL.v += this.rand() < 0.5 ? -330 : 330; else this.earR.v += this.rand() < 0.5 ? -230 : 230;
-      this.earAt = t + 4 + this.rand() * 4;
+      const dir = this.rand() < 0.5 ? -1 : 1;
+      if (this.earSide) this.earL.v += dir * 460; else this.earR.v += dir * 400;
+      if (this.rand() < 0.3) this.earFlick2 = { at: t + 0.28, left: this.earSide, dir };   // двойной флик
+      this.earAt = t + 3.5 + this.rand() * 4;
     }
-    const swayL = still ? 0 : 2.2 * fbm(t / 1.9, 71), swayR = still ? 0 : 1.4 * fbm(t / 2.3, 83);
+    if (this.earFlick2 && t >= this.earFlick2.at) {
+      const f2 = this.earFlick2; this.earFlick2 = null;
+      if (f2.left) this.earL.v += f2.dir * 380; else this.earR.v += f2.dir * 290;
+    }
+    // внимание: смотрит вправо — оба уха поворачиваются вправо (поворот кости по часовой — к +x у верхушки)
+    this.earL.target = lx * 4.5; this.earR.target = lx * 3.5;
+    const swayL = still ? 0 : 2.6 * fbm(t / 1.9, 71), swayR = still ? 0 : 1.8 * fbm(t / 2.3, 83);
     P.rot[B["ear-l"]] = ((still ? 0 : this.earL.step(dt)) * 0.75 + swayL) * D2R;
     P.rot[B["ear-r"]] = ((still ? 0 : this.earR.step(dt)) * 0.6 + swayR) * D2R;
 
     // ----- хвост: бегущая волна по цепочке, огонёк держится вертикально
-    // амплитуда проверена крайними позами (после починки весов на суставах): до ~2.6° на звено чисто
+    // амплитуда проверена крайними позами (после починки весов на суставах): до ~2.6° на звено чисто; 2.15 (было 1.9) —
+    // владелец 21.10: «чуть-чуть сильнее»
     const livelyT = this.action === "celebrate" ? 1.35 : f.happy ? 1.15 : f.sleep ? 0.45 : 1;
     this.lively += (livelyT - this.lively) * Math.min(1, dt * 1.5);       // смена настроения — плавно, не скачком хвоста
     const lively = this.lively;
     let acc = 0;
     this.tail.forEach((bi, i) => {
-      let a = still ? 0 : 1.9 * lively * Math.tanh(fbm(t / 2.6 - i * 0.2, 53)) * (0.45 + i / this.tail.length);
+      let a = still ? 0 : 2.15 * lively * Math.tanh(fbm(t / 2.6 - i * 0.2, 53)) * (0.45 + i / this.tail.length);
       if (a < 0) a *= 0.55;                 // к голове хвост ходит меньше: при −2.6° на звено огонёк заходил на щёку
       P.rot[bi] = a * D2R; acc += a;
     });
     P.rot[B.flame] = -acc * 0.5 * D2R;             // огонёк тянется вверх, но держится за кончик хвоста
-    const fl = this.parts.get("flame")!;
-    fl.sx = 1 + (still ? 0 : 0.05 * fbm(t * 3.7, 23)); fl.sy = 1 + (still ? 0 : 0.08 * fbm(t * 4.1, 37));
-    fl.dx = still ? 0 : 2.5 * fbm(t * 2.3, 11);
+    // огонёк колышется ФОРМОЙ, как у куклы в роликах (doll_rig.py): по высоте бежит волна (языки пламени
+    // изгибаются), кончик ходит сильнее основания, основание на хвосте стоит — см. flameWarp
+    this.flameT = t; this.flameAmp = still ? 0 : 0.75 + 0.25 * lively;
 
     // ----- дыхание (сон — глубже и реже), прыжок радости, присед от касания
     const per = 2.6 + 1.0 * sm(sk), amp = 0.012 + 0.01 * sm(sk);
