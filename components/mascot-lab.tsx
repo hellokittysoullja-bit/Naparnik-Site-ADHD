@@ -71,13 +71,24 @@ export function MascotLab() {
       g = f("Огонёк");
       g.addBinding(pr.flame, "flickerAmp", { min: 0, max: 0.25, step: 0.005 });
       g.addBinding(pr.flame, "flickerSpeed", { min: 0.2, max: 4, step: 0.05 });
-      g = f("Моргание");
-      g.addBinding(pr.blink, "down", { min: 0.03, max: 0.2, step: 0.005 });
-      g.addBinding(pr.blink, "hold", { min: 0, max: 0.2, step: 0.005 });
-      g.addBinding(pr.blink, "up", { min: 0.05, max: 0.3, step: 0.005 });
-      g.addBinding(pr.blink, "min", { min: 1, max: 8, step: 0.1 });
-      g.addBinding(pr.blink, "max", { min: 2, max: 14, step: 0.1 });
-      g.addBinding(pr.blink, "double", { min: 0, max: 1, step: 0.05 });
+      g = f("Моргание (обычное: закрытие / удержание / открытие, с)");
+      g.addBinding(pr.blink.types.normal, "close", { min: 0.03, max: 0.2, step: 0.005 });
+      g.addBinding(pr.blink.types.normal, "hold", { min: 0, max: 0.2, step: 0.005 });
+      g.addBinding(pr.blink.types.normal, "open", { min: 0.05, max: 0.4, step: 0.005 });
+      g.addBinding(pr.blink, "lagR", { min: 0, max: 0.05, step: 0.001, label: "лаг правого, с" });
+      g.addBinding(pr.blink, "refractory", { min: 0, max: 2, step: 0.05 });
+      g = f("Планировщик (логнормальный, по настроению)");
+      for (const m of ["idle", "think", "focused", "sad"] as const) {
+        g.addBinding(pr.blink.sched[m], "median", { min: 1, max: 10, step: 0.1, label: `${m} медиана, с` });
+        g.addBinding(pr.blink.sched[m], "sigma", { min: 0.1, max: 1.2, step: 0.05, label: `${m} σ` });
+        g.addBinding(pr.blink.sched[m], "pDouble", { min: 0, max: 0.5, step: 0.01, label: `${m} двойное` });
+        g.addBinding(pr.blink.sched[m], "durMul", { min: 0.5, max: 3, step: 0.05, label: `${m} ×длит.` });
+      }
+      g = f("Реакция глаза на смыкание");
+      g.addBinding(pr.react, "pupilDown", { min: 0, max: 0.15, step: 0.005 });
+      g.addBinding(pr.react, "pupilNose", { min: 0, max: 0.05, step: 0.0025 });
+      g.addBinding(pr.react, "squash", { min: 0, max: 0.15, step: 0.005 });
+      g.addBinding(pr.react, "dilate", { min: 0, max: 0.5, step: 0.01 });
       g = f("Взгляд / псевдо-3D");
       g.addBinding(pr.look, "pupil", { min: 0, max: 30, step: 0.5 });
       g.addBinding(pr.look, "pupilY", { min: 0, max: 30, step: 0.5 });
@@ -130,7 +141,12 @@ export function MascotLab() {
         {SHOTS.map((s) => (
           <button key={s} className={btn} onClick={() => setPlay({ name: s, key: Date.now() })}>{s}</button>
         ))}
-        <button className={btn} onClick={() => cat?.blink(true)}>blink×2</button>
+        {(["normal", "fast", "double", "long", "half"] as const).map((b) => (
+          <button key={b} className={btn} onClick={() => cat?.blink(b)}>blink {b}</button>
+        ))}
+        <button className={btn} onClick={() => cat?.slowBlink()}>slow blink</button>
+        <button className={btn} onClick={() => cat?.cue("userSubmitted")}>cue: ввод</button>
+        <button className={btn} onClick={() => cat?.cue("speechEnd")}>cue: конец реплики</button>
       </div>
       <div ref={paneHost} style={{ maxWidth: 480, width: "100%", margin: "0 auto" }} />
       <textarea id="preset-out" readOnly placeholder={copied ? "" : "Export preset → JSON появится здесь"} style={{ width: "100%", maxWidth: 480, margin: "0 auto", minHeight: 80, background: "#1b1b1b", color: "#ccc", border: "1px solid #333", borderRadius: 8, padding: 8, fontSize: 11 }} />

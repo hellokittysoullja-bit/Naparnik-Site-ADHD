@@ -17,6 +17,10 @@ export type Preset = typeof defaultPreset;
 export type Mood = "idle" | "think" | "sad" | "sleep" | "focused";
 export type OneShot = "wave" | "happy" | "react";
 export type MouthShape = "smile" | "open" | "o" | "flat" | "sad";
+/** типы моргания: обычное (80/40/175 мс), быстрое, двойное, длинное «понял» с кивком, половинное, сонное */
+export type BlinkType = "normal" | "fast" | "double" | "long" | "half" | "sleepy";
+/** события диалога, к которым привязывается моргание */
+export type Cue = "speechEnd" | "userSubmitted" | "expressionChange";
 
 type Part = { x: number; y: number; w: number; h: number; pivot: [number, number]; z: number };
 type Rig = {
@@ -52,7 +56,14 @@ export type Mascot = {
   lookAt: (x: number, y: number) => void;
   /** отпустить взгляд — возвращается к центру */
   lookRelease: () => void;
-  blink: (double?: boolean) => void;
+  /** моргнуть: тип или true = двойное */
+  blink: (type?: boolean | BlinkType) => void;
+  /** медленное моргание — жест доверия кошки (серия полу-морганий → прищур/закрытие > 0,5 с) */
+  slowBlink: () => boolean;
+  /** событие диалога: конец реплики, ввод отправлен, смена выражения — вероятностное моргание */
+  cue: (c: Cue) => void;
+  /** пользователь печатает — моргать в 3,3 раза реже */
+  setAttentive: (on: boolean) => void;
   preset: Preset;
   debug: { bones: boolean; mesh: boolean; pivots: boolean };
   mood: () => Mood;
@@ -178,7 +189,7 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
   updateBones();
 
   /* ── визуальные слои в z-порядке; каждый следует за своей костью ── */
-  type Attached = { node: PixiContainer; bone: Bone; part: Part; offset: { x: number; y: number }; scale: number };
+  type Attached = { node: PixiContainer; bone: Bone; part: Part; offset: { x: number; y: number }; sx: number; sy: number };
   const attached: Attached[] = [];
   const texScale = 1 / rig.scale;
   const sprite = (name: string, b: Bone, parent: PixiContainer = world): PixiSprite => {
@@ -186,15 +197,15 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     const s: PixiSprite = new Sprite(textures[name]);
     s.scale.set(texScale);
     parent.addChild(s);
-    attached.push({ node: s, bone: b, part: p, offset: { x: 0, y: 0 }, scale: 1 });
+    attached.push({ node: s, bone: b, part: p, offset: { x: 0, y: 0 }, sx: 1, sy: 1 });
     return s;
   };
   const placeAttached = () => {
     for (const a of attached) {
       tmp.copyFrom(a.bone.skin).translate(0, 0);
       // масштаб слоя — вокруг его центра (зрачок расширяется на месте), поверх трансформации кости
-      const sc = a.scale;
-      const m = tmp.clone().append(new Matrix(texScale * sc, 0, 0, texScale * sc, a.part.x + a.offset.x - (a.part.w * (sc - 1)) / 2, a.part.y + a.offset.y - (a.part.h * (sc - 1)) / 2));
+      const { sx, sy } = a;
+      const m = tmp.clone().append(new Matrix(texScale * sx, 0, 0, texScale * sy, a.part.x + a.offset.x - (a.part.w * (sx - 1)) / 2, a.part.y + a.offset.y - (a.part.h * (sy - 1)) / 2));
       a.node.setFromMatrix(m);
     }
   };
@@ -350,10 +361,12 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     parent.addChild(mesh);
     return { mesh, v: mesh.vertices as Float32Array };
   };
-  type Eye = { group: PixiContainer; mask: PixiGraphics; ring: Skin; lid: Ribbon; low: Ribbon; pupil: PixiSprite; pupilAtt: Attached; shine: PixiSprite; c: [number, number]; rx: number; ry: number;
+  type Eye = { group: PixiContainer; mask: PixiGraphics; ring: Skin; lid: Ribbon; low: Ribbon; pupil: PixiSprite; pupilAtt: Attached; irisAtt: Attached; shineAtt: Attached; shine: PixiSprite; c: [number, number]; rx: number; ry: number;
     up: Float32Array; lo: Float32Array; tu: Float32Array; tl: Float32Array; xs: Float32Array; squash: number; mapY: (x: number, y: number) => number; scratchT: Float32Array; scratchB: Float32Array };
   const eyes: Record<"L" | "R", Eye> = {} as Record<"L" | "R", Eye>;
-  const CHAIN = ["closed", "half", "lids50", "lids25", "open"]; // по возрастанию открытости
+  // цепочка моргания по открытости; закрытая форма — НЕЙТРАЛЬНАЯ ‿ («shut»); дуга ∩ из кадра «закрыт» —
+  // отдельный параметр «улыбка глаз» (EyeSmile), «^ ^» — радость
+  const CHAIN = ["shut", "half", "lids50", "lids25", "open"];
   for (const k of ["L", "R"] as const) {
     const e = rig.eyes[k];
     const d = eyeData.eyes[k];
@@ -363,8 +376,10 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     group.addChild(mask);
     group.mask = mask;
     sprite(`iris_${k}`, face, group);
+    const irisAtt = attached[attached.length - 1];
     const pupil = sprite(`pupil_${k}`, face, group);
     const shine = sprite(`shine_${k}`, face, group);
+    const shineAtt = attached[attached.length - 1];
     // контур-рисунок: сетка; при смыкании складывается между текущими верхней и нижней кривыми
     // (верх контура съезжает к веку, низ — к нижнему штриху, углы сжимаются к концам дуги)
     const ring = meshFor(`ring_${k}`, 16, 16, () => [face, 1, null]);
@@ -372,7 +387,7 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     const lid = ribbon(world);
     const xs = new Float32Array(NC);
     for (let i = 0; i < NC; i++) xs[i] = d.x0 + ((d.x1 - d.x0) * i) / (NC - 1);
-    eyes[k] = { group, mask, ring, lid, low, pupil, pupilAtt: attached[attached.length - 2], shine, c: e.c, rx: e.rx, ry: e.ry,
+    eyes[k] = { group, mask, ring, lid, low, pupil, pupilAtt: attached[attached.length - 2], irisAtt, shineAtt, shine, c: e.c, rx: e.rx, ry: e.ry,
       up: new Float32Array(NC), lo: new Float32Array(NC), tu: new Float32Array(NC), tl: new Float32Array(NC), xs, squash: 0, mapY: (_x, y) => y, scratchT: new Float32Array(NC), scratchB: new Float32Array(NC) };
     const O = d.keys.open;
     const at = (arr: ArrayLike<number>, u: number) => { const i = Math.floor(u), f = u - i; return i >= NC - 1 ? arr[NC - 1] : arr[i] * (1 - f) + arr[i + 1] * f; };
@@ -391,27 +406,28 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     eyes[k].mapY = ringMapY;
     ring.deform = (_i, x, y, out) => {
       const sq = eyes[k].squash;
-      const xx = e.c[0] + (x - e.c[0]) * (1 - 0.12 * sq);
+      const xx = e.c[0] + (x - e.c[0]) * (1 - 0.2 * sq);
       out.x = xx;
       out.y = ringMapY(xx, y);
     };
   }
   /** интерполяция кейформов: цепочка по открытости o, затем подмес грусти и «^ ^» */
-  const evalEye = (k: "L" | "R", o: number, sadW: number, hapW: number) => {
+  const evalEye = (k: "L" | "R", o: number, sadW: number, hapW: number, smileW: number) => {
     const e = eyes[k];
     const K = eyeData.eyes[k].keys;
-    let A = K.closed, B = K.open;
+    let A = K.shut, B = K.open;
     for (let i = 0; i < CHAIN.length - 1; i++) {
       if (o <= K[CHAIN[i + 1]].o) { A = K[CHAIN[i]]; B = K[CHAIN[i + 1]]; break; }
     }
     const t = clamp((o - A.o) / Math.max(B.o - A.o, 1e-4), 0, 1);
     // грусть действует, пока глаз открыт не меньше, чем в кадре грусти; при моргании уступает цепочке
     const ws = clamp(sadW, 0, 1) * clamp((o - 0.25) / (K.sad.o - 0.25), 0, 1);
-    const wh = clamp(hapW, 0, 1);
-    const Sd = K.sad, Hp = K.happy;
+    const wh = clamp(hapW, 0, 1), wm = clamp(smileW, 0, 1);
+    const Sd = K.sad, Hp = K.happy, Sm = K.closed;
     for (let i = 0; i < NC; i++) {
       let up = lerp(A.up[i], B.up[i], t), lo = lerp(A.lo[i], B.lo[i], t), tu = lerp(A.tu[i], B.tu[i], t), tl = lerp(A.tl[i], B.tl[i], t);
       if (ws > 0) { up = lerp(up, Sd.up[i], ws); tu = lerp(tu, Sd.tu[i], ws); }
+      if (wm > 0) { up = lerp(up, Sm.up[i], wm); lo = lerp(lo, Sm.lo[i], wm); tu = lerp(tu, Sm.tu[i], wm); tl = lerp(tl, Sm.tl[i], wm); }
       if (wh > 0) { up = lerp(up, Hp.up[i], wh); lo = lerp(lo, Hp.lo[i], wh); tu = lerp(tu, Hp.tu[i], wh); tl = lerp(tl, Hp.tl[i], wh); }
       e.up[i] = up; e.lo[i] = lo; e.tu[i] = tu; e.tl[i] = tl;
     }
@@ -440,13 +456,15 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
       // маска радужки: внутренний эллипс контура, сложенный той же картой, что и контур, срезанный
       // сверху/снизу внутренними кромками штрихов (с запасом под тушь) — где нет просвета, нет и маски
       const g = e.mask.clear();
-      const rx = e.rx + 2, ry = e.ry + 2;
+      // эллипс сжимается по x вместе с уголками контура — в углах не остаётся зелёного клина
+      const rx = (e.rx + 2) * (1 - 0.2 * e.squash), ry = e.ry + 2;
       const top = e.scratchT, bot = e.scratchB;
       let first = -1, last = -1;
       for (let i = 0; i < NC; i++) {
         const x = e.xs[i];
         const nx = (x - e.c[0]) / rx;
-        if (Math.abs(nx) >= 1) { top[i] = 1; bot[i] = 0; continue; }
+        // за концами штрихов радужки нет (там контур или сомкнутые уголки)
+        if (Math.abs(nx) >= 1 || e.tu[i] < 0.5 || e.tl[i] < 0.5) { top[i] = 1; bot[i] = 0; continue; }
         const dy = ry * Math.sqrt(1 - nx * nx);
         const eT = e.mapY(x, e.c[1] - dy), eB = e.mapY(x, e.c[1] + dy);
         top[i] = Math.max(e.up[i] + e.tu[i] / 2 + shrink, eT);
@@ -454,10 +472,10 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
         if (bot[i] - top[i] > 1) { if (first < 0) first = i; last = i; }
       }
       if (first < 0) { g.rect(e.c[0], e.c[1], 0.01, 0.01).fill(0xffffff); e.group.alpha = 0; continue; }
-      // последние 6 px просвета: радужка темнеет под тушь — яркой зелёно-белой волосинки между веками нет
+      // последние 4 px просвета: радужка темнеет под тушь — яркой зелёно-белой волосинки между веками нет
       let gap = 0;
       for (let i = first; i <= last; i++) gap = Math.max(gap, bot[i] - top[i]);
-      e.group.alpha = smoothstep(gap / 6);
+      e.group.alpha = smoothstep(gap / 4);
       for (let i = first; i <= last; i++) {
         const x = e.xs[i], y = Math.min(top[i], bot[i]);
         const wx = m.a * x + m.c * y + m.tx, wy = m.b * x + m.d * y + m.ty;
@@ -534,21 +552,25 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
   };
   const look = { tx: 0, ty: 0, held: false };
   // поза настроения: все поля ключуются в каждом настроении — ничего не «залипает»
-  type Pose = { headRot: number; headY: number; earL: number; earR: number; lidOpen: number; lidSad: number; tailAmp: number; breathMul: number; pupil: number; bodyRot: number };
+  type Pose = { headRot: number; headY: number; earL: number; earR: number; lidOpen: number; lidSad: number; tailAmp: number; breathMul: number; dilate: number; bodyRot: number };
   const POSES: Record<Mood, Pose> = {
-    idle: { headRot: 0, headY: 0, earL: 0, earR: 0, lidOpen: 1 - preset.lids.idle.y, lidSad: 0, tailAmp: 1, breathMul: 1, pupil: 1, bodyRot: 0 },
-    think: { headRot: 0.14, headY: 0, earL: 0.08, earR: -0.05, lidOpen: 1 - preset.lids.think.y, lidSad: 0, tailAmp: 0.7, breathMul: 1, pupil: 1, bodyRot: 0 },
-    sad: { headRot: 0.05, headY: 10, earL: -0.6, earR: 0.6, lidOpen: 1 - preset.lids.sad.y, lidSad: 1, tailAmp: 0.4, breathMul: 1.4, pupil: 0.95, bodyRot: 0 },
-    sleep: { headRot: 0.1, headY: 14, earL: -0.2, earR: 0.2, lidOpen: 0, lidSad: 0, tailAmp: 0.3, breathMul: 1.8, pupil: 1, bodyRot: 0 },
-    focused: { headRot: 0, headY: 0, earL: 0.05, earR: -0.05, lidOpen: 1 - preset.lids.focused.y, lidSad: 0, tailAmp: 0.8, breathMul: 0.9, pupil: 1, bodyRot: 0 },
+    idle: { headRot: 0, headY: 0, earL: 0, earR: 0, lidOpen: 1 - preset.lids.idle.y, lidSad: 0, tailAmp: 1, breathMul: 1, dilate: 0.3, bodyRot: 0 },
+    think: { headRot: 0.14, headY: 0, earL: 0.08, earR: -0.05, lidOpen: 1 - preset.lids.think.y, lidSad: 0, tailAmp: 0.7, breathMul: 1, dilate: 0.2, bodyRot: 0 },
+    sad: { headRot: 0.05, headY: 10, earL: -0.6, earR: 0.6, lidOpen: 1 - preset.lids.sad.y, lidSad: 1, tailAmp: 0.4, breathMul: 1.4, dilate: 0.1, bodyRot: 0 },
+    sleep: { headRot: 0.1, headY: 14, earL: -0.2, earR: 0.2, lidOpen: 0, lidSad: 0, tailAmp: 0.3, breathMul: 1.8, dilate: 0, bodyRot: 0 },
+    focused: { headRot: 0, headY: 0, earL: 0.05, earR: -0.05, lidOpen: 1 - preset.lids.focused.y, lidSad: 0, tailAmp: 0.8, breathMul: 0.9, dilate: 0.5, bodyRot: 0 },
   };
   const pose: Pose = { ...POSES.idle };
   let moodNow: Mood = "idle";
   const MOUTH_FOR: Record<Mood, MouthShape> = { idle: "smile", think: "o", sad: "sad", sleep: "flat", focused: "flat" };
   const setMood = (m: Mood) => {
+    const changed = m !== moodNow;
     moodNow = m;
     gsap.to(pose, { ...POSES[m], duration: preset.states.crossfade, ease: "sine.inOut", overwrite: true });
-    setMouth(MOUTH_FOR[m]);
+    // смена выражения — повод моргнуть (p 0,7); рот меняется под сомкнутым веком
+    if (changed && m !== "sleep" && Math.random() < 0.7 && blink("normal")) gsap.delayedCall(preset.blink.types.normal.close * sched().durMul, () => setMouth(MOUTH_FOR[moodNow]));
+    else setMouth(MOUTH_FOR[m]);
+    scheduleBlink();
   };
   // оверлей одноразовых действий — складывается с позой
   const ov = { bodyY: 0, bodySX: 1, bodySY: 1, headRot: 0, headY: 0, earL: 0, earR: 0, shoulder: 0, pawY: 0, closed: 0, chestY: 0 };
@@ -572,7 +594,7 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
           .to(ov, { shoulder: 0, pawY: 0, headRot: 0, duration: Math.max(0.3, d - 1.9), ease: "power2.inOut" });
         setMouth("smile");
         tl.call(() => setMouth(MOUTH_FOR[moodNow]), [], d - 0.1);
-        kickBlinkSoon(0.3);
+        gsap.delayedCall(0.3, () => blink("normal"));
       } else if (name === "happy") {
         // присел (антиципация) → прыжок с вытяжкой → приземление со сжатием → settle, два раза
         const jump = (at: number) =>
@@ -593,40 +615,130 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
           .to(ov, { bodyY: 0, bodySY: 1, bodySX: 1, duration: 0.2, ease: "sine.inOut" });
         springs.earL.kick(-4.5);
         springs.earR.kick(4.5);
-        kickBlinkSoon(0.05);
+        gsap.delayedCall(0.05, () => blink("fast"));
       }
     });
 
-  /* моргание: веко вниз 70 мс, держать 40, вверх 110; случайный интервал, иногда двойное */
-  const blinkState = { t: 0 };
+  /* ── моргание ──
+     Кинематика по измерениям (Evinger 1991; Trutoiu 2011): закрытие ≈80 мс с ускорением, удержание
+     ≈40 мс, открытие ≈175 мс с длинным хвостом (power3.out); полное закрытие в НЕЙТРАЛЬНУЮ форму ‿.
+     Правый глаз отстаёт на 0–16 мс и чуть меньше по амплитуде (больше — читается как подмигивание).
+     Планировщик: логнормальные интервалы (медиана 3,5 с), двойные ≈10 %, триггеры — смена взгляда,
+     конец реплики, отправленный ввод (30 % — длинное «понял» с кивком), смена выражения; при внимании
+     (пользователь печатает) в 3,3 раза реже; рефрактерный период 0,6 с; новое не стартует, пока идёт
+     предыдущее. Медленное моргание кошки (Humphrey 2020) — отдельный жест доверия. */
+  const bl = { L: 0, R: 0 }; // 0 — открыт, 1 — сомкнут, по каждому глазу
+  const dil = { v: 0 }; // расширение зрачка 0..1 поверх позы (ширина ×(1 + 0,2·v)), только по горизонтали
+  const smileSt = { v: 0 }; // «улыбка глаз» ∩ 0..1 — выражение, не моргание
+  let blinkTl: gsap.core.Timeline | null = null;
   let blinkTimer: gsap.core.Tween | null = null;
-  const doBlink = (dbl = false) => {
-    const b = preset.blink;
+  let lastBlinkAt = -1e9;
+  let attentive = false;
+  let slowBlinking = false;
+  let slowBlinkReadyAt = 0;
+  const secs = () => (nowMs() - t0) / 1000;
+  const sched = () => preset.blink.sched[moodNow];
+  const mkBlink = (type: BlinkType, mul: number) => {
+    const T = preset.blink.types;
     const tl = gsap.timeline();
-    const one = () => tl.to(blinkState, { t: 1, duration: b.down, ease: "power2.in" }).to(blinkState, { t: 0, duration: b.up, ease: "power2.out" }, `+=${b.hold}`);
-    one();
-    if (dbl) one();
+    const amp = 1 - rand(0, preset.blink.ampJitter);
+    const lag = rand(0, preset.blink.lagR);
+    let at = 0;
+    const seg = (close: number, hold: number, open: number, depth = 1, openTo = 0, easeClose = "power2.in", easeOpen = "power3.out") => {
+      tl.to(bl, { L: depth, duration: close * mul, ease: easeClose }, at);
+      tl.to(bl, { R: depth * amp, duration: close * mul, ease: easeClose }, at + lag);
+      const o = at + (close + hold) * mul;
+      tl.to(bl, { L: openTo, duration: open * mul, ease: easeOpen }, o);
+      tl.to(bl, { R: openTo * amp, duration: open * mul, ease: easeOpen }, o + lag);
+      at = o + open * mul;
+    };
+    switch (type) {
+      case "fast": seg(T.fast.close, T.fast.hold, T.fast.open, 1, 0, "power2.in", "power2.out"); break;
+      case "double": seg(0.07, 0.016, 0.11, 1, 0.3); at += rand(0.12, 0.2); seg(T.normal.close, T.normal.hold, T.normal.open); break;
+      case "long":
+        seg(T.long.close, T.long.hold, T.long.open);
+        // кивок «понял» ≈500 мс, начало совпадает с морганием (Hömke 2018)
+        tl.to(ov, { headY: 14, duration: 0.25, ease: "sine.inOut" }, 0).to(ov, { headY: 0, duration: 0.25, ease: "sine.inOut" }, 0.25);
+        break;
+      case "half": seg(T.half.close, T.half.hold, T.half.open, 0.5, 0, "sine.in", "sine.out"); break;
+      case "sleepy": seg(T.sleepy.close, rand(0.3, 0.6), T.sleepy.open, 1, rand(0.25, 0.4), "sine.in", "sine.out"); break;
+      default: seg(T.normal.close, T.normal.hold, T.normal.open);
+    }
     // после смыкания зрачок чуть расширяется и сужается с перелётом
-    tl.to(pupilDil, { v: 1.08, duration: 0.08 }, b.down + b.hold).to(pupilDil, { v: 1, duration: 0.35, ease: "back.out(2)" });
+    tl.to(dil, { v: 0.5, duration: 0.08 }, (T.normal.close + T.normal.hold) * mul).to(dil, { v: 0, duration: 0.4, ease: "back.out(2)" });
+    return tl;
   };
-  const pupilDil = { v: 1 };
+  let afterTrigger = false; // моргание по событию «забирает» ближайшее плановое: следующий интервал длиннее
+  const blink = (type: BlinkType = "normal", force = false, scheduled = false): boolean => {
+    if (slowBlinking || (moodNow === "sleep" && type !== "sleepy") || reduce) return false;
+    const now = secs();
+    if (!force && now - lastBlinkAt < preset.blink.refractory) return false;
+    if (blinkTl && blinkTl.isActive()) return false;
+    lastBlinkAt = now;
+    blinkTl = mkBlink(type, sched().durMul);
+    afterTrigger = !scheduled;
+    scheduleBlink(); // моргание по событию сбрасывает таймер
+    return true;
+  };
+  const gaussian = () => { const u = 1 - Math.random(), v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
   const scheduleBlink = () => {
     blinkTimer?.kill();
-    blinkTimer = gsap.delayedCall(rand(preset.blink.min, preset.blink.max), () => {
-      if (moodNow !== "sleep") doBlink(Math.random() < preset.blink.double);
-      scheduleBlink();
+    if (moodNow === "sleep") return;
+    const sc = sched();
+    let ibi = clamp(Math.exp(Math.log(sc.median * (afterTrigger ? 1.7 : 1)) + sc.sigma * gaussian()), 1, 10);
+    if (attentive) ibi *= preset.blink.attentiveMul;
+    blinkTimer = gsap.delayedCall(ibi, () => {
+      if (!blink(Math.random() < sched().pDouble ? "double" : "normal", false, true)) scheduleBlink();
     });
   };
-  const kickBlinkSoon = (delay: number) => {
-    blinkTimer?.kill();
-    blinkTimer = gsap.delayedCall(delay, () => { doBlink(false); scheduleBlink(); });
+  const cue = (c: Cue) => {
+    if (c === "speechEnd") { if (Math.random() < 0.6) gsap.delayedCall(rand(0.08, 0.2), () => blink("normal")); }
+    else if (c === "userSubmitted") { if (Math.random() < 0.5) blink(Math.random() < 0.3 ? "long" : "normal"); }
+    else if (Math.random() < 0.7) blink("normal");
+  };
+  const setAttentive = (on: boolean) => { attentive = on; scheduleBlink(); };
+  /** смена взгляда: моргание стартует на 1–2 кадра раньше движения глаз (p 0,85 при крупной, 0,25 при малой) */
+  const gazeTo = (x: number, y: number, minor = false) => {
+    const m = Math.hypot(x - look.tx, y - look.ty);
+    const G = preset.blink.gazeShift;
+    const set = () => { look.tx = x; look.ty = y; };
+    if (m > 0.08 && Math.random() < (m > G.threshold && !minor ? G.big : G.small) && blink("normal")) gsap.delayedCall(0.03, set);
+    else set();
+  };
+  /** медленное моргание (Humphrey et al. 2020): взгляд в центр → полу-моргание (×1–2) → закрытие > 0,5 с
+      с лёгким наклоном головы и улыбкой глаз (p 0,6) или прищур 1,2–1,8 с → медленный выход; 3–4,5 с */
+  const slowBlink = (): boolean => {
+    if (slowBlinking || moodNow !== "idle" || secs() < slowBlinkReadyAt || reduce) return false;
+    slowBlinking = true;
+    blinkTimer?.kill(); blinkTl?.kill();
+    look.tx = 0; look.ty = 0;
+    const SB = preset.blink.slowBlink;
+    const tl = gsap.timeline({ onComplete: () => { slowBlinking = false; slowBlinkReadyAt = secs() + rand(SB.cooldownMin, SB.cooldownMax); lastBlinkAt = secs(); scheduleBlink(); } });
+    tl.to(dil, { v: 0.6, duration: 0.4 }, 0);
+    let at = 0.4;
+    const both = (to: number, dur: number, ease: string) => { tl.to(bl, { L: to, R: to, duration: dur, ease }, at); at += dur; };
+    both(0.45, 0.22, "sine.inOut"); both(0.15, 0.26, "sine.inOut"); // полу-моргание AU147
+    if (Math.random() < 0.6) { both(0.55, 0.24, "sine.inOut"); both(0.25, 0.28, "sine.inOut"); }
+    if (Math.random() < 0.6) {
+      both(1, 0.35, "sine.inOut"); // закрытие AU143: дольше 0,5 с
+      tl.to(ov, { headY: 8, duration: 0.5, ease: "sine.inOut" }, at - 0.35);
+      tl.to(smileSt, { v: 0.2, duration: 0.4 }, at - 0.35);
+      at += rand(0.9, 1.4);
+    } else { both(0.6, 0.35, "sine.inOut"); at += rand(1.2, 1.8); } // прищур
+    both(0.2, 0.55, "power2.out");
+    tl.to(ov, { headY: 0, duration: 0.6, ease: "sine.inOut" }, at - 0.55);
+    tl.to(smileSt, { v: 0, duration: 0.5 }, at - 0.55);
+    at += rand(0.6, 1.0);
+    both(0, 0.4, "sine.out");
+    tl.to(dil, { v: 0.3, duration: 0.4 }, at - 0.4).to(dil, { v: 0, duration: 1.5 });
+    blinkTl = tl;
+    return true;
   };
   scheduleBlink();
 
   /* взгляд: цель → пружины; псевдо-3D параллакс по глубине */
   const lookAt = (x: number, y: number) => {
-    look.tx = clamp(x, -1, 1);
-    look.ty = clamp(y, -1, 1);
+    gazeTo(clamp(x, -1, 1), clamp(y, -1, 1));
     look.held = true;
     activity();
   };
@@ -642,7 +754,7 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
 
   /* ── главный цикл ── */
   const nz = (seed: number, speed = preset.noise.speed) => fbm(((nowMs() - t0) / 1000) * speed, seed);
-  let glanceAt = rand(4, 9);
+  let glanceAt = rand(6, 14);
   let glanceSide = 1;
   const tick = () => {
     const now = nowMs();
@@ -669,10 +781,9 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     // взгляд в сторону и обратно, когда никто не водит курсором
     if (!look.held && moodNow === "idle" && t > glanceAt && !reduce) {
       glanceSide = -glanceSide;
-      look.tx = glanceSide * 0.6; look.ty = rand(-0.3, 0.25);
-      gsap.delayedCall(rand(1.1, 2.2), () => { if (!look.held) { look.tx = 0; look.ty = 0; } });
-      if (Math.random() < 0.5) doBlink(false);
-      glanceAt = t + rand(4, 9);
+      gazeTo(glanceSide * 0.6, rand(-0.3, 0.25));
+      gsap.delayedCall(rand(1.1, 2.2), () => { if (!look.held) gazeTo(0, 0, true); }); // возврат взгляда — малое событие
+      glanceAt = t + rand(6, 14);
     }
     const gx = springs.gazeX.step(dt, moodNow === "sleep" ? 0 : look.tx);
     const gy = springs.gazeY.step(dt, moodNow === "sleep" ? 0 : look.ty);
@@ -731,28 +842,36 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     shoulderL.y = ov.pawY;
     pawR.rotation = reduce ? 0 : nz(30, 0.1) * 0.02;
 
-    // глаза: кривые на кадр (до скиннинга — контур складывается между ними)
-    const L = preset.look;
-    const open = Math.min(pose.lidOpen, 1 - blinkState.t);
-    const closedness = Math.max(1 - open, ov.closed);
-    // контур стоит, пока веко скользит внутри него (до полуприкрытого), затем складывается в дугу
-    const squash = smoothstep((closedness - 0.5) / 0.5);
-    // нижняя лента появляется поверх СВОЕГО же штриха контура (тушь на туши — невидимо) до того,
-    // как контур начнёт складываться; верхняя — как только веко отходит от контура
-    const lowA = smoothstep((closedness - 0.25) / 0.2);
-    const lidA = smoothstep(closedness / 0.06);
+    // глаза: кривые на кадр (до скиннинга — контур складывается между ними), по каждому глазу своя
+    // открытость (правый отстаёт на 0–16 мс)
+    const L = preset.look, RC = preset.react;
     for (const k of ["L", "R"] as const) {
       const e = eyes[k];
-      evalEye(k, open, pose.lidSad, ov.closed);
+      const open = Math.min(pose.lidOpen, 1 - bl[k]);
+      const kk = 1 - clamp(open, 0, 1);
+      const closedness = Math.max(kk, ov.closed, smileSt.v);
+      // контур стоит, пока веко скользит внутри него (до полуприкрытого), затем складывается в дугу
+      const squash = smoothstep((closedness - 0.5) / 0.5);
+      evalEye(k, open, pose.lidSad, ov.closed, smileSt.v);
+      // реакция глаза на смыкание: глаз чуть сжимается по вертикали (контур и радужка следуют за кривыми)
+      const sq = 1 - RC.squash * kk;
+      for (let i = 0; i < NC; i++) { e.up[i] = e.c[1] + (e.up[i] - e.c[1]) * sq; e.lo[i] = e.c[1] + (e.lo[i] - e.c[1]) * sq; }
       e.squash = squash;
-      // зрачок: взгляд и расширение — через привязку к кости (масштаб тела при прыжке сохраняется)
+      // зрачок: взгляд, при смыкании — вниз и к носу (глазное яблоко уходит под веко), расширение —
+      // только по ширине; всё через привязку к кости (масштаб тела при прыжке сохраняется)
       const pw = P(`pupil_${k}`).w / 2, ph = P(`pupil_${k}`).h / 2;
-      e.pupilAtt.offset.x = clamp(gx * L.pupil, -(e.rx - pw - 4), e.rx - pw - 4);
-      e.pupilAtt.offset.y = clamp(gy * L.pupilY, -(e.ry - ph - 4), e.ry - ph - 4);
-      e.pupilAtt.scale = pupilDil.v * pose.pupil;
+      const nose = (k === "L" ? 1 : -1) * e.rx * RC.pupilNose * kk;
+      const down = e.ry * RC.pupilDown * kk;
+      e.pupilAtt.offset.x = clamp(gx * L.pupil + nose, -(e.rx - pw - 4), e.rx - pw - 4);
+      e.pupilAtt.offset.y = clamp(gy * L.pupilY + down, -(e.ry - ph - 4), e.ry - ph - 4);
+      e.shineAtt.offset.x = nose * 0.6; e.shineAtt.offset.y = down * 0.6;
+      e.irisAtt.offset.x = nose * 0.3; e.irisAtt.offset.y = down * 0.3;
+      e.pupilAtt.sx = 1 + RC.dilate * clamp(pose.dilate + dil.v, 0, 1);
+      // нижняя лента появляется поверх СВОЕГО же штриха контура (тушь на туши — невидимо) до того,
+      // как контур начнёт складываться; верхняя — как только веко отходит от контура
       e.ring.mesh.alpha = 1 - smoothstep((squash - 0.6) / 0.3); // сложенный контур лежит под лентами — гаснет невидимо (видны только сжатые уголки)
-      e.low.mesh.alpha = lowA;
-      e.lid.mesh.alpha = lidA;
+      e.low.mesh.alpha = smoothstep((closedness - 0.25) / 0.2);
+      e.lid.mesh.alpha = smoothstep(closedness / 0.06);
     }
 
     updateBones();
@@ -769,10 +888,15 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
   app.ticker.add(tick);
 
   /* ── события: тап, курсор, видимость, авто-сон ── */
+  let lastTapAt = -1e9;
   const onDown = (ev: PointerEvent) => {
     ev.preventDefault();
     activity();
     void play("react");
+    // медленный двойной клик (0,4–1,2 с) — «медленное моргание» пользователя: кот отвечает тем же через 0,8–1,6 с
+    const now = secs();
+    if (now - lastTapAt >= 0.4 && now - lastTapAt <= 1.2) gsap.delayedCall(rand(0.8, 1.6), () => slowBlink());
+    lastTapAt = now;
   };
   const onMove = (ev: PointerEvent) => {
     const r = app.canvas.getBoundingClientRect();
@@ -806,7 +930,10 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     setMood,
     lookAt,
     lookRelease,
-    blink: (d) => doBlink(!!d),
+    blink: (t) => { blink(t === true ? "double" : typeof t === "string" ? t : "normal", true); },
+    slowBlink,
+    cue,
+    setAttentive,
     preset,
     debug,
     mood: () => moodNow,
@@ -833,6 +960,7 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     destroy: () => {
       app.ticker.remove(tick);
       blinkTimer?.kill();
+      blinkTl?.kill();
       current?.kill();
       if (sleepCheck) clearInterval(sleepCheck);
       document.removeEventListener("visibilitychange", onVis);

@@ -166,11 +166,35 @@ for k in EYES:
             for i in range(N):
                 if i < ext[0] or i > ext[1]:
                     arr[i] = 0.0
+                elif key not in ARC:
+                    # конец штриха века упирается в контур: крайняя колонка — полтолщины, чтобы при
+                    # складывании контура торец не торчал обрубком (у дуг сужение снято с рисунка)
+                    edge = min(i - ext[0], ext[1] - i)
+                    arr[i] = round(arr[i] * min(1.0, (edge + 1) / 2), 2)
         c = N // 2
         top0 = (o['up'][c] + o['up'][c - 1]) / 2; bot0 = (o['lo'][c] + o['lo'][c - 1]) / 2
         yc = (d['up'][c] + d['up'][c - 1]) / 2
         d['o'] = 0.0 if key in ARC else round(float((bot0 - yc) / (bot0 - top0)), 3)
         print(k, key, 'открытость', d['o'])
+# синтетический ключ «shut» — НЕЙТРАЛЬНОЕ закрытие ‿ для моргания (дуга ∩ из кадра «закрыт» — это
+# улыбка глаз, EyeSmile, отдельный параметр): линия в нижней трети глаза с провисом 6 % ширины,
+# штрих у смыкания толще штриха века в 1,6–2 раза (11 px в центре, 7 у уголков)
+for k, (cx, cy) in EYES.items():
+    ks = out['eyes'][k]['keys']
+    ext = ks['closed']['extu']
+    xs_ = np.linspace(cx - RX - PAD, cx + RX + PAD, N)
+    xa, xb = xs_[ext[0]], xs_[ext[1]]
+    y_end = cy + 0.38 * RY
+    sag = 0.06 * (xb - xa)
+    up, tu = [], []
+    for i in range(N):
+        t = (2 * (xs_[i] - xa) / (xb - xa) - 1) if ext[0] <= i <= ext[1] else (1.0 if i > ext[1] else -1.0)
+        up.append(round(float(y_end + sag * (1 - t * t)), 2))
+        th = 11 - 4 * t * t
+        edge = min(i - ext[0], ext[1] - i)
+        tu.append(round(float(th * min(1.0, (edge + 1) / 2)), 2) if ext[0] <= i <= ext[1] else 0.0)
+    ks['shut'] = {'up': up, 'lo': list(up), 'tu': tu, 'tl': list(tu), 'extu': list(ext), 'extl': list(ext), 'o': 0.0}
+    print(k, 'shut: y', min(up), '..', max(up), 'толщина', max(tu))
 json.dump(out, open(os.path.join(ROOT, 'public/mascot/eyes.json'), 'w'))
 W, H = vis[0].size; cols = len(KEYS)
 sheet = Image.new('RGB', (cols * (W + 6), 2 * (H + 6)), (18, 18, 18))

@@ -134,8 +134,10 @@ add('ear_R', rgb, alpha * EAR_R * notail, 3)
 eye_hole = np.zeros((H, W), bool)
 eye_blend = np.zeros((H, W), np.float32)  # перо: латка плавно переходит в родной мех, границы не видно
 for cx, cy in EYES.values():
-    eye_hole |= ell(cx, cy, RX + 16, RY + 16)
-    eye_blend = np.maximum(eye_blend, soft(ell(cx, cy, RX + 10, RY + 10), 3))
+    eye_hole |= ell(cx, cy, RX + 24, RY + 24)
+    # перо 72 → 88 px от центра: латка переходит в родной мех градиентом, а не кольцом; внутри
+    # r ≤ 72 — только латка (в оригинале до r ≈ 70 тёмная тень вокруг контура, её не подмешиваем)
+    eye_blend = np.maximum(eye_blend, soft(ell(cx, cy, RX + 16, RY + 16), 4))
 mouth_ink = np.zeros((H, W), bool)
 mouth_ink[sc(MOUTH_BOX[1]):sc(MOUTH_BOX[3]), sc(MOUTH_BOX[0]):sc(MOUTH_BOX[2])] = True
 mouth_ink &= lum < 48  # тушь (~22), не мех (~63)
@@ -171,7 +173,78 @@ if os.path.exists(EYESC):
     low_head = boxblur(head_rgb, RB)
     hi_ec = ec_rgb - boxblur(ec_rgb, RB)
     f = soft(ndi.binary_erosion(eye_hole, iterations=1 * S), 7)[..., None]  # широкое перо: без скачка текстуры
-    head_rgb = head_rgb * (1 - f) + np.clip(low_head + hi_ec, 0, 255) * f
+    # зерно: у кадра модели мех под глазами почти гладкий (std ≈ 1,6 против 4,8 у родного меха вокруг),
+    # а в ×4-мастере зерно бумаги сглажено апскейлом — берём настоящее зерно из 1x-мастера (блок меха лба
+    # без штрихов, зеркальное замощение, апсемплинг до рабочего масштаба) ровно столько, чтобы std
+    # совпал с родным мехом вокруг глаз
+    _m1 = np.asarray(Image.open(os.path.join(ROOT, 'design/mascot/export/naparnik-cat.png')).convert('RGBA')).astype(np.float32)
+    _hf1 = np.clip(_m1[..., :3] - boxblur(_m1[..., :3], 10), -14, 14)   # ±3,5σ зерна: ни точек туши, ни мазков
+    _l1 = _m1[..., :3].mean(2)
+    _ok1 = (_m1[..., 3] > 250) & (_l1 > 50) & (_l1 < 100) & (np.abs(_m1[..., 0] - _m1[..., 2]) < 18)
+    _ok1 = ndi.binary_erosion(_ok1, iterations=3)
+    # мозаика случайных блоков 72×72 родного меха с окном Ханна (шаг 36, перекрытие): зерно без
+    # повторов и зеркальной симметрии — замощение одного блока читалось узором при усилении контраста
+    _H1, _W1 = _l1.shape
+    _rng = np.random.default_rng(7)
+    _B, _ST = 96, 48   # крупные блоки: в латке остаются и крупные мазки (8–20 px), не только мелкое зерно
+    _win = np.hanning(_B + 2)[1:-1]; _win = np.outer(_win, _win)[..., None]
+    _acc = np.zeros((_H1 + _B, _W1 + _B, 3), np.float64); _wsum = np.zeros((_H1 + _B, _W1 + _B, 1), np.float64)
+    _cand = np.argwhere(_ok1[:-_B, :-_B])
+    _cand = _cand[_ok1[_cand[:, 0] + _B - 1, _cand[:, 1] + _B - 1] & _ok1[_cand[:, 0], _cand[:, 1] + _B - 1] & _ok1[_cand[:, 0] + _B - 1, _cand[:, 1]]]
+    for _y in range(0, _H1, _ST):
+        for _x in range(0, _W1, _ST):
+            _sy, _sx = _cand[_rng.integers(len(_cand))]
+            _acc[_y:_y + _B, _x:_x + _B] += _hf1[_sy:_sy + _B, _sx:_sx + _B] * _win
+            _wsum[_y:_y + _B, _x:_x + _B] += _win
+    _g1 = (_acc / np.maximum(_wsum, 1e-6))[:_H1, :_W1].astype(np.float32)
+    grain_clone = ndi.zoom(_g1, (S, S, 1), order=1)[:H, :W] if S != 1 else _g1
+    _ann = np.zeros((H, W), bool); _inn = np.zeros((H, W), bool)
+    for cx, cy in EYES.values():
+        _ann |= ell(cx, cy, RX + 46, RY + 46) & ~ell(cx, cy, RX + 20, RY + 20)
+        _inn |= ell(cx, cy, RX - 4, RY - 4)
+    _ann &= FUR_OK
+    hf_ref = rgb - boxblur(rgb, RB)
+    target = hf_ref[_ann].std(); s_ec = hi_ec[_inn].std(); s_cl = grain_clone[_inn].std()
+    g = float(np.sqrt(max(target ** 2 - s_ec ** 2, 0.0)) / max(s_cl, 1e-6))
+    print('eye grain: родной мех std %.2f, кадр модели %.2f, зерно 1x-мастера %.2f → вес %.2f' % (target, s_ec, s_cl, g))
+    patch = low_head + hi_ec + grain_clone * g
+    # выравнивание по полосам частот: в латке энергия каждой полосы (1–3, 3–8, 8–20 px) делается
+    # равной энергии той же полосы в родном мехе вокруг глаза — по построению, независимо от источников;
+    # освещение (> 40 px) — ровно тон кольца меха (под глазом нет ни тени, ни блика)
+    # считается на вырезке вокруг каждого глаза (пирамиды гауссианов на полном ×4-кадре съедали 13 ГБ)
+    _scales = (1, 3, 8, 20, 40)
+    for cx, cy in EYES.values():
+        bx0, by0, bx1, by1 = sc(cx - RX - 70), sc(cy - RY - 70), sc(cx + RX + 70), sc(cy + RY + 70)
+        crop = (slice(by0, by1), slice(bx0, bx1))
+        pc, gc, rc = patch[crop].astype(np.float32), grain_clone[crop].astype(np.float32), rgb[crop].astype(np.float32)
+        gs = lambda x, sg: ndi.gaussian_filter(x, (sg * S, sg * S, 0))
+        pyr_p = [gs(pc, sg) for sg in _scales]
+        pyr_c = [gs(gc, sg) for sg in _scales]
+        pyr_r = [gs(rc, sg) for sg in _scales]
+        _a = (ell(cx, cy, RX + 46, RY + 46) & ~ell(cx, cy, RX + 20, RY + 20) & FUR_OK)[crop]
+        _i = ell(cx, cy, RX - 2, RY - 2)[crop]
+        zone_f = soft(ell(cx, cy, RX + 20, RY + 20), 5)[crop][..., None]   # вся латка до пера eye_blend
+        fixed = np.broadcast_to(rc[_a].mean(0), pc.shape).astype(np.float32)
+        gains = []
+        for j in range(len(_scales) - 1):
+            bp = (pyr_p[j] - pyr_p[j + 1]) if j == 0 else (pyr_c[j] - pyr_c[j + 1])
+            br = pyr_r[j] - pyr_r[j + 1]
+            gn = float(br[_a].mean(1).std() / max(bp[_i].mean(1).std(), 1e-6))
+            gn = min(gn, (3.0, 3.0, 2.0, 1.5)[j])
+            gains.append(gn)
+            fixed = fixed + bp * gn
+        fixed = fixed + (pc - pyr_p[0])  # всё мельче 1 px — как есть
+        patch[crop] = pc * (1 - zone_f) + fixed * zone_f
+        del pyr_p, pyr_c, pyr_r
+        print('eye patch bands (1-3, 3-8, 8-20, 20-40 px) gains:', ' '.join('%.2f' % v for v in gains))
+    # тон: среднее латки = среднее кольца родного меха вокруг (без «светлого/тёмного диска»)
+    for cx, cy in EYES.values():
+        _a = ell(cx, cy, RX + 46, RY + 46) & ~ell(cx, cy, RX + 20, RY + 20) & FUR_OK
+        _i = ell(cx, cy, RX - 4, RY - 4)
+        off2 = rgb[_a].mean(0) - patch[_i].mean(0)
+        zone2 = soft(ell(cx, cy, RX + 16, RY + 16), 8)[..., None]
+        patch = patch + off2 * zone2
+    head_rgb = head_rgb * (1 - f) + np.clip(patch, 0, 255) * f
 # рот: вместо свёрточной латки — Clone Stamp со сдвигом: мех подбородка на 44 px ниже (настоящие
 # мазки, без «мыла»), мягкий край
 _src = ec_rgb if os.path.exists(EYESC) else rgb  # источник — кадр «без глаз»: над носом там нет колец глаз
