@@ -11,6 +11,9 @@ const manrope = Manrope({
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin", "cyrillic"],
   variable: "--font-jetbrains-mono",
+  // моноширинный нужен ниже первого экрана (как это работает, тарифы): без preload — два файла на
+  // 149 КБ не стоят на критическом пути первой отрисовки, подгружаются, когда дошло до текста
+  preload: false,
 });
 
 const caveat = Caveat({

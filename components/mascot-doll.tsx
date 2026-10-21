@@ -21,11 +21,12 @@ type Props = {
   label?: string;
   className?: string;
   interactive?: boolean;
+  /** герой первого экрана: чёткий постер прямо в HTML + preload — кот виден с первой отрисовки */
+  inlinePoster?: boolean;
 };
 
 const BASE = "/mascot/doll/";
-// размытый силуэт первого кадра (эталон 48 px, webp, base64) — рисуется вместе с HTML
-const LQIP = "data:image/webp;base64,UklGRo4FAABXRUJQVlA4WAoAAAAQAAAALwAAIgAAQUxQSOQCAAABoC3Jtmnbar2PhWOfc23btm3btm3btvVk2zaPbWNjjtF7e1hz7TU+ISImAE1DJQCAoGkA9toDguwKYNsnn1kbWhawyvuctZ5oLsHmBzyVyOJgVBoq2HkWC36QTWW/eSRTwakrQYNUcDYZzcdXIFkE3UexMzmZOHwJQHAEzUhvXxchk/zmxsaCDw3Yv7pOMiMZ+QgqmQa1scx91tDpXw2lkaTxT4Fkkd5nzXBvaOosG1Ep0xYQsGwbm7i5GUudk/uUCFpVWS8yp3PSIAgECx8LbQEbDqdlME5aBgqRHu17I3RFIKfPdc/gnLhVH0XAWXwYQbrSc9v/aczpadSmUkHvMf7lXdBmEgb968Y8Nmd3VPBs4eQK0CaKfeeY52HiB1VgVIrk0iGUSW3dd8yY23zECniAlm5UQKUB9fdozNdxqqLnnVPa3x360OKAQOqDFtppZPJsyW/t1Q93tDvJUXctBK0vtPgSC33KlMt81GUrLnPIfFpnEcm3KgoAi782zj2T29TFu1WHMpGkR54A0YGrLYnPmTJFHrfEquuMcp940dMdnvx7QOros8ovnjxL5Idr9wN+TPHnR6/5mpHj+wIYvGr3xT9n5tFndFtjFb2FJG97gtE7LgKkG4BVzpjXliF+sFAV6FntcemPw+6XHZgSbwcAgQKrjXFrxYoNoRA0VoEdmYynNAASlvyIxlbdJ20kCkAqQG3wk0ycs2pZBZcwsvXEU0Ndg0C1hnOZzH8ZUhZwk6Ucfj4aFcAGc5JH/tyrTPEhc7jPvGP3dXdZCKvddM0surNtPZRX8KDFDDSSbHvxi4KkRZu0JbTZhczhZGdhTtJSInkGKigX7fEWC9KMpDnpyRn51QskUyfNyPj65ghoLlJ/jUaSyciU2DhtEM7+cyjZRqZfdwEEXVX0f7OwD/csyFf/JT89fuyCnzdBQK3nvg8cv8H2y9cgAV0XYK31gN2vPxXLXHH1Sui3skIR0FxRClZQOCCEAgAAMAwAnQEqMAAjAD61Rp9JpyOioTHZmgDgFolqAMPgQcBRwG2tuwDeOKzNjSe7O8QMyVqNwGoL0jvQzSoDeNgPNc0IHQYxxRxweGkVeEAkresUrtJ4uKmIBe/5uQ8XhPD0++/rM18szrUogAD+/QQWTkdtuPkO9bOKSADi9vQf99d7XAWzTVwpSq+vPxdXM3XzWWGNuJce+NjEQeFgepm0yaqBN96zumg7a/JUE8X6/pxWt7M6ncRSS3NoktOOwzrVKqpZRHyADddnIbRKx/4PznRjbOYxD1Q08A1446Rz8Ph2/VTGfMJ6nsiWmm+nsqeT4lUIBO/XFBl57eupnYIfoZd+76gnUfLAorwrvJ1Re3eUIdzClZaaiccjXM5yL1+jNFQX2SHpnvN8dlRuxLuDRW0jEp+4f//MX75f8sF08YSs4/PAJAbhLzYZRCWtc7B3eoJeUgtzvpiGjIIjjpLEJGR5JJim+JcPWzcsPTF/hfSQtLoTh9+bow7ndJaNArS1MUa2PjSpqnEaI4nJ1oL3appFXIIViDaQc/U1HBCX9vrAo09+L4XYPzIcuQIKSoN2CA45oSSSlPUlj1d5HhDt5yp38R9933QC+q1rR31Ny5EjxQbpRav/Vf9SLwprf3Lknzb0UaWYXxX3RXC1XXTS0nDoy2swgLTAXEsm7duSywccIC08YYfiojKjVJJXvLhqNvq0prDNb2Mf7Zx6PfL5A/aLjOwY/kHhTA6xgCu4bdIngBjydUgiAkD5OdBCYZsrngzjiI7MpsVWByAZsf8EwSN4M9Cmhz2kTp/lL3pCiKHfksn5KUYRYnPdNutJfCb//X7hnFhYhuc8eQWCDBhsCihwoAA=";
+import { MASCOT_POSTER_INLINE } from "@/components/mascot-poster-inline";
 type Rig = RigData & { eyes?: number[][]; cat?: number[] };
 type Loaded = { rig: Rig; renderer: RigRenderer } | null;
 let loading: Promise<Loaded> | null = null;
@@ -49,9 +50,9 @@ export function MascotDoll(props: Props) {
   return <DollCanvas {...props} />;
 }
 
-function DollCanvas({ expression = "calm", action = "idle", size = 160, label, className, interactive = true }: Props) {
+function DollCanvas({ expression = "calm", action = "idle", size = 160, label, className, interactive = true, inlinePoster = false }: Props) {
   // постер первого кадра — в <head> как preload с высоким приоритетом (и при SSR): кот виден с первой отрисовки
-  preload("/mascot/poster/neutral.webp", { as: "image", fetchPriority: "high" });
+  if (inlinePoster) preload("/mascot/poster/neutral.webp", { as: "image", fetchPriority: "high" });
   const reduce = useReducedMotion();
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -165,10 +166,13 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
         // проявлялся полосами сверху вниз (уши → голова → тело)
         // eslint-disable-next-line @next/next/no-img-element
         <>
-          {/* силуэт кота есть уже в HTML (48 px, ~1,5 КБ, размыт), чтобы место не пустовало, пока летит постер */}
-          <img src={LQIP} alt="" draggable={false} aria-hidden
-            style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none", filter: "blur(6px)", opacity: 0.9 }} />
-          <img src="/mascot/poster/neutral.webp" alt="" draggable={false} fetchPriority="high" loading="eager" decoding="async"
+          {/* герой: чёткий кот прямо в HTML (480 px, ~37 КБ) — виден с первой отрисовки; поверх, когда
+              долетит, — постер 900 px для экранов с DPR 3; остальные коты страницы — только внешний постер */}
+          {inlinePoster ? (
+            <img src={MASCOT_POSTER_INLINE} alt="" draggable={false} aria-hidden
+              style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
+          ) : null}
+          <img src="/mascot/poster/neutral.webp" alt="" draggable={false} fetchPriority={inlinePoster ? "high" : "auto"} loading={inlinePoster ? "eager" : "lazy"} decoding="async"
             style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
         </>
       ) : null}
