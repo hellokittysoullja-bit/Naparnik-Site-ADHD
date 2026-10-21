@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, useReducedMotion } from "motion/react";
-import { MascotRig as MascotSvg } from "@/components/mascot-rig";
+import { MascotSvg } from "@/components/mascot-svg";
 import { SPRING_REVEAL, SPRING_ITEM } from "@/lib/motion";
 
 // 3 пункта вместо 4: три удара читаются, четыре — уже список жалоб

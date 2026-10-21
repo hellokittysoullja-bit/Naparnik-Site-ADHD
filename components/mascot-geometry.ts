@@ -25,7 +25,8 @@ const layer = (name: string, x0: number, y0: number, x1: number, y1: number): La
 });
 
 export const L = {
-  tail: layer("tail", 780, 380, 1160, 790),
+  tailBase: layer("tail-base", 780, 430, 1160, 790),
+  tailCurl: layer("tail-curl", 880, 250, 1160, 600),
   flame: layer("flame", 905, 255, 1040, 430),
   body: layer("body", 380, 500, 860, 790),
   leg: layer("leg", 410, 600, 575, 700),
@@ -41,25 +42,7 @@ export const L = {
   eyeArcL: layer("eyearc-l", 425, 325, 585, 485),
   eyeArcR: layer("eyearc-r", 638, 325, 798, 485),
   mouth: layer("mouth", 572, 466, 658, 508),
-  // кадры, сгенерированные по оригиналу (design/mascot/gen_frames.py): тот же рисунок,
-  // изменена одна деталь; выровнены и нарезаны design/mascot/from_gen.py
-  eyeClosedL: layer("eyeclosed-l", 405, 301, 605, 509),
-  eyeClosedR: layer("eyeclosed-r", 618, 301, 818, 509),
-  eyeHalfL: layer("eyehalf-l", 405, 301, 605, 509),
-  eyeHalfR: layer("eyehalf-r", 618, 301, 818, 509),
-  mouthOpen: layer("mouthopen", 539, 427, 691, 563),
-  mouthO: layer("moutho", 539, 427, 691, 563),
   mouthFur: layer("mouthfur", 556, 452, 674, 522),
-} as const;
-
-/* Позы из GPT-Image-2 (design/mascot/poses.py): модель меняет только позу/лицо, патч выровнен по
-   оригиналу и вырезан тем же matte — кладётся поверх рига на своё место */
-export const POSE = {
-  happyEyes: { href: "/mascot/pose-happy-eyes.webp", x: 395, y: 312, w: 436, h: 199 } as Layer,
-  yawn: { href: "/mascot/pose-yawn.webp", x: 385, y: 308, w: 456, h: 248 } as Layer,
-  waveA: { href: "/mascot/pose-wave-a.webp", x: 288, y: 398, w: 303, h: 415 } as Layer,
-  waveB: { href: "/mascot/pose-wave-b.webp", x: 288, y: 398, w: 303, h: 415 } as Layer,
-  cheer: { href: "/mascot/pose-cheer.webp", x: 250, y: 276, w: 668, h: 537 } as Layer,
 } as const;
 
 /** Квадратный кадр вокруг кота: потребители рассчитаны на квадрат */

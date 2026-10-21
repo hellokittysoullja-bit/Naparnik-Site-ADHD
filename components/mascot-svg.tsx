@@ -27,12 +27,10 @@ import {
   PAPER,
   PAW_C,
   PENCIL,
-  POSE,
   SHOULDER,
   VIEWBOX,
   type Layer,
 } from "@/components/mascot-geometry";
-import { TailChain } from "@/components/mascot-tail";
 import { SPRING_GAZE } from "@/lib/motion";
 
 /**
@@ -67,7 +65,7 @@ export type MascotExpression =
 /** Что кот делает руками/телом поверх выражения лица */
 export type MascotAction = "idle" | "wave" | "write" | "think" | "celebrate";
 
-type MouthShape = "w" | "smile" | "flat" | "open" | "o";
+type MouthShape = "w" | "smile" | "flat";
 
 type MascotSvgProps = {
   expression?: MascotExpression;
@@ -163,21 +161,33 @@ const WRITE = (() => {
   return { times, arm, paw, inkTimes, inkVals, inkOpacity, d };
 })();
 
-/* ── «Машет»: две позы поднятой лапы из GPT-Image-2 (A — лапа наружу, B — внутрь) сменяют
-   друг друга короткими кроссфейдами; перед взмахом лапа поднимается на A, в конце — опускается.
-   Шаги — мс на позу: быстрый старт (anticipation), ровный взмах, затухание. Два раунда с паузой. */
-const WAVE_STEPS = [300, 230, 230, 240, 250, 260, 300, 340];
-const WAVE_ROUNDS = 2;
-const WAVE_GAP_MS = 1600;
-const WAVE_FADE = 0.09;
-const WAVE_TOTAL_MS = WAVE_STEPS.reduce((a, b) => a + b, 0);
+/* ── «Машет»: подъём с anticipation и перелётом, кисть отстаёт ──────── */
+const WAVE = {
+  duration: 2.8,
+  times: [0, 0.09, 0.27, 0.39, 0.51, 0.63, 0.75, 0.86, 1],
+  arm: [0, -7, 124, 110, 128, 110, 126, 116, 0],
+  // кисть разворачивает подушечки к зрителю и «доигрывает» взмах
+  paw: [0, 6, -136, -104, -144, -104, -140, -122, 0],
+  ease: [
+    "easeOut",
+    [0.34, 1.56, 0.64, 1],
+    "easeInOut",
+    "easeInOut",
+    "easeInOut",
+    "easeInOut",
+    "easeInOut",
+    [0.65, 0, 0.35, 1],
+  ] as const,
+};
 
-/* ── Рты: родное «ω» рисунка растягивается в улыбку / приплющивается;
-   открытый рот и «о» — кадры, сгенерированные по оригиналу ────────── */
+/** Поза поднятой лапы для reduced motion — смысл «машет» без движения */
+const WAVE_STILL = { arm: 116, paw: -122 };
+
+/* ── Рты: латка меха рисунка закрывает родное «ω»; улыбка и «ровный»
+   рот — это само родное «ω», растянутое; «о» и открытый рот — вектор
+   (на рисунке их нет) ────────────────────────────────────────────── */
 function Mouth({ shape }: { shape: MouthShape }) {
   if (shape === "w") return null; // родной рот рисунка
-  if (shape === "open") return <Img l={L.mouthOpen} />;
-  if (shape === "o") return <Img l={L.mouthO} />;
   return (
     <g>
       <Img l={L.mouthFur} />
@@ -200,129 +210,12 @@ function Lid({ side }: { side: "l" | "r" }) {
   return <Img l={side === "l" ? L.eyeFurL : L.eyeFurR} />;
 }
 
-/** Закрытый глаз (сон, ожидание, моргание): кадр, сгенерированный по оригиналу */
+/** Закрытый глаз (сон, ожидание): мех рисунка + родная нижняя дуга обводки */
 function ClosedEye({ side }: { side: "l" | "r" }) {
-  return <Img l={side === "l" ? L.eyeClosedL : L.eyeClosedR} />;
-}
-
-/** Знаки вокруг кота: мысль, zzz, искры восторга. Вынесены, чтобы их рисовал и скелетный рендер (mascot-rig) */
-export function MascotFx({
-  action,
-  sleepy,
-  excited,
-  reduceMotion,
-}: {
-  action: MascotAction;
-  sleepy: boolean;
-  excited: boolean;
-  reduceMotion: boolean;
-}) {
   return (
     <>
-      {/* мысль: три точки всплывают по очереди — диегетичное «думаю» вместо спиннера */}
-      <AnimatePresence>
-        {action === "think" && (
-          <motion.g
-            key="think"
-            fill={EYE}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.18 } }}
-          >
-            {[
-              { x: 850, y: 90, r: 16 },
-              { x: 905, y: 30, r: 22 },
-              { x: 975, y: -40, r: 30 },
-            ].map((d, i) => (
-              <motion.circle
-                key={d.x}
-                cx={d.x}
-                cy={d.y}
-                r={d.r}
-                style={pivot(d)}
-                initial={{ scale: 0.4, opacity: 0.25 }}
-                animate={
-                  reduceMotion
-                    ? { scale: 1, opacity: 0.85 }
-                    : { scale: [0.4, 1.12, 1, 0.4], opacity: [0.25, 1, 0.85, 0.25] }
-                }
-                transition={
-                  reduceMotion
-                    ? { duration: 0 }
-                    : {
-                        duration: 1.8,
-                        times: [0, 0.25, 0.6, 1],
-                        delay: i * 0.22,
-                        repeat: Infinity,
-                        ease: "easeInOut",
-                      }
-                }
-              />
-            ))}
-          </motion.g>
-        )}
-      </AnimatePresence>
-
-      {/* zzz во сне */}
-      {sleepy && (
-        <g className="font-hand" fill={EYE}>
-          {[
-            { x: 830, y: 120, s: 60, d: 0 },
-            { x: 890, y: 50, s: 78, d: 0.5 },
-            { x: 960, y: -20, s: 100, d: 1 },
-          ].map((z) => (
-            /* initial — без ветвления по reduceMotion (React #418): различается
-               только animate — при reduced-motion «z» просто стоит видимой. */
-            <motion.text
-              key={z.x}
-              x={z.x}
-              y={z.y}
-              fontSize={z.s}
-              initial={{ opacity: 0, y: 18 }}
-              animate={
-                reduceMotion
-                  ? { opacity: 0.6, y: 0 }
-                  : { opacity: [0, 0.9, 0], y: [18, -18, -45] }
-              }
-              transition={
-                reduceMotion
-                  ? { duration: 0 }
-                  : { duration: 2.4, repeat: Infinity, delay: z.d, ease: "easeInOut" }
-              }
-            >
-              z
-            </motion.text>
-          ))}
-        </g>
-      )}
-
-      {/* искры в восторге */}
-      {excited && (
-        <g fill={EYE}>
-          {[
-            { x: 300, y: 120, d: 0 },
-            { x: 900, y: 150, d: 0.35 },
-            { x: 830, y: 20, d: 0.7 },
-          ].map((sp) => (
-            <motion.path
-              key={sp.x}
-              d="M0 -32 L8 -8 L32 0 L8 8 L0 32 L-8 8 L-32 0 L-8 -8 Z"
-              style={{ x: sp.x, y: sp.y }}
-              initial={{ scale: 0.5, opacity: 0.4 }}
-              animate={
-                reduceMotion
-                  ? { scale: 1, opacity: 0.9 }
-                  : { scale: [0.5, 1.15, 0.5], opacity: [0.4, 1, 0.4] }
-              }
-              transition={
-                reduceMotion
-                  ? { duration: 0 }
-                  : { duration: 1.4, repeat: Infinity, delay: sp.d, ease: "easeInOut" }
-              }
-            />
-          ))}
-        </g>
-      )}
+      <Img l={side === "l" ? L.eyeFurL : L.eyeFurR} />
+      <Img l={side === "l" ? L.eyeArcL : L.eyeArcR} />
     </>
   );
 }
@@ -368,17 +261,14 @@ export function MascotSvg({
      (State Machine idle → idle_bored → idle). Не чаще раза в ~40 с. */
   const [yawn, setYawn] = useState(false);
 
-  // Рты: родное «ω» (растянутое/приплюснутое) или кадры, сгенерированные по оригиналу, — векторных
-  // дорисовок нет. При «жмурится» и зевке лицо целиком даёт патч позы (глаза и рот из картинки).
-  const mouth: MouthShape = yawn || excited
-    ? "open"
-    : action === "wave"
+  // Рты только из рисунка: родное «ω», растянутое в улыбку или
+  // приплюснутое — на рисунке нет «о» и открытого рта, их не выдумываем.
+  const mouth: MouthShape =
+    excited || yawn || action === "wave" || happy
       ? "smile"
-      : action === "think"
-        ? "o"
-        : focused || action === "write"
-          ? "flat"
-          : "w";
+      : focused || action === "write"
+        ? "flat"
+        : "w";
 
   /* ── Взгляд ─────────────────────────────────────────────────────── */
   const px = useSpring(0, SPRING_GAZE);
@@ -391,9 +281,9 @@ export function MascotSvg({
       ? { x: -3.2, y: 4.2, tilt: -5 }
       : action === "think"
         ? { x: 3.8, y: -4.4, tilt: 6 }
-        : null; // «машет» взгляд не забирает: взмах разовый, а action="wave"
-                // остаётся выставленным — иначе кот навсегда переставал
-                // следить за курсором после приветствия (поймано замером)
+        : action === "wave"
+          ? { x: -1, y: 0, tilt: -4 }
+          : null;
 
   useEffect(() => {
     if (!alive || sleepy) {
@@ -642,7 +532,7 @@ export function MascotSvg({
     }
     if (r === "wave" && action === "idle" && !tapWave) {
       setTapWave(true);
-      setTimeout(() => setTapWave(false), WAVE_TOTAL_MS + 100);
+      setTimeout(() => setTapWave(false), WAVE.duration * 1000 + 100);
     }
   };
 
@@ -666,88 +556,77 @@ export function MascotSvg({
     }
   };
 
-  /* ── Лапа-«рука» (левая для зрителя) ────────────────────────────────
-     Взмах и радость — позы из картинок (патчи ниже), лапа рига на это время прячется;
-     жёсткое вращение остаётся только для «пишет» (карандаш на той же траектории). */
-  const waving = action === "wave" || tapWave;
-  const cheering = action === "celebrate";
+  /* ── Лапа-«рука» (левая для зрителя) ────────────────────────────── */
+  const armWaving = action === "wave" || action === "celebrate" || tapWave;
   const writing = action === "write";
-  const [wavePose, setWavePose] = useState<"a" | "b" | null>(null);
-  useEffect(() => {
-    if (!waving) {
-      setWavePose(null);
-      return;
-    }
-    if (reduceMotion) {
-      setWavePose("a");
-      return;
-    }
-    let live = true;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    const later = (fn: () => void, ms: number) => timers.push(setTimeout(() => live && fn(), ms));
-    let t = 0;
-    const rounds = action === "wave" ? WAVE_ROUNDS : 1;
-    for (let r = 0; r < rounds; r++) {
-      WAVE_STEPS.forEach((ms, i) => {
-        const pose = i % 2 === 0 ? "a" : "b";
-        later(() => setWavePose(pose), t);
-        t += ms;
-      });
-      later(() => setWavePose(null), t);
-      t += WAVE_GAP_MS;
-    }
-    return () => {
-      live = false;
-      timers.forEach(clearTimeout);
-    };
-  }, [waving, action, reduceMotion]);
-
-  // лапа рига прячется только пока на экране поза с поднятой лапой (в паузе между раундами она на месте)
-  const poseArm = wavePose !== null || cheering;
   const armAnim: TargetAndTransition = reduceMotion
-    ? { rotate: 0, transition: { duration: 0 } }
-    : writing
+    ? armWaving
+      ? { rotate: WAVE_STILL.arm, transition: { duration: 0 } }
+      : { rotate: 0, transition: { duration: 0 } }
+    : armWaving
       ? {
-          rotate: WRITE.arm,
+          rotate: WAVE.arm,
           transition: {
-            duration: WRITE_DUR,
-            times: WRITE.times,
-            ease: "linear",
-            repeat: Infinity,
+            duration: WAVE.duration,
+            times: WAVE.times,
+            ease: [...WAVE.ease],
+            repeat: action === "wave" ? 1 : 0,
+            repeatDelay: 1.6,
           },
         }
-      : { rotate: 0, transition: { duration: 0.5, ease: "easeInOut" } };
-  const pawAnim: TargetAndTransition = reduceMotion
-    ? { rotate: 0, y: 0, transition: { duration: 0 } }
-    : writing
-      ? {
-          rotate: 0,
-          y: WRITE.paw,
-          transition: {
-            y: {
+      : writing
+        ? {
+            rotate: WRITE.arm,
+            transition: {
               duration: WRITE_DUR,
               times: WRITE.times,
               ease: "linear",
               repeat: Infinity,
             },
-            rotate: { duration: 0.3 },
+          }
+        : { rotate: 0, transition: { duration: 0.5, ease: "easeInOut" } };
+  const pawAnim: TargetAndTransition = reduceMotion
+    ? armWaving
+      ? { rotate: WAVE_STILL.paw, y: 0, transition: { duration: 0 } }
+      : { rotate: 0, y: 0, transition: { duration: 0 } }
+    : armWaving
+      ? {
+          rotate: WAVE.paw,
+          y: 0,
+          transition: {
+            duration: WAVE.duration,
+            times: WAVE.times,
+            ease: [...WAVE.ease],
+            repeat: action === "wave" ? 1 : 0,
+            repeatDelay: 1.6,
           },
         }
-      : { rotate: 0, y: 0, transition: { duration: 0.5, ease: "easeInOut" } };
-
-  /* Лицо из картинок: зевок и «жмурюсь от радости» — патчи глаз/рта поверх рига */
-  const facePose: "yawn" | "happy" | null = yawn ? "yawn" : happy ? "happy" : null;
+      : writing
+        ? {
+            rotate: 0,
+            y: WRITE.paw,
+            transition: {
+              y: {
+                duration: WRITE_DUR,
+                times: WRITE.times,
+                ease: "linear",
+                repeat: Infinity,
+              },
+              rotate: { duration: 0.3 },
+            },
+          }
+        : { rotate: 0, y: 0, transition: { duration: 0.5, ease: "easeInOut" } };
 
   /* ── Веки ───────────────────────────────────────────────────────── */
-  // частичное веко — мех рисунка; полное закрытие (моргание) и полуприкрытие
-  // (зевок, «гладят») — сгенерированные по оригиналу кадры глаз
-  const lid = focused ? 0.34 : writing ? 0.22 : 0;
-  const closedNow = blink !== "open" || squint;
-  const halfNow = petting && !closedNow;      // зевок — патч позы целиком; «гладят» — полуприкрытые глаза
-  const fadeT =
+  const lidBase = yawn ? 0.75 : focused ? 0.34 : writing ? 0.22 : 0;
+  const lid =
+    blink !== "open" || squint ? 1 : petting ? 0.8 : lidBase;
+  const lidTransition =
     blink === "slow"
       ? { duration: 0.28, ease: "easeInOut" as const }
-      : { duration: 0.07, ease: "easeOut" as const };
+      : lid === 1
+        ? { duration: 0.06, ease: "easeIn" as const }
+        : { duration: 0.11, ease: "easeOut" as const };
 
   const eye = (side: "l" | "r") => {
     const { x, y } = side === "l" ? EYE_L : EYE_R;
@@ -782,19 +661,11 @@ export function MascotSvg({
             style={pivot({ x, y: y - EYE_RY - 6 })}
             initial={{ scaleY: 0 }}
             animate={{ scaleY: lid }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
+            transition={lidTransition}
           >
             <Lid side={side} />
           </motion.g>
         </g>
-        {/* кадры глаз поверх: кроссфейд ~70 мс читается как живое моргание
-            («хватит 10 кадров»), морфинг путей не нужен */}
-        <motion.g initial={{ opacity: 0 }} animate={{ opacity: halfNow ? 1 : 0 }} transition={fadeT}>
-          <Img l={side === "l" ? L.eyeHalfL : L.eyeHalfR} />
-        </motion.g>
-        <motion.g initial={{ opacity: 0 }} animate={{ opacity: closedNow ? 1 : 0 }} transition={fadeT}>
-          <ClosedEye side={side} />
-        </motion.g>
       </g>
     );
   };
@@ -822,14 +693,18 @@ export function MascotSvg({
       {/* контактная тень: кот сидит на земле, а не висит в воздухе */}
       <ellipse cx={690} cy={776} rx={330} ry={20} fill="oklch(0.08 0.01 270)" opacity={0.35} />
       <motion.g style={pivot(GROUND)} initial={{ y: 0, scaleX: 1, scaleY: 1 }} animate={rootCtl}>
-        {/* хвост за телом: цепочка сегментов, по нему бежит волна; огонь на кончике */}
-        <TailChain uid={uid}>
-          <g className="cat-flame">
-            <Img l={L.flame} />
+        {/* хвост за телом: качается от основания, завиток отстаёт, огонь пляшет */}
+        <g className="cat-tail">
+          <Img l={L.tailBase} />
+          <g className="cat-curl">
+            <Img l={L.tailCurl} />
+            <g className="cat-flame">
+              <Img l={L.flame} />
+            </g>
+            <circle className="cat-ember" cx={972} cy={268} r={6} fill="oklch(0.85 0.15 75)" />
+            <circle className="cat-ember cat-ember--late" cx={948} cy={285} r={4.5} fill="oklch(0.88 0.12 90)" />
           </g>
-          <circle className="cat-ember" cx={972} cy={268} r={6} fill="oklch(0.85 0.15 75)" />
-          <circle className="cat-ember cat-ember--late" cx={948} cy={285} r={4.5} fill="oklch(0.88 0.12 90)" />
-        </TailChain>
+        </g>
 
         {/* тело (с правой для зрителя лапой) — дышит от земли */}
         <g className="cat-breathe">
@@ -883,13 +758,6 @@ export function MascotSvg({
                 <Mouth shape={sleepy ? "flat" : mouth} />
               </motion.g>
             </AnimatePresence>
-            {/* жмурится от радости / зевает: глаза и рот из картинок, поверх рига, едут с головой */}
-            <motion.g initial={{ opacity: 0 }} animate={{ opacity: facePose === "happy" ? 1 : 0 }} transition={{ duration: 0.1 }}>
-              <Img l={POSE.happyEyes} />
-            </motion.g>
-            <motion.g initial={{ opacity: 0 }} animate={{ opacity: facePose === "yawn" ? 1 : 0 }} transition={{ duration: 0.12 }}>
-              <Img l={POSE.yawn} />
-            </motion.g>
           </motion.g>
         </g>
 
@@ -938,7 +806,6 @@ export function MascotSvg({
         {/* левая (для зрителя) лапа — машет и пишет; поверх головы, чтобы
             поднятая лапа не пряталась за щёку */}
         <g className="cat-breathe">
-         <motion.g initial={{ opacity: 1 }} animate={{ opacity: poseArm ? 0 : 1 }} transition={{ duration: WAVE_FADE }}>
           <motion.g style={pivot(SHOULDER)} initial={{ rotate: 0 }} animate={armAnim}>
             <Img l={L.leg} />
             <motion.g style={pivot(PAW_C)} initial={{ rotate: 0, y: 0 }} animate={pawAnim}>
@@ -962,25 +829,113 @@ export function MascotSvg({
               <Img l={L.paw} />
             </motion.g>
           </motion.g>
-         </motion.g>
-        </g>
-
-        {/* позы лап из картинок GPT-Image-2: взмах (две позы по кругу) и радость двумя лапами —
-            патч с поднятой лапой и грудью на месте опущенной */}
-        <g className="cat-breathe">
-          <motion.g initial={{ opacity: 0 }} animate={{ opacity: wavePose !== null ? 1 : 0 }} transition={{ duration: WAVE_FADE }}>
-            <Img l={POSE.waveA} />
-          </motion.g>
-          <motion.g initial={{ opacity: 0 }} animate={{ opacity: wavePose === "b" ? 1 : 0 }} transition={{ duration: WAVE_FADE }}>
-            <Img l={POSE.waveB} />
-          </motion.g>
-          <motion.g initial={{ opacity: 0 }} animate={{ opacity: cheering ? 1 : 0 }} transition={{ duration: 0.12 }}>
-            <Img l={POSE.cheer} />
-          </motion.g>
         </g>
       </motion.g>
 
-      <MascotFx action={action} sleepy={sleepy} excited={excited} reduceMotion={!!reduceMotion} />
+      {/* мысль: три точки всплывают по очереди — диегетичное «думаю» вместо спиннера */}
+      <AnimatePresence>
+        {action === "think" && (
+          <motion.g
+            key="think"
+            fill={EYE}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.18 } }}
+          >
+            {[
+              { x: 850, y: 90, r: 16 },
+              { x: 905, y: 30, r: 22 },
+              { x: 975, y: -40, r: 30 },
+            ].map((d, i) => (
+              <motion.circle
+                key={d.x}
+                cx={d.x}
+                cy={d.y}
+                r={d.r}
+                style={pivot(d)}
+                initial={{ scale: 0.4, opacity: 0.25 }}
+                animate={
+                  reduceMotion
+                    ? { scale: 1, opacity: 0.85 }
+                    : { scale: [0.4, 1.12, 1, 0.4], opacity: [0.25, 1, 0.85, 0.25] }
+                }
+                transition={
+                  reduceMotion
+                    ? { duration: 0 }
+                    : {
+                        duration: 1.8,
+                        times: [0, 0.25, 0.6, 1],
+                        delay: i * 0.22,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                      }
+                }
+              />
+            ))}
+          </motion.g>
+        )}
+      </AnimatePresence>
+
+      {/* zzz во сне */}
+      {sleepy && (
+        <g className="font-hand" fill={EYE}>
+          {[
+            { x: 830, y: 120, s: 60, d: 0 },
+            { x: 890, y: 50, s: 78, d: 0.5 },
+            { x: 960, y: -20, s: 100, d: 1 },
+          ].map((z) => (
+            /* initial — без ветвления по reduceMotion (React #418): различается
+               только animate — при reduced-motion «z» просто стоит видимой. */
+            <motion.text
+              key={z.x}
+              x={z.x}
+              y={z.y}
+              fontSize={z.s}
+              initial={{ opacity: 0, y: 18 }}
+              animate={
+                reduceMotion
+                  ? { opacity: 0.6, y: 0 }
+                  : { opacity: [0, 0.9, 0], y: [18, -18, -45] }
+              }
+              transition={
+                reduceMotion
+                  ? { duration: 0 }
+                  : { duration: 2.4, repeat: Infinity, delay: z.d, ease: "easeInOut" }
+              }
+            >
+              z
+            </motion.text>
+          ))}
+        </g>
+      )}
+
+      {/* искры в восторге */}
+      {excited && (
+        <g fill={EYE}>
+          {[
+            { x: 300, y: 120, d: 0 },
+            { x: 900, y: 150, d: 0.35 },
+            { x: 830, y: 20, d: 0.7 },
+          ].map((sp) => (
+            <motion.path
+              key={sp.x}
+              d="M0 -32 L8 -8 L32 0 L8 8 L0 32 L-8 8 L-32 0 L-8 -8 Z"
+              style={{ x: sp.x, y: sp.y }}
+              initial={{ scale: 0.5, opacity: 0.4 }}
+              animate={
+                reduceMotion
+                  ? { scale: 1, opacity: 0.9 }
+                  : { scale: [0.5, 1.15, 0.5], opacity: [0.4, 1, 0.4] }
+              }
+              transition={
+                reduceMotion
+                  ? { duration: 0 }
+                  : { duration: 1.4, repeat: Infinity, delay: sp.d, ease: "easeInOut" }
+              }
+            />
+          ))}
+        </g>
+      )}
     </svg>
   );
 }
