@@ -488,6 +488,7 @@ export function Hero() {
                 size={249}
                 label=""
                 className="size-[clamp(141px,33dvh,262px)] lg:size-[249px] lg:origin-bottom lg:scale-[1.15]"
+                inlinePoster
               />
             </button>
             <GroundPool className="-mt-12 -mb-12" />

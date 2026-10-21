@@ -1,22 +1,19 @@
 import { Analytics } from "@vercel/analytics/next";
 import type { Metadata, Viewport } from "next";
-import { Manrope, JetBrains_Mono, Caveat } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const manrope = Manrope({
-  subsets: ["latin", "cyrillic"],
-  variable: "--font-manrope",
-});
-
+// Manrope и Caveat — свои (public/fonts, app/fonts.css, генератор design/fonts/build.py): статические начертания
+// по весам и алфавитам плюс вшитые в CSS подмножества под символы первого экрана — текст героя рисуется
+// своим шрифтом с первой отрисовки на любой сети. Здесь из next/font остался только моноширинный.
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin", "cyrillic"],
   variable: "--font-jetbrains-mono",
+  // моноширинный нужен ниже первого экрана (как это работает, тарифы): без preload — два файла на
+  // 149 КБ не стоят на критическом пути первой отрисовки, подгружаются, когда дошло до текста
+  preload: false,
 });
 
-const caveat = Caveat({
-  subsets: ["latin", "cyrillic"],
-  variable: "--font-caveat",
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://ai-rc-one.vercel.app"),
@@ -54,6 +51,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // preload шрифтов здесь нет намеренно: первый экран лендинга рисуется вшитыми в CSS подмножествами, а четыре
+  // файла Manrope в preload (48 КБ) отнимали полосу у самого CSS на slow 3G (первая отрисовка 3,2 → 6,2 с).
+  // Остальной текст лендинга ниже сгиба подтянет файлы по мере надобности; экраны /app предзагружают
+  // своё в app/app/layout.tsx.
   return (
     <html
       lang="ru"
@@ -63,7 +64,7 @@ export default function RootLayout({
       // при переходах между страницами — data-атрибут снимает конфликт, сам
       // scroll-behavior по-прежнему приходит из CSS и уважает reduced-motion.
       data-scroll-behavior="smooth"
-      className={`bg-background ${manrope.variable} ${jetbrainsMono.variable} ${caveat.variable}`}
+      className={`bg-background ${jetbrainsMono.variable}`}
     >
       <body className="antialiased font-sans">
         {children}
