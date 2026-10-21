@@ -327,7 +327,7 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
     const d = (r - 1) * ((am + bm) / 2); // отступ от осевой линии, px рисунка
     const px = cx + Math.cos(th) * am;
     const py = cy + Math.sin(th) * bm;
-    const sl = st.slant * (k === "L" ? -1 : 1); // внешний угол: у L — слева, у R — справа
+    const sl = st.slant * (k === "L" ? 1 : -1); // грусть: внутренний угол выше, внешний ниже (у L внешний — слева)
     const happy = st.happy > 0.001;
     const open = happy ? 1 - st.happy : st.open;
     const kk = clamp(open + sl * ((px - cx) / am), 0, 1);
