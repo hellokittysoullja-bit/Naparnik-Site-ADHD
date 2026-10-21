@@ -58,6 +58,8 @@ export type Mascot = {
     bones: Record<string, { x: number; y: number; rotation: number }>;
     /** покадровый режим: остановить реальный тикер и двигать время руками */
     step: (dt: number) => void;
+    /** только логика кадра без рендера — для замера бюджета CPU */
+    tickOnly: (dt: number) => void;
   };
 };
 
@@ -754,6 +756,12 @@ export async function createMascot(el: HTMLElement, opts: MascotOptions = {}): P
         gsap.updateRoot(clock.virtual / 1000);
         tick();
         app.render();
+      },
+      tickOnly: (dt: number) => {
+        if (clock.virtual === null) { clock.virtual = performance.now(); app.ticker.stop(); gsap.ticker.remove(gsap.updateRoot); }
+        clock.virtual += dt * 1000;
+        gsap.updateRoot(clock.virtual / 1000);
+        tick();
       },
     } as unknown as Mascot["_internals"],
     destroy: () => {
