@@ -3,7 +3,9 @@
 # в пикселях reference.png; те же координаты использует components/mascot-geometry.ts.
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
-import os
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from tone import punch
 ROOT=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC=os.path.join(ROOT,'design/mascot/reference.png')
 OUT=os.path.join(ROOT,'public/mascot/')
@@ -83,6 +85,7 @@ def inpaint(img, hole, iters=40, valid=None):
 
 def save(name, rgbx, a, box):
     x0,y0,x1,y1=box
+    rgbx=punch(rgbx)  # тон для тёмного фона (design/mascot/tone.py)
     arr=np.dstack([rgbx[y0:y1,x0:x1],np.clip(a[y0:y1,x0:x1],0,1)*255]).astype(np.uint8)
     img=Image.fromarray(arr,'RGBA')
     img=img.resize(((x1-x0)//2,(y1-y0)//2),Image.LANCZOS)  # 50%: хватает для 2x DPR до ~300px

@@ -1,4 +1,5 @@
 import { TailChain } from "@/components/mascot-tail";
+import { ShadowDefs, ShadowLayers } from "@/components/mascot-shadow";
 import {
   EYE_L,
   EYE_R,
@@ -429,7 +430,8 @@ export function MascotStatic({
       aria-hidden="true"
       style={{ overflow: "visible" }}
     >
-      <ellipse cx={690} cy={776} rx={330} ry={20} fill="oklch(0.08 0.01 270)" opacity={0.35} />
+      <ShadowDefs uid="ms" />
+      <ShadowLayers uid="ms" />
       <TailChain uid="ms">
         <g className="cat-flame">
           <Img l={L.flame} />

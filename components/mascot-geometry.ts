@@ -70,7 +70,7 @@ export const EYE_RX = 57;
 export const EYE_RY = 60;
 
 /* Цвета, снятые с рисунка: веки и латки рта — ровно этим мехом */
-export const FUR = "rgb(74 77 82)";
+export const FUR = "rgb(70 74 81)"; // цвет меха после тонировки слоёв (design/mascot/tone.py)
 export const INK = "rgb(22 22 24)";
 export const EYE = "var(--color-primary)";
 export const PAPER = "oklch(0.95 0.015 95)";

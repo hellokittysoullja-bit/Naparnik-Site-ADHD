@@ -2,7 +2,9 @@
 # Кадр выравнивается по оригиналу (масштаб + сдвиг по маске силуэта, корреляция через
 # FFT), затем из него вырезаются области глаз и рта с мягкой маской -> public/mascot/*.webp.
 # Запуск: python3 design/mascot/from_gen.py   (numpy + Pillow)
-import os
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from tone import punch
 import numpy as np
 from PIL import Image, ImageFilter
 
@@ -68,7 +70,7 @@ def soft(m, r):
 
 def save(name, rgb, alpha, box):
     x0, y0, x1, y1 = box
-    arr = np.dstack([np.asarray(rgb)[y0:y1, x0:x1], np.clip(alpha[y0:y1, x0:x1], 0, 1) * 255]).astype(np.uint8)
+    arr = np.dstack([punch(np.asarray(rgb)[y0:y1, x0:x1]), np.clip(alpha[y0:y1, x0:x1], 0, 1) * 255]).astype(np.uint8)
     im = Image.fromarray(arr, "RGBA").resize(((x1 - x0) // 2, (y1 - y0) // 2), Image.LANCZOS)
     im.save(os.path.join(OUT, name + ".webp"), "WEBP", quality=90, method=6)
     print(name, box, im.size)

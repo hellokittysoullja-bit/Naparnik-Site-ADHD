@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   AnimatePresence,
   motion,
   useAnimationControls,
+  useMotionValue,
   useReducedMotion,
   useSpring,
+  useTransform,
   type TargetAndTransition,
 } from "motion/react";
 import {
@@ -32,6 +34,7 @@ import {
   type Layer,
 } from "@/components/mascot-geometry";
 import { TailChain } from "@/components/mascot-tail";
+import { SHADOW_AXIS, ShadowDefs, ShadowLayers } from "@/components/mascot-shadow";
 import { SPRING_GAZE } from "@/lib/motion";
 
 /**
@@ -336,11 +339,53 @@ export function MascotSvg({
   }, [alive, sleepy, action, px, py, tilt]);
 
   /* ── Редкие события idle: моргание, ухо, взгляд, наклон головы ──── */
-  const [blink, setBlink] = useState<"open" | "shut" | "slow">("open");
   const pupilsCtl = useAnimationControls();
   const earL = useAnimationControls();
   const earR = useAnimationControls();
   const rootCtl = useAnimationControls();
+  const headCtl = useAnimationControls();
+
+  /* Моргание по фазам, как у аниматоров: открыто → полуприкрыто → закрыто → полуприкрыто
+     → открыто. Смыкание быстрое и ускоряется (30 мс), удержание короткое, открытие
+     медленнее и «доезжает» (≈80 мс + перелёт зрачка). В момент смыкания голова чуть
+     проседает — моргает не только веко, а лицо. Виды: обычное, двойное, медленное
+     «кошачье доверие». Кадры полуприкрытых и закрытых глаз — сгенерированы по рисунку. */
+  type Phase = "open" | "half" | "closed";
+  const [phase, setPhase] = useState<Phase>("open");
+  const blinkTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const runBlink = useCallback(
+    (kind: "normal" | "slow" | "double") => {
+      const one: Array<[Phase, number]> =
+        kind === "slow"
+          ? [["half", 90], ["closed", 320], ["half", 150]]
+          : [["half", 30], ["closed", 55], ["half", 78]];
+      const seq: Array<[Phase, number]> = kind === "double" ? [...one, ["open", 150], ...one] : one;
+      blinkTimers.current.forEach(clearTimeout);
+      blinkTimers.current = [];
+      let t = 0;
+      for (const [ph, hold] of seq) {
+        blinkTimers.current.push(setTimeout(() => setPhase(ph), t));
+        t += hold;
+      }
+      blinkTimers.current.push(
+        setTimeout(() => {
+          setPhase("open");
+          // за закрытым веком зрачок расширился — открывается шире и сужается с перелётом
+          void pupilsCtl.start({ scale: [1.1, 0.96, 1], transition: { duration: 0.5, ease: "easeOut" } });
+        }, t),
+      );
+      void headCtl.start({
+        y: [0, 2 * K, 0],
+        scaleY: [1, 0.992, 1],
+        transition: { duration: kind === "slow" ? 0.55 : 0.18, ease: "easeOut" },
+      });
+    },
+    [headCtl, pupilsCtl],
+  );
+  useEffect(() => {
+    const timers = blinkTimers.current;
+    return () => timers.forEach(clearTimeout);
+  }, []);
 
   useEffect(() => {
     if (!alive || eyesClosed) return;
@@ -355,38 +400,13 @@ export function MascotSvg({
     };
     const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 
-    // моргание: закрытие быстрое, открытие мягче; после — зрачок
-    // чуть шире (за веком темно) и сужается с перелётом
-    const openEyes = () => {
-      setBlink("open");
-      void pupilsCtl.start({
-        scale: [1.1, 0.96, 1],
-        transition: { duration: 0.5, ease: "easeOut" },
-      });
-    };
+    // случайный интервал; не на каждый вдох, иначе «роботно» (AnimSchool)
     const blinkLoop = () => {
       later(() => {
         const roll = Math.random();
-        if (roll < 0.1) {
-          // медленное моргание — кошачье «я тебе доверяю»
-          setBlink("slow");
-          later(openEyes, 560);
-        } else {
-          setBlink("shut");
-          later(() => {
-            openEyes();
-            if (roll > 0.86) {
-              later(() => {
-                setBlink("shut");
-                later(openEyes, 110);
-              }, 170);
-            }
-          }, 120);
-        }
+        runBlink(roll < 0.08 ? "slow" : roll < 0.2 ? "double" : "normal");
         blinkLoop();
-      // раз в несколько циклов дыхания, не на каждый вдох (AnimSchool):
-      // слишком частое моргание читается «роботно»
-      }, rnd(4000, 11000));
+      }, rnd(3200, 8800));
     };
     blinkLoop();
 
@@ -411,6 +431,7 @@ export function MascotSvg({
       later(() => {
         if (action === "idle" && performance.now() - lastPointer.current > 2500) {
           glanceSide = -glanceSide;
+          if (Math.random() < 0.55) runBlink("normal"); // моргает в момент отвода взгляда
           px.set(glanceSide * 3.6 * K);
           py.set(rnd(-1.5, 1.2) * K);
           if (Math.random() < 0.45) tilt.set(glanceSide * 3.5);
@@ -464,7 +485,7 @@ export function MascotSvg({
       live = false;
       timers.forEach(clearTimeout);
     };
-  }, [alive, eyesClosed, action, pupilsCtl, earL, earR, px, py, tilt, rootCtl]);
+  }, [alive, eyesClosed, action, pupilsCtl, earL, earR, px, py, tilt, rootCtl, runBlink]);
 
   /* ── Корневая группа: прыжки радости и отклик на тап ────────────── */
   const [squint, setSquint] = useState(false);
@@ -524,8 +545,7 @@ export function MascotSvg({
     void earL.start({ rotate: [0, -12, 2, 0], transition: { duration: 0.42 } });
     void earR.start({ rotate: [0, 12, -2, 0], transition: { duration: 0.42, delay: 0.04 } });
     if (r === "slowblink") {
-      setBlink("slow");
-      setTimeout(() => setBlink("open"), 560);
+      runBlink("slow");
     } else {
       setSquint(true);
       setTimeout(() => setSquint(false), 380);
@@ -621,12 +641,10 @@ export function MascotSvg({
   // частичное веко — мех рисунка; полное закрытие (моргание) и полуприкрытие
   // (зевок, «гладят») — сгенерированные по оригиналу кадры глаз
   const lid = focused ? 0.34 : writing ? 0.22 : 0;
-  const closedNow = blink !== "open" || squint;
-  const halfNow = (yawn || petting) && !closedNow;
-  const fadeT =
-    blink === "slow"
-      ? { duration: 0.28, ease: "easeInOut" as const }
-      : { duration: 0.07, ease: "easeOut" as const };
+  const closedNow = phase === "closed" || squint;
+  const halfNow = (phase === "half" || ((yawn || petting) && phase === "open")) && !closedNow;
+  // фазы сменяют друг друга почти встык: кроссфейд ~20 мс, чтобы не было «призраков»
+  const fadeT = { duration: 0.02, ease: "linear" as const };
 
   const eye = (side: "l" | "r") => {
     const { x, y } = side === "l" ? EYE_L : EYE_R;
@@ -680,6 +698,14 @@ export function MascotSvg({
 
   const mood = sleepy ? "sleep" : excited ? "excited" : "calm";
 
+  // значения корневой группы отдаём наружу, чтобы тень повторяла прыжок
+  const rootY = useMotionValue(0);
+  const rootSX = useMotionValue(1);
+  const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+  const shadowSY = useTransform(rootY, (y) => clamp(1 + y / (K * 67), 0.7, 1.06));
+  const shadowSX = useTransform([rootY, rootSX], ([y, sx]: number[]) => clamp(1 + y / (K * 67), 0.7, 1.06) * (1 + (sx - 1) * 0.6));
+  const shadowOp = useTransform(rootY, (y) => clamp(1 + y / (K * 45), 0.5, 1));
+
   return (
     <svg
       ref={ref}
@@ -698,9 +724,13 @@ export function MascotSvg({
       onPointerCancel={interactive ? onUp : undefined}
       style={{ overflow: "visible" }}
     >
-      {/* контактная тень: кот сидит на земле, а не висит в воздухе */}
-      <ellipse cx={690} cy={776} rx={330} ry={20} fill="oklch(0.08 0.01 270)" opacity={0.35} />
-      <motion.g style={pivot(GROUND)} initial={{ y: 0, scaleX: 1, scaleY: 1 }} animate={rootCtl}>
+      {/* тень реагирует на прыжок: выше кот — меньше, светлее и мягче тень;
+          приземление со сжатием — тень чуть шире */}
+      <ShadowDefs uid={uid} />
+      <motion.g style={{ ...pivot(SHADOW_AXIS), scaleX: shadowSX, scaleY: shadowSY, opacity: shadowOp }}>
+        <ShadowLayers uid={uid} />
+      </motion.g>
+      <motion.g style={{ ...pivot(GROUND), y: rootY, scaleX: rootSX }} initial={{ scaleY: 1 }} animate={rootCtl}>
         {/* хвост за телом: цепочка сегментов, по нему бежит волна; огонь на кончике */}
         <TailChain uid={uid}>
           <g className="cat-flame">
@@ -717,7 +747,7 @@ export function MascotSvg({
 
         {/* голова едет за грудью с задержкой; наклон — на вложенной группе */}
         <g className="cat-ride">
-          <motion.g style={{ rotate: tilt, ...pivot(NECK) }}>
+          <motion.g style={{ rotate: tilt, ...pivot(NECK) }} initial={{ y: 0, scaleY: 1 }} animate={headCtl}>
             <motion.g style={pivot(EAR_L_PIVOT)} initial={{ rotate: 0 }} animate={earL}>
               <motion.g
                 style={pivot(EAR_L_PIVOT)}
