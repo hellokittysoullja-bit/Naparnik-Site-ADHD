@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { MascotRive, type MascotRiveApi } from "@/components/mascot-rive";
-import type { MascotAction, MascotExpression } from "@/components/mascot-svg";
+import { MascotSvg, type MascotAction, type MascotExpression } from "@/components/mascot-svg";
 
 const EXPR: MascotExpression[] = ["calm", "happy", "focused", "sleepy", "excited", "listening"];
 const ACT: MascotAction[] = ["idle", "wave", "write", "think", "celebrate"];
@@ -21,6 +21,7 @@ export function RiveLab() {
   const btn = "rounded-md border border-white/20 px-3 py-1.5 text-sm text-white/90";
   return (
     <main style={{ minHeight: "100dvh", background: "#202220", display: "grid", placeItems: "center", gap: 16, padding: 16 }}>
+      <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
       <MascotRive
         size={520}
         expression={expression}
@@ -30,6 +31,8 @@ export function RiveLab() {
           setApi(a);
         }}
       />
+      <MascotSvg size={520} expression={expression} action={action} />
+      </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", maxWidth: 640 }}>
         {EXPR.map((e) => (
           <button key={e} className={btn} data-on={e === expression} onClick={() => setExpression(e)}>{e}</button>
