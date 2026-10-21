@@ -167,7 +167,12 @@ if os.path.exists(EYESC):
             ec_rgb = np.where(zone_e[..., None], np.clip(ec_rgb + off, 0, 255), ec_rgb)
     f = soft(ndi.binary_erosion(eye_hole, iterations=3 * S), 4)[..., None]
     head_rgb = head_rgb * (1 - f) + ec_rgb * f
-    print('eye patch from generated eyes-closed frame')
+# рот: вместо свёрточной латки — Clone Stamp со сдвигом: мех подбородка на 44 px ниже (настоящие
+# мазки, без «мыла»), мягкий край
+_src = ec_rgb if os.path.exists(EYESC) else rgb  # источник — кадр «без глаз»: над носом там нет колец глаз
+chin = np.roll(_src, 74 * S, axis=0)  # мех между глазами выше носа — ровный, без носа и теней
+fm = soft(mouth_hole, 2.5)[..., None]
+head_rgb = head_rgb * (1 - fm) + chin * fm
 _w = np.clip(eye_blend, 0, 1)
 head_rgb = np.where((eye_hole & ~mouth_hole)[..., None], head_rgb * _w[..., None] + rgb * (1 - _w[..., None]), head_rgb)
 add('head', head_rgb, alpha * HEAD * notail * (1 - EAR_CUT), 9)
