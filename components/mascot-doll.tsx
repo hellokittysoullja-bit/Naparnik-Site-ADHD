@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
 import { MascotSvg, type MascotAction, type MascotExpression } from "@/components/mascot-svg";
-import { DollAnimator, drawDollFx, drawDollShadow, type DollAction } from "@/lib/rig/doll";
+import { DollAnimator, drawDollFx, drawDollShadow, setDollFxColor, type DollAction } from "@/lib/rig/doll";
 import { RigRenderer } from "@/lib/rig/renderer";
 import type { RigData } from "@/lib/rig/types";
 
@@ -55,6 +55,24 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
   const rend = useRef<RigRenderer | null>(null);
   const [state, setState] = useState<"loading" | "doll" | "svg">("loading");
   const [inView, setInView] = useState(true);
+  const [px, setPx] = useState(0);
+
+  // размер холста — по фактическому размеру на странице (класс size-[clamp(...)] на первом экране меняет его)
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const measure = () => setPx(Math.max(16, Math.round(el.getBoundingClientRect().width * dpr)));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [state]);
+
+  useEffect(() => {
+    if (wrap.current) setDollFxColor(getComputedStyle(wrap.current).getPropertyValue("--color-primary").trim());
+  }, [state]);
 
   useEffect(() => {
     let alive = true;
@@ -108,8 +126,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
     if (!cv || !a || !r || !rg) return;
     const ctx = cv.getContext("2d");
     if (!ctx) return;
-    const dpr = Math.min(2, typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1);
-    const px = Math.round(size * dpr);
+    if (!px) return;
     cv.width = px; cv.height = px;
     let raf = 0, last = performance.now();
     const frame = (now: number) => {
@@ -122,7 +139,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [state, size, reduce, inView]);
+  }, [state, px, reduce, inView]);
 
   if (state === "svg") return <MascotSvg expression={expression} action={action} size={size} label={label} className={className} interactive={interactive} />;
   const view = rig.current?.view;
@@ -134,7 +151,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
       role={label ? "img" : undefined}
       aria-label={label || undefined}
       aria-hidden={label ? undefined : true}
-      style={{ width: size, height: size, position: "relative", display: "inline-block", touchAction: "manipulation" }}
+      style={{ ...(/(^|\s)(lg:|md:|sm:)?size-/.test(className ?? "") ? {} : { width: size, height: size }), position: "relative", display: "inline-block", touchAction: "manipulation" }}
       onPointerDown={interactive ? () => anim.current?.poke() : undefined}
     >
       {state === "loading" || !view || !cat ? (

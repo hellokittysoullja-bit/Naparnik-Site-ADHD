@@ -72,6 +72,7 @@ export class DollAnimator {
   private starsT0 = 0;
   private zzzT0 = 0;
   private pokeAt = -9;
+  private earSide = false;
 
   t = 0;
   private gx = new Spring(150, 17);
@@ -174,18 +175,25 @@ export class DollAnimator {
     P.rot[B.head] = (tilt - 3.4 * sm(sk)) * D2R;
 
     // ----- уши: подёргивание раз в 6–11 с (и на касание)
-    if (!still && t > this.earAt) { (this.rand() < 0.5 ? this.earL : this.earR).v += this.rand() < 0.5 ? -230 : 230; this.earAt = t + 6 + this.rand() * 5; }
-    P.rot[B["ear-l"]] = (still ? 0 : this.earL.step(dt)) * D2R * 0.6;
-    P.rot[B["ear-r"]] = (still ? 0 : this.earR.step(dt)) * D2R * 0.6;
+    // подёргивание ушей по очереди раз в 4–8 с; левое ухо загнутое и короткое — его ход больше, иначе его не видно
+    if (!still && t > this.earAt) {
+      this.earSide = !this.earSide;
+      if (this.earSide) this.earL.v += this.rand() < 0.5 ? -330 : 330; else this.earR.v += this.rand() < 0.5 ? -230 : 230;
+      this.earAt = t + 4 + this.rand() * 4;
+    }
+    const swayL = still ? 0 : 2.2 * fbm(t / 1.9, 71), swayR = still ? 0 : 1.4 * fbm(t / 2.3, 83);
+    P.rot[B["ear-l"]] = ((still ? 0 : this.earL.step(dt)) * 0.75 + swayL) * D2R;
+    P.rot[B["ear-r"]] = ((still ? 0 : this.earR.step(dt)) * 0.6 + swayR) * D2R;
 
     // ----- хвост: бегущая волна по цепочке, огонёк держится вертикально
-    // амплитуда проверена крайними позами: при 4° на звено завиток мнётся; потолок ~1.6° на звено (≈10° на хвост)
+    // амплитуда проверена крайними позами (после починки весов на суставах): до ~2.6° на звено чисто
     const livelyT = this.action === "celebrate" ? 1.35 : f.happy ? 1.15 : f.sleep ? 0.45 : 1;
     this.lively += (livelyT - this.lively) * Math.min(1, dt * 1.5);       // смена настроения — плавно, не скачком хвоста
     const lively = this.lively;
     let acc = 0;
     this.tail.forEach((bi, i) => {
-      const a = still ? 0 : 1.15 * lively * Math.tanh(fbm(t / 3.1 - i * 0.18, 53)) * (0.4 + i / this.tail.length);
+      let a = still ? 0 : 1.9 * lively * Math.tanh(fbm(t / 2.6 - i * 0.2, 53)) * (0.45 + i / this.tail.length);
+      if (a < 0) a *= 0.55;                 // к голове хвост ходит меньше: при −2.6° на звено огонёк заходил на щёку
       P.rot[bi] = a * D2R; acc += a;
     });
     P.rot[B.flame] = -acc * 0.5 * D2R;             // огонёк тянется вверх, но держится за кончик хвоста
@@ -252,28 +260,29 @@ export function drawDollShadow(ctx: CanvasRenderingContext2D, a: DollAnimator, c
 }
 
 // ---------------------------------------------------------------- звёздочки и Z (Canvas 2D, координаты рисунка)
-const FX_COLOR = "rgb(122, 190, 46)";
-const STARS: [number, number, number, number, number, number][] = [   // x, y, радиус, фаза, период, фаза дрейфа
-  [110, 150, 58, 0, 1.9, 0], [1010, 60, 28, 0.35, 1.5, 0.4], [1150, 200, 20, 0.7, 1.7, 0.8], [40, 430, 18, 0.55, 1.4, 0.2],
-];
+let fxColor = "rgb(170, 220, 70)";
+/** Цвет эффектов — тот же, что у прежнего кота (var(--color-primary)); компонент передаёт его из CSS. */
+export function setDollFxColor(c: string) { if (c) fxColor = c; }
+
+// Звёздочки прежнего кота (MascotSvg, PR #49): прямая четырёхлучевая искра «M0 -32 L8 -8 L32 0 …», три штуки,
+// пульс 1.4 с (масштаб 0.5 → 1.15 → 0.5, прозрачность 0.4 → 1 → 0.4) со сдвигом 0.35 с. Места и размер пересчитаны из
+// рисунка прежнего кота в координаты эталона по глазам (масштаб 1.554).
+const OLD = (x: number, y: number) => [377 + (x - 505) * 1.554, 447 + (y - 405) * 1.554];
+const STARS: [number, number, number][] = [[...OLD(300, 120), 0] as [number, number, number], [...OLD(900, 150), 0.35] as [number, number, number], [...OLD(830, 20), 0.7] as [number, number, number]];
+const STAR_R = 32 * 1.554;
 const ZS = { p0: [930, 110], p1: [1090, -250], s0: 44, s1: 104, period: 3.6, n: 3 };
 
-function easeBack(u: number) {
-  const c1 = 1.70158, c3 = c1 + 1, x = clamp01(u) - 1;
-  return 1 + c3 * x * x * x + c1 * x * x;
+function star(ctx: CanvasRenderingContext2D, x: number, y: number, R: number) {
+  const k = R / 32;
+  const pts = [[0, -32], [8, -8], [32, 0], [8, 8], [0, 32], [-8, 8], [-32, 0], [-8, -8]];
+  ctx.beginPath();
+  pts.forEach(([px, py], i) => (i ? ctx.lineTo(x + px * k, y + py * k) : ctx.moveTo(x + px * k, y + py * k)));
+  ctx.closePath(); ctx.fill();
 }
 
-function star(ctx: CanvasRenderingContext2D, x: number, y: number, R: number, rot: number) {
-  // четырёхлучевая искра с вогнутыми сторонами: от кончика к кончику — кривая через точку у центра
-  ctx.beginPath();
-  for (let i = 0; i <= 4; i++) {
-    const a = rot + (i * Math.PI) / 2 - Math.PI / 2;
-    const px = x + R * Math.cos(a), py = y + R * Math.sin(a);
-    if (i === 0) { ctx.moveTo(px, py); continue; }
-    const m = a - Math.PI / 4;
-    ctx.quadraticCurveTo(x + R * 0.14 * Math.cos(m), y + R * 0.14 * Math.sin(m), px, py);
-  }
-  ctx.closePath(); ctx.fill();
+/** easeInOut между ключами (как transition ease: "easeInOut" у framer-motion) */
+function keys3(u: number, a: number, b: number) {
+  return u < 0.5 ? a + (b - a) * sm(u / 0.5) : b + (a - b) * sm((u - 0.5) / 0.5);
 }
 
 /** Нарисовать звёздочки или Z поверх кота. view — окно рисунка (как у рига), w x h — пиксели холста. */
@@ -285,15 +294,16 @@ function drawFxItem(ctx: CanvasRenderingContext2D, fx: DollFxItem, t: number, vi
   const [vx, vy, vw, vh] = view;
   ctx.save();
   ctx.setTransform(w / vw, 0, 0, h / vh, (-vx * w) / vw, (-vy * h) / vh);
-  ctx.fillStyle = FX_COLOR; ctx.strokeStyle = FX_COLOR; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.fillStyle = fxColor; ctx.strokeStyle = fxColor; ctx.lineCap = "round"; ctx.lineJoin = "round";
   const tt = t - fx.t0;
   if (fx.kind === "stars") {
-    const pop = easeBack(fx.k);
-    for (const [x, y, R, ph, per, dph] of STARS) {
-      const tw = 0.55 + 0.45 * Math.sin(Math.PI * (tt / per + ph)) ** 2;
-      const dy = 6 * Math.sin(2 * Math.PI * (tt / 3.1 + dph)), dx = 4 * Math.sin(2 * Math.PI * (tt / 4.3 + dph));
-      star(ctx, x + dx, y + dy, Math.max(0.5, R * tw * pop), 0.22 * Math.sin(2 * Math.PI * (tt / 5 + ph)));
+    for (const [x, y, d] of STARS) {
+      const u = (((tt - d) / 1.4) % 1 + 1) % 1;
+      if (tt < d) continue;
+      ctx.globalAlpha = keys3(u, 0.4, 1) * fx.k;
+      star(ctx, x, y, STAR_R * keys3(u, 0.5, 1.15) * (0.6 + 0.4 * fx.k));
     }
+    ctx.globalAlpha = 1;
   } else {
     for (let i = 0; i < ZS.n; i++) {
       let u = tt / ZS.period - i / ZS.n;

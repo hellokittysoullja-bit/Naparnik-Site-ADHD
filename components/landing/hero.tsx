@@ -485,9 +485,9 @@ export function Hero() {
               <MascotSvg
                 expression={expression}
                 action={greeting ? "wave" : "idle"}
-                size={196}
+                size={226}
                 label=""
-                className="size-[clamp(112px,26dvh,206px)] lg:size-[196px] lg:origin-bottom lg:scale-[1.15]"
+                className="size-[clamp(128px,30dvh,238px)] lg:size-[226px] lg:origin-bottom lg:scale-[1.15]"
               />
             </button>
             <GroundPool className="-mt-12 -mb-12" />
