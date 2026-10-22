@@ -3,7 +3,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-400-cyr.woff2") format("woff2");
+  src: url("/fonts/manrope-400-cyr.woff2?v=f52388e583") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: block;
@@ -12,7 +12,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-400-lat.woff2") format("woff2");
+  src: url("/fonts/manrope-400-lat.woff2?v=fe47bdf4bb") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: block;
@@ -21,7 +21,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-500-cyr.woff2") format("woff2");
+  src: url("/fonts/manrope-500-cyr.woff2?v=eb2621c0c2") format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: block;
@@ -30,7 +30,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-500-lat.woff2") format("woff2");
+  src: url("/fonts/manrope-500-lat.woff2?v=d60ce66944") format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: block;
@@ -39,7 +39,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-600-cyr.woff2") format("woff2");
+  src: url("/fonts/manrope-600-cyr.woff2?v=ff3c4bc100") format("woff2");
   font-weight: 600;
   font-style: normal;
   font-display: block;
@@ -48,7 +48,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-600-lat.woff2") format("woff2");
+  src: url("/fonts/manrope-600-lat.woff2?v=d9cae8b8be") format("woff2");
   font-weight: 600;
   font-style: normal;
   font-display: block;
@@ -57,7 +57,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-700-cyr.woff2") format("woff2");
+  src: url("/fonts/manrope-700-cyr.woff2?v=752b2a6308") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: block;
@@ -66,7 +66,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-700-lat.woff2") format("woff2");
+  src: url("/fonts/manrope-700-lat.woff2?v=1bbd9fed7e") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: block;
@@ -75,7 +75,7 @@
 
 @font-face {
   font-family: "Caveat";
-  src: url("/fonts/caveat-400-cyr.woff2") format("woff2");
+  src: url("/fonts/caveat-400-cyr.woff2?v=b6d6d5b42e") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: block;
@@ -84,7 +84,7 @@
 
 @font-face {
   font-family: "Caveat";
-  src: url("/fonts/caveat-400-lat.woff2") format("woff2");
+  src: url("/fonts/caveat-400-lat.woff2?v=a4dce80c9d") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: block;
@@ -93,7 +93,7 @@
 
 @font-face {
   font-family: "Caveat";
-  src: url("/fonts/caveat-500-cyr.woff2") format("woff2");
+  src: url("/fonts/caveat-500-cyr.woff2?v=db40bc99a5") format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: block;
@@ -102,7 +102,7 @@
 
 @font-face {
   font-family: "Caveat";
-  src: url("/fonts/caveat-500-lat.woff2") format("woff2");
+  src: url("/fonts/caveat-500-lat.woff2?v=4e7750a6c1") format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: block;

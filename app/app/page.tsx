@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { HomeScreen } from "@/components/home-screen";
+import { preloadFonts } from "@/lib/font-preload";
 
 export const metadata: Metadata = {
   title: "Дом — Напарник",
@@ -15,6 +16,7 @@ export const metadata: Metadata = {
 // момент просто оказался в его зоне. Только этот page.tsx — world/session
 // держат свой main отдельно, других экранов это не касается.
 export default function AppHomePage() {
+  preloadFonts("caveat-400-cyr"); // рукопись в чате на первом экране
   return (
     <main className="app-page-enter flex h-dvh flex-col overflow-hidden pb-20">
       <HomeScreen />

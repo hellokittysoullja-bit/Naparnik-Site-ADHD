@@ -12,7 +12,16 @@ const nextConfig = {
   // рабочая фича продукта, глухой запрет `microphone=()` сломал бы её молча.
   // camera/geolocation продукт не использует нигде — им можно быть строгими.
   async headers() {
+    // Своя статика с версией содержимого в адресе (?v=хэш, scripts/asset-versions.mjs): шрифты и кот кэшируются
+    // на год без перепроверки — повторный визит не переспрашивает сервер про ~20 файлов. Адреса без ?v не затронуты.
+    const immutable = (source) => ({
+      source,
+      has: [{ type: 'query', key: 'v' }],
+      headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+    })
     return [
+      immutable('/fonts/:path*'),
+      immutable('/mascot/:path*'),
       {
         source: '/:path*',
         headers: [

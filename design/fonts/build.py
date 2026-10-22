@@ -11,7 +11,8 @@
      @font-face той же семьи — при пересечении unicode-range побеждает позднее правило. Покрытие символов
      проверяет design/fonts/check.mjs на каждом `npm run build` (prebuild);
   3. запасные "… Fallback" на local(Arial) с метриками, подогнанными под высоту строки и переносы.
-Запуск: python3 design/fonts/build.py  (нужны fonttools, brotli). Контекстные альтернативы (calt) сохранены.
+Запуск: python3 design/fonts/build.py  (нужны fonttools, brotli), затем node scripts/asset-versions.mjs — он проставит
+версии ?v=хэш в url() app/fonts.css (то же делает prebuild). Контекстные альтернативы (calt) сохранены.
 """
 import base64, os, re, sys
 from fontTools import subset

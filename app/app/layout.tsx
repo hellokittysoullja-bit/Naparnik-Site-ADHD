@@ -1,6 +1,6 @@
 import { AppBackdrop } from "@/components/app-backdrop";
 import { AppNav } from "@/components/app-nav";
-import { preload } from "react-dom";
+import { preloadFonts } from "@/lib/font-preload";
 
 /**
  * /app layout — bare pass-through + общий фон и общая нижняя навигация.
@@ -32,11 +32,11 @@ import { preload } from "react-dom";
  * поэтому фиксируется по-настоящему.
  */
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  // шрифты экранов /app заранее — ровно те, что видны на первом экране Дома/Фокуса/Мира (замер pwglyphs:
-  // Manrope 400/500/600/700, рукопись 400; Caveat 500 на /app не встречается). Кириллические файлы, 4 × 12 + 54 КБ.
+  // шрифты, которые есть на первом экране КАЖДОГО маршрута /app — Manrope 400/500/600 (3 × 12 КБ, кириллица).
+  // Остальное предзагружает сама страница (lib/font-preload.ts): раньше здесь были ещё 700 и рукопись 400 для всех —
+  // на Доме 700 не нужен, в Мире и знакомстве не нужна рукопись 400 (54 КБ впустую, Chrome: «preloaded but not used»).
   // На лендинге preload нет — его первый экран вшит в CSS.
-  for (const w of [400, 500, 600, 700]) preload(`/fonts/manrope-${w}-cyr.woff2`, { as: "font", type: "font/woff2", crossOrigin: "anonymous" });
-  preload("/fonts/caveat-400-cyr.woff2", { as: "font", type: "font/woff2", crossOrigin: "anonymous" });
+  preloadFonts("manrope-400-cyr", "manrope-500-cyr", "manrope-600-cyr");
   return (
     <>
       <AppBackdrop />
