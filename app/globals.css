@@ -1233,6 +1233,34 @@ body[data-companion-speaking] .app-hearth {
 .btn-chunky[data-warm] {
   --lip: oklch(0.7 0.16 70);
 }
+
+/* Блик по главной кнопке: ОДИН очень слабый проход (12 % белого, у cta-sheen 38 %) через 2,2 с после появления —
+   заметен боковым зрением, не отвлекает. Без повтора: кнопка стоит на экране долго, метроном здесь не нужен. */
+@keyframes btn-sheen-sweep {
+  from { transform: translateX(-140%) skewX(-18deg); }
+  to { transform: translateX(320%) skewX(-18deg); }
+}
+.btn-sheen {
+  position: relative;
+  overflow: hidden;
+}
+.btn-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 0%, oklch(1 0 0 / 0.12) 50%, transparent 100%);
+  transform: translateX(-140%) skewX(-18deg);
+  animation: btn-sheen-sweep 1.2s ease-out 1 both;
+  animation-delay: 2.2s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-sheen::after {
+    animation: none;
+    opacity: 0;
+  }
+}
 .btn-chunky .btn-face {
   box-shadow: 0 4px 0 var(--lip);
   transition:

@@ -45,11 +45,6 @@ const REPLIES = {
     companion:
       "Знакомо. Это не лень — мозгу просто нужен кто-то рядом в момент старта. Пойдём, покажу, как это работает.",
   },
-  curious: {
-    visitor: "Просто посмотреть",
-    companion:
-      "Заходи. У меня тут остров, который растёт от каждого твоего старта. Попробуй одно крошечное дело — увидишь.",
-  },
 } as const;
 
 type ReplyKey = keyof typeof REPLIES;
@@ -443,7 +438,8 @@ export function Hero() {
                 data-warm={ctaBoost ? "" : undefined}
                 className="btn-chunky block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:w-auto"
               >
-                <span className="btn-face flex h-[52px] items-center justify-center gap-2 rounded-[16px] bg-primary px-6 text-[15px] font-bold uppercase tracking-[0.06em] text-primary-foreground lg:px-10">
+                {/* btn-sheen — один едва заметный блик при появлении (app/globals.css), без повтора */}
+                <span className="btn-face btn-sheen flex h-[52px] items-center justify-center gap-2 rounded-[16px] bg-primary px-6 text-[15px] font-bold uppercase tracking-[0.06em] text-primary-foreground lg:px-10">
                   {navigating ? (
                     <>
                       <Loader2 className="size-4 animate-spin" aria-hidden="true" />
