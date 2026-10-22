@@ -19,7 +19,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { MascotDoll as MascotSvg } from '@/components/mascot-doll';
-import { type MascotExpression } from '@/components/mascot-svg'
+import { type MascotExpression } from '@/components/mascot-doll'
 import { EmphasisText } from '@/components/emphasis-text'
 import { HoldToStart } from '@/components/onboarding/hold-to-start'
 import { getPatterns } from '@/lib/memory'

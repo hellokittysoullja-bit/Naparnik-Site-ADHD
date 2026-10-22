@@ -9,9 +9,9 @@ export const dynamic = "force-static";
 
 /**
  * Лендинг — ровно один экран без скролла: заголовок, диалог и кнопка в кадре.
- * Секции Problem / HowItWorks / WorldSection / Presence / Pricing и Footer
- * остаются в components/landing, но на страницу не выводятся. Чтобы вернуть
- * длинную страницу, снять `html,body{overflow:hidden}` ниже и вернуть секции.
+ * Секции длинной страницы (Problem / HowItWorks / WorldSection / Presence / Pricing,
+ * SectionNav, Footer) не выводились и удалены 22.10 как мёртвый код. Вернуть: взять
+ * их из git (`git show 72de752:components/landing/<файл>`), снять `html,body{overflow:hidden}`.
  */
 export default function LandingPage() {
   return (
