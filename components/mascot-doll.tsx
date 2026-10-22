@@ -61,6 +61,9 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
   const [state, setState] = useState<"loading" | "doll" | "svg">("loading");
   // контекст есть и готов рисовать: 0 — нет (грузится / потерян, пока показываем постер), растёт при каждом (пере)создании
   const [ready, setReady] = useState(0);
+  // кукла уже нарисовала кадр в холст: только тогда убираем постер. Иначе там, где кадры не идут (вкладка открыта
+  // в фоне, iOS придержал requestAnimationFrame), холст пустой, а постера уже нет — кот исчезал
+  const [drawn, setDrawn] = useState(false);
   const [inView, setInView] = useState(true);
   const [px, setPx] = useState(0);
 
@@ -108,7 +111,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
         setReady((n) => n + 1);
       }).catch(() => { if (alive) setState("svg"); });
     };
-    const onLost = (e: Event) => { e.preventDefault(); rend.current = null; setReady(0); };
+    const onLost = (e: Event) => { e.preventDefault(); rend.current = null; setReady(0); setDrawn(false); };
     const onRestored = () => { if (alive) make(); };
     cv.addEventListener("webglcontextlost", onLost);
     cv.addEventListener("webglcontextrestored", onRestored);
@@ -179,7 +182,9 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
       }
       if (!reduce && inView) raf = requestAnimationFrame(frame);
     };
-    raf = requestAnimationFrame(frame);
+    // первый кадр — сразу, а не по requestAnimationFrame: холст прозрачен, постер под ним виден, пока кадр не готов
+    frame(performance.now());
+    setDrawn(true);
     return () => cancelAnimationFrame(raf);
   }, [state, ready, px, reduce, inView]);
 
@@ -196,7 +201,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
       style={{ ...(/(^|\s)(lg:|md:|sm:)?size-/.test(className ?? "") ? {} : { width: size, height: size }), position: "relative", display: "inline-block", verticalAlign: "bottom", touchAction: "manipulation" }}
       onPointerDown={interactive ? () => anim.current?.poke() : undefined}
     >
-      {state === "loading" || !ready || !view || !cat ? (
+      {state === "loading" || !ready || !drawn || !view || !cat ? (
         // первый кадр до загрузки рига — тот же эталонный рисунок неподвижно, на своём месте: лёгкая копия
         // эталона (900 px, webp ≈ 86 КБ, предзагружена из layout) — PNG 1,3 МБ на 3G качался 13 с и
         // проявлялся полосами сверху вниз (уши → голова → тело)
