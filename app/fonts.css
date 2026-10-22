@@ -3,7 +3,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-400-cyr.woff2?v=624dfbff66") format("woff2");
+  src: url("/fonts/manrope-400-cyr.woff2?v=f52388e583") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: block;
@@ -12,7 +12,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-400-lat.woff2?v=20aa03d658") format("woff2");
+  src: url("/fonts/manrope-400-lat.woff2?v=fe47bdf4bb") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: block;
@@ -21,7 +21,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-500-cyr.woff2?v=e3de5446ed") format("woff2");
+  src: url("/fonts/manrope-500-cyr.woff2?v=eb2621c0c2") format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: block;
@@ -30,7 +30,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-500-lat.woff2?v=d6ff66b39b") format("woff2");
+  src: url("/fonts/manrope-500-lat.woff2?v=d60ce66944") format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: block;
@@ -39,7 +39,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-600-cyr.woff2?v=8d91daae48") format("woff2");
+  src: url("/fonts/manrope-600-cyr.woff2?v=ff3c4bc100") format("woff2");
   font-weight: 600;
   font-style: normal;
   font-display: block;
@@ -48,7 +48,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-600-lat.woff2?v=a8161085be") format("woff2");
+  src: url("/fonts/manrope-600-lat.woff2?v=d9cae8b8be") format("woff2");
   font-weight: 600;
   font-style: normal;
   font-display: block;
@@ -57,7 +57,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-700-cyr.woff2?v=c04eb78dd5") format("woff2");
+  src: url("/fonts/manrope-700-cyr.woff2?v=752b2a6308") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: block;
@@ -66,7 +66,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/fonts/manrope-700-lat.woff2?v=b2ea5baa18") format("woff2");
+  src: url("/fonts/manrope-700-lat.woff2?v=1bbd9fed7e") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: block;
@@ -75,7 +75,7 @@
 
 @font-face {
   font-family: "Caveat";
-  src: url("/fonts/caveat-400-cyr.woff2?v=fd02487731") format("woff2");
+  src: url("/fonts/caveat-400-cyr.woff2?v=b6d6d5b42e") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: block;
@@ -84,7 +84,7 @@
 
 @font-face {
   font-family: "Caveat";
-  src: url("/fonts/caveat-400-lat.woff2?v=46ac6f1b3d") format("woff2");
+  src: url("/fonts/caveat-400-lat.woff2?v=a4dce80c9d") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: block;
@@ -93,7 +93,7 @@
 
 @font-face {
   font-family: "Caveat";
-  src: url("/fonts/caveat-500-cyr.woff2?v=7f7605bc4b") format("woff2");
+  src: url("/fonts/caveat-500-cyr.woff2?v=db40bc99a5") format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: block;
@@ -102,80 +102,8 @@
 
 @font-face {
   font-family: "Caveat";
-  src: url("/fonts/caveat-500-lat.woff2?v=a43bd9da95") format("woff2");
+  src: url("/fonts/caveat-500-lat.woff2?v=4e7750a6c1") format("woff2");
   font-weight: 500;
-  font-style: normal;
-  font-display: block;
-  unicode-range: U+0041-005A, U+0061-007A, U+00C0-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-200F, U+2016-2017, U+2020-2025, U+2027-206F, U+20AC, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-@font-face {
-  font-family: "GolosText";
-  src: url("/fonts/golostext-400-cyr.woff2?v=a47c4ea046") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: block;
-  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116, U+0020-0040, U+005B-0060, U+007B-007E, U+00A0, U+00AB, U+00BB, U+2010-2015, U+2018-201F, U+2026, U+2122;
-}
-
-@font-face {
-  font-family: "GolosText";
-  src: url("/fonts/golostext-400-lat.woff2?v=88737ca5d2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: block;
-  unicode-range: U+0041-005A, U+0061-007A, U+00C0-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-200F, U+2016-2017, U+2020-2025, U+2027-206F, U+20AC, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-@font-face {
-  font-family: "GolosText";
-  src: url("/fonts/golostext-700-cyr.woff2?v=28c179c26e") format("woff2");
-  font-weight: 700;
-  font-style: normal;
-  font-display: block;
-  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116, U+0020-0040, U+005B-0060, U+007B-007E, U+00A0, U+00AB, U+00BB, U+2010-2015, U+2018-201F, U+2026, U+2122;
-}
-
-@font-face {
-  font-family: "GolosText";
-  src: url("/fonts/golostext-700-lat.woff2?v=01d4deffae") format("woff2");
-  font-weight: 700;
-  font-style: normal;
-  font-display: block;
-  unicode-range: U+0041-005A, U+0061-007A, U+00C0-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-200F, U+2016-2017, U+2020-2025, U+2027-206F, U+20AC, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-@font-face {
-  font-family: "Roboto";
-  src: url("/fonts/roboto-400-cyr.woff2?v=c24eaaad1c") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: block;
-  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116, U+0020-0040, U+005B-0060, U+007B-007E, U+00A0, U+00AB, U+00BB, U+2010-2015, U+2018-201F, U+2026, U+2122;
-}
-
-@font-face {
-  font-family: "Roboto";
-  src: url("/fonts/roboto-400-lat.woff2?v=db0f927dba") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: block;
-  unicode-range: U+0041-005A, U+0061-007A, U+00C0-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-200F, U+2016-2017, U+2020-2025, U+2027-206F, U+20AC, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-@font-face {
-  font-family: "Roboto";
-  src: url("/fonts/roboto-700-cyr.woff2?v=c597e8f8f9") format("woff2");
-  font-weight: 700;
-  font-style: normal;
-  font-display: block;
-  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116, U+0020-0040, U+005B-0060, U+007B-007E, U+00A0, U+00AB, U+00BB, U+2010-2015, U+2018-201F, U+2026, U+2122;
-}
-
-@font-face {
-  font-family: "Roboto";
-  src: url("/fonts/roboto-700-lat.woff2?v=de93959c43") format("woff2");
-  font-weight: 700;
   font-style: normal;
   font-display: block;
   unicode-range: U+0041-005A, U+0061-007A, U+00C0-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-200F, U+2016-2017, U+2020-2025, U+2027-206F, U+20AC, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
