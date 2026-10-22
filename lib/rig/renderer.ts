@@ -1,3 +1,4 @@
+import { asset } from "@/lib/asset-versions";
 import type { PartState, RigData } from "./types";
 
 const MAX_BONES = 24;
@@ -81,7 +82,7 @@ export function loadRigImages(rig: RigData, baseUrl: string): Promise<HTMLImageE
             const im = new Image();
             im.onload = () => res(im);
             im.onerror = () => rej(new Error("texture " + part.tex));
-            im.src = baseUrl + part.tex;
+            im.src = asset(baseUrl + part.tex);
           }),
       ),
     );

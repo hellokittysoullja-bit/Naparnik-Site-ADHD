@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
 import { DollAnimator, drawDollFx, drawDollShadow, setDollFxColor, type DollAction, type DollExpression } from "@/lib/rig/doll";
 import { loadRigImages, RigRenderer } from "@/lib/rig/renderer";
+import { asset } from "@/lib/asset-versions";
 import type { RigData } from "@/lib/rig/types";
 
 /**
@@ -36,7 +37,7 @@ export function loadDoll(): Promise<Rig | null> {
   if (!loading) {
     loading = (async () => {
       try {
-        const rig = (await (await fetch(BASE + "rig.json")).json()) as Rig;
+        const rig = (await (await fetch(asset(BASE + "rig.json"))).json()) as Rig;
         await loadRigImages(rig, BASE);
         return rig;
       } catch {
@@ -266,7 +267,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
           ) : null}
           {/* у героя внешний постер идёт обычным приоритетом картинки в кадре: первый кадр уже дал инлайн, а шрифты
               первого экрана вшиты в CSS (app/hero-fonts.css), уступать полосу ему больше некому */}
-          <img src="/mascot/poster/neutral.webp" alt="" draggable={false} loading={inlinePoster ? "eager" : "lazy"} decoding="async"
+          <img src={asset("/mascot/poster/neutral.webp")} alt="" draggable={false} loading={inlinePoster ? "eager" : "lazy"} decoding="async"
             style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
         </>
       ) : null}

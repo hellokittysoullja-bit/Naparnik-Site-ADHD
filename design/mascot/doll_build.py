@@ -1,5 +1,6 @@
 """Кукла кота для сайта из ЭТАЛОННОГО PNG (тот же принцип, что у куклы героя в видео, DoodleExplainer doll_rig):
 один рисунок -> слои -> движения кодом. Никаких перерисованных частей: всё вырезано из design/mascot/png/neutral.png.
+После пересборки слоёв версии адресов (?v=хэш, годовой кэш) обновит prebuild или node scripts/asset-versions.mjs.
 
 Слои (public/mascot/doll/*.webp) и риг (public/mascot/doll/rig.json, формат lib/rig/types.ts):
   tail    — хвост без огонька (за телом), кости по осевой хвоста;
