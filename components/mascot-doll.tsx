@@ -2,17 +2,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
-import { MascotSvg, type MascotAction, type MascotExpression } from "@/components/mascot-svg";
-import { DollAnimator, drawDollFx, drawDollShadow, setDollFxColor, type DollAction } from "@/lib/rig/doll";
+import { DollAnimator, drawDollFx, drawDollShadow, setDollFxColor, type DollAction, type DollExpression } from "@/lib/rig/doll";
 import { loadRigImages, RigRenderer } from "@/lib/rig/renderer";
 import type { RigData } from "@/lib/rig/types";
 
 /**
  * Кот-кукла из эталонного PNG (design/mascot/png/neutral.png -> design/mascot/doll_build.py): тот же рисунок,
  * разобранный на слои, живёт кодом — моргает, смотрит за курсором, дышит, двигает ушами и хвостом; радость —
- * язычок и звёздочки, сон — дуги и Z. Рисуется WebGL-скиннингом (lib/rig). Где WebGL нет, и для «пишет»
- * (блокнот и карандаш в лапе) — прежний кот MascotSvg с теми же свойствами.
+ * язычок и звёздочки, сон — дуги и Z. Рисуется WebGL-скиннингом (lib/rig). Где WebGL нет или риг не загрузился —
+ * сам эталон неподвижно (постер). Другой модели кота на сайте нет: старый cutout-кот (MascotSvg, MascotStatic,
+ * слои public/mascot/*.webp) удалён 22.10 — у него была белая кайма и он подменял куклу на «пишет» и без WebGL.
  */
+export type MascotExpression = DollExpression;
+export type MascotAction = DollAction;
+
 type Props = {
   expression?: MascotExpression;
   action?: MascotAction;
@@ -45,7 +48,6 @@ export function loadDoll(): Promise<Rig | null> {
 }
 
 export function MascotDoll(props: Props) {
-  if (props.action === "write") return <MascotSvg {...props} />;
   return <DollCanvas {...props} />;
 }
 
@@ -58,9 +60,13 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
   const anim = useRef<DollAnimator | null>(null);
   const rig = useRef<Rig | null>(null);
   const rend = useRef<RigRenderer | null>(null);
-  const [state, setState] = useState<"loading" | "doll" | "svg">("loading");
+  // static — WebGL нет или риг не загрузился: остаётся эталонный постер
+  const [state, setState] = useState<"loading" | "doll" | "static">("loading");
   // контекст есть и готов рисовать: 0 — нет (грузится / потерян, пока показываем постер), растёт при каждом (пере)создании
   const [ready, setReady] = useState(0);
+  // кукла уже нарисовала кадр в холст: только тогда убираем постер. Иначе там, где кадры не идут (вкладка открыта
+  // в фоне, iOS придержал requestAnimationFrame), холст пустой, а постера уже нет — кот исчезал
+  const [drawn, setDrawn] = useState(false);
   const [inView, setInView] = useState(true);
   const [px, setPx] = useState(0);
 
@@ -85,7 +91,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
     let alive = true;
     loadDoll().then((rg) => {
       if (!alive) return;
-      if (!rg) { setState("svg"); return; }
+      if (!rg) { setState("static"); return; }
       rig.current = rg;
       anim.current = new DollAnimator(rg);
       setState("doll");
@@ -94,7 +100,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
   }, []);
 
   // свой WebGL-контекст на видимом холсте; при потере контекста (фон на Android, лимит контекстов) — снова постер,
-  // после восстановления рендер пересоздаётся на том же холсте; нет WebGL — прежний кот MascotSvg
+  // после восстановления рендер пересоздаётся на том же холсте; нет WebGL — эталонный постер
   useEffect(() => {
     if (state !== "doll") return;
     const cv = canvas.current, rg = rig.current;
@@ -103,12 +109,12 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
     const make = () => {
       RigRenderer.create(rg, BASE, cv).then((r) => {
         if (!alive) { r?.dispose(); return; }
-        if (!r) { setState("svg"); return; }
+        if (!r) { setState("static"); return; }
         rend.current = r;
         setReady((n) => n + 1);
-      }).catch(() => { if (alive) setState("svg"); });
+      }).catch(() => { if (alive) setState("static"); });
     };
-    const onLost = (e: Event) => { e.preventDefault(); rend.current = null; setReady(0); };
+    const onLost = (e: Event) => { e.preventDefault(); rend.current = null; setReady(0); setDrawn(false); };
     const onRestored = () => { if (alive) make(); };
     cv.addEventListener("webglcontextlost", onLost);
     cv.addEventListener("webglcontextrestored", onRestored);
@@ -133,7 +139,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
     const a = anim.current;
     if (!a) return;
     a.expression = expression;
-    a.setAction((action === "write" ? "idle" : action) as DollAction);
+    a.setAction(action);
     a.reduced = !!reduce;
   }, [expression, action, reduce, state]);
 
@@ -179,11 +185,12 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
       }
       if (!reduce && inView) raf = requestAnimationFrame(frame);
     };
-    raf = requestAnimationFrame(frame);
+    // первый кадр — сразу, а не по requestAnimationFrame: холст прозрачен, постер под ним виден, пока кадр не готов
+    frame(performance.now());
+    setDrawn(true);
     return () => cancelAnimationFrame(raf);
   }, [state, ready, px, reduce, inView]);
 
-  if (state === "svg") return <MascotSvg expression={expression} action={action} size={size} label={label} className={className} interactive={interactive} />;
   const view = rig.current?.view;
   const cat = rig.current?.cat;
   return (
@@ -196,7 +203,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
       style={{ ...(/(^|\s)(lg:|md:|sm:)?size-/.test(className ?? "") ? {} : { width: size, height: size }), position: "relative", display: "inline-block", verticalAlign: "bottom", touchAction: "manipulation" }}
       onPointerDown={interactive ? () => anim.current?.poke() : undefined}
     >
-      {state === "loading" || !ready || !view || !cat ? (
+      {state !== "doll" || !ready || !drawn || !view || !cat ? (
         // первый кадр до загрузки рига — тот же эталонный рисунок неподвижно, на своём месте: лёгкая копия
         // эталона (900 px, webp ≈ 86 КБ, предзагружена из layout) — PNG 1,3 МБ на 3G качался 13 с и
         // проявлялся полосами сверху вниз (уши → голова → тело)

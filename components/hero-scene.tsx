@@ -1,17 +1,6 @@
-import { TailChain } from "@/components/mascot-tail";
-import {
-  EYE_L,
-  EYE_R,
-  EYE_RX,
-  EYE_RY,
-  FUR,
-  INK,
-  L,
-  OUTLINE,
-  VIEWBOX,
-  WARM,
-  type Layer,
-} from "@/components/mascot-geometry";
+// Цвета сцены (раньше брались из геометрии старого cutout-кота, удалённого 22.10)
+const INK = "rgb(22 22 24)";
+const WARM = "oklch(0.75 0.15 65)";
 
 /**
  * Первый кадр сайта: ночная сцена, которая рендерится на сервере и живёт
@@ -378,78 +367,6 @@ export function Moon({ className }: { className?: string }) {
         <circle cx="53" cy="53" r="5" />
         <circle cx="68" cy="66" r="3.4" />
         <circle cx="57" cy="71" r="2.2" />
-      </g>
-    </svg>
-  );
-}
-
-/**
- * Статичный напарник для серверного первого кадра: те же слои оригинального
- * рисунка, что у интерактивного маскота, — кот до гидрации и после
- * неотличим. Дыхание, хвост с отстающим завитком, огонёк и моргание — на
- * CSS-слоях idle-рига (globals.css), без JS.
- */
-function Img({ l }: { l: Layer }) {
-  return <image href={l.href} x={l.x} y={l.y} width={l.w} height={l.h} preserveAspectRatio="none" />;
-}
-
-export function MascotStatic({
-  size = 200,
-  className,
-}: {
-  size?: number;
-  className?: string;
-}) {
-  const lid = (x: number, y: number, side: string) => {
-    const l = x - EYE_RX - 6;
-    const r = x + EYE_RX + 6;
-    const top = y - EYE_RY - 6;
-    const bot = y + EYE_RY + 4;
-    return (
-      <g key={side}>
-        <defs>
-          <clipPath id={`ms-eye-${side}`}>
-            <ellipse cx={x} cy={y} rx={EYE_RX} ry={EYE_RY} />
-          </clipPath>
-        </defs>
-        <g clipPath={`url(#ms-eye-${side})`}>
-          <g className="cat-lid-auto">
-            <Img l={side === "l" ? L.eyeFurL : L.eyeFurR} />
-          </g>
-        </g>
-      </g>
-    );
-  };
-  return (
-    <svg
-      viewBox={VIEWBOX}
-      width={size}
-      height={size}
-      className={["cat-rig", className].filter(Boolean).join(" ")}
-      aria-hidden="true"
-      style={{ overflow: "visible" }}
-    >
-      <ellipse cx={690} cy={776} rx={330} ry={20} fill="oklch(0.08 0.01 270)" opacity={0.35} />
-      <TailChain uid="ms">
-        <g className="cat-flame">
-          <Img l={L.flame} />
-        </g>
-      </TailChain>
-      <g className="cat-breathe">
-        <Img l={L.body} />
-      </g>
-      <g className="cat-ride">
-        <Img l={L.earL} />
-        <Img l={L.earR} />
-        <Img l={L.head} />
-        <Img l={L.pupilL} />
-        <Img l={L.pupilR} />
-        {lid(EYE_L.x, EYE_L.y, "l")}
-        {lid(EYE_R.x, EYE_R.y, "r")}
-      </g>
-      <g className="cat-breathe">
-        <Img l={L.leg} />
-        <Img l={L.paw} />
       </g>
     </svg>
   );

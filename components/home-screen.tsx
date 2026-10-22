@@ -9,7 +9,7 @@ import { ArrowRight, CalendarCheck, Play, Sparkles } from "lucide-react";
 import { CompanionChat } from "@/components/companion-chat";
 import { EmphasisText } from "@/components/emphasis-text";
 import { MascotDoll as MascotSvg } from "@/components/mascot-doll";
-import { type MascotExpression } from "@/components/mascot-svg";
+import { type MascotExpression } from "@/components/mascot-doll";
 import {
   getCompanionName,
   getFinds,

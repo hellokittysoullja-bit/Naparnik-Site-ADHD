@@ -7,7 +7,7 @@ import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } fro
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Button } from '@/components/ui/button'
 import { MascotDoll as MascotSvg } from '@/components/mascot-doll';
-import { type MascotAction, type MascotExpression } from '@/components/mascot-svg'
+import { type MascotAction, type MascotExpression } from '@/components/mascot-doll'
 import {
   ArrowDown,
   ArrowRight,
@@ -208,7 +208,7 @@ export function CompanionChat({
   const [sendCount, setSendCount] = useState(0)
 
   // Кот прикрывает глаза, когда человек надолго замолчал НАД непустым полем —
-  // присутствие, не нетерпение: реагирует на паузу в мысли (см. mascot-svg.tsx
+  // присутствие, не нетерпение: реагирует на паузу в мысли (см. mascot-doll.tsx,
   // expression="listening"), не на пустое поле — там существу нечего ждать,
   // это уже состояние покоя. Возврат мгновенный, по любому вводу или отправке.
   const [userIdle, setUserIdle] = useState(false)

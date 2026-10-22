@@ -260,8 +260,7 @@ export function ChatBubble({
             }}
             aria-label="Убрать реакцию"
             // before:-inset-2.5: видимый бейдж остаётся size-7 (28px), но
-            // тач-зона расширяется до ~44px — тот же приём, что у точек
-            // section-nav.tsx.
+            // тач-зона расширяется до ~44px (Fitts: цель больше, чем видна).
             className={`absolute -bottom-3 flex size-7 items-center justify-center rounded-full border border-white/12 bg-secondary text-xs shadow-[0_4px_12px_-4px_oklch(0_0_0/0.6)] before:absolute before:-inset-2.5 ${
               isUser ? 'left-1' : 'right-1'
             }`}

@@ -419,30 +419,7 @@ body[data-focus-immersive] nav[aria-label="Основная навигация"]
   transform: scale(0.97);
 }
 
-/* .press-warm/.press-fade: transition — shorthand-свойство, оно не
-   складывается из двух классов на одном элементе. .press (только
-   transform) рядом с отдельным transition-opacity/transition-shadow
-   взаимно перекрывали друг друга — побеждал только один, вторая анимация
-   молча не срабатывала. Эти два класса комбинируют transform с нужным
-   вторым свойством в одном объявлении. */
-.press-warm {
-  transition:
-    transform 120ms ease,
-    box-shadow 700ms ease;
-}
-.press-warm:active {
-  transform: scale(0.97);
-}
-.press-fade {
-  transition:
-    transform 120ms ease,
-    opacity 300ms ease;
-}
-.press-fade:active {
-  transform: scale(0.97);
-}
-
-/* Плавный скролл к якорям («Как это работает») — только если motion разрешён.
+/* Плавный скролл к якорям — только если motion разрешён.
    На чат не влияет: там свой overflow-контейнер с явным scrollIntoView. */
 @media (prefers-reduced-motion: no-preference) {
   html {
@@ -451,14 +428,10 @@ body[data-focus-immersive] nav[aria-label="Основная навигация"]
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .press,
-  .press-warm,
-  .press-fade {
+  .press {
     transition: none;
   }
-  .press:active,
-  .press-warm:active,
-  .press-fade:active {
+  .press:active {
     transform: none;
   }
 }
@@ -965,18 +938,6 @@ body[data-focus-immersive] nav[aria-label="Основная навигация"]
    неотличимо от второстепенного по глубине. Этот класс — сознательно
    редкий: один такой элемент на секцию, не больше, иначе ранг исчезает
    так же, как исчезает акцент, если лаймовый — это весь текст. */
-/* Глубина резкости у звёзд острова: ближние чётче и ярче, дальние —
-   размыты и тусклее. Статичный fallback для prefers-reduced-motion —
-   SMIL <animate> поверх него мерцает, когда движение разрешено. */
-.star-far {
-  filter: blur(0.6px);
-  opacity: 0.35;
-}
-.star-mid {
-  filter: blur(0.2px);
-  opacity: 0.5;
-}
-
 .glass-highlight {
   background: linear-gradient(
     155deg,
@@ -1390,176 +1351,5 @@ body[data-companion-speaking] .app-hearth {
   .option-card[data-selected] {
     border-color: Highlight;
     outline: 2px solid Highlight;
-  }
-}
-
-/* ── Напарник: idle-риг ───────────────────────────────────────────────
-   Слои «жизни» кота на чистом CSS: работают ещё до гидрации и стоят
-   почти ноль. Периоды намеренно некратны друг другу (4.6 / 7.4 / 1.3 /
-   3.7 с) — повтор цикла не ловится глазом (AnimSchool: «нельзя понять,
-   где петля начинается»). Опоры — в координатах viewBox (transform-box:
-   view-box), позиционирование живёт в путях, не в transform-атрибутах
-   (§5.1). */
-.cat-rig {
-  --cat-breath: 4.6s;
-  -webkit-tap-highlight-color: transparent;
-}
-.cat-rig[data-mood="sleep"] {
-  --cat-breath: 6.8s;
-}
-.cat-rig[data-mood="excited"] {
-  --cat-breath: 3.2s;
-}
-.cat-rig[data-paused="true"] * {
-  animation-play-state: paused !important;
-}
-
-/* Дыхание: вдох (40%) короче выдоха (50%), удержание на пике; тело
-   растёт от земли — лапы не отрываются */
-.cat-breathe {
-  transform-box: view-box;
-  transform-origin: 600px 768px;
-  animation: cat-breathe var(--cat-breath) cubic-bezier(0.37, 0, 0.63, 1)
-    infinite;
-}
-@keyframes cat-breathe {
-  0%,
-  100% {
-    transform: scale(1, 1);
-  }
-  40%,
-  50% {
-    transform: scale(1.008, 1.026);
-  }
-}
-
-/* Голова едет за грудью с задержкой — follow-through, взгляд не «плывёт» */
-.cat-ride {
-  animation: cat-ride var(--cat-breath) cubic-bezier(0.37, 0, 0.63, 1) 0.14s
-    infinite backwards;
-}
-@keyframes cat-ride {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  42%,
-  52% {
-    transform: translateY(-7px);
-  }
-}
-
-/* Хвост — цепочка сегментов (mascot-tail.tsx): каждый качается вокруг своего
-   сустава с отставанием по фазе, углы складываются — по хвосту бежит волна */
-.cat-rig {
-  --amp: 1.5deg;
-}
-.cat-rig[data-mood="excited"] {
-  --amp: 3deg;
-}
-.cat-tseg {
-  transform-box: view-box;
-  transform-origin: var(--ox) var(--oy);
-  animation: cat-tseg 7.4s ease-in-out var(--d) infinite;
-}
-.cat-rig[data-mood="excited"] .cat-tseg {
-  animation-duration: 1.2s;
-}
-@keyframes cat-tseg {
-  0%,
-  100% {
-    transform: rotate(calc(var(--amp) * -1));
-  }
-  50% {
-    transform: rotate(var(--amp));
-  }
-}
-
-/* Огонёк: неровное дрожание на двух частотах, ядро в противофазе */
-.cat-flame {
-  transform-box: view-box;
-  transform-origin: 972px 415px;
-  animation: cat-flame 1.3s ease-in-out infinite;
-}
-.cat-flame-core {
-  transform-box: view-box;
-  transform-origin: 972px 410px;
-  animation: cat-flame 0.9s ease-in-out infinite reverse;
-}
-@keyframes cat-flame {
-  0%,
-  100% {
-    transform: scale(1, 1) skewX(0deg);
-  }
-  27% {
-    transform: scale(0.95, 1.08) skewX(-3deg);
-  }
-  56% {
-    transform: scale(1.04, 0.94) skewX(2deg);
-  }
-  80% {
-    transform: scale(0.97, 1.04) skewX(-1deg);
-  }
-}
-.cat-ember {
-  opacity: 0;
-  animation: cat-ember 2.4s ease-out infinite;
-}
-.cat-ember--late {
-  animation-duration: 3.1s;
-  animation-delay: 1.1s;
-}
-@keyframes cat-ember {
-  0% {
-    opacity: 0;
-    transform: translate(0, 0);
-  }
-  20% {
-    opacity: 0.9;
-  }
-  100% {
-    opacity: 0;
-    transform: translate(14px, -80px);
-  }
-}
-
-/* Заломленная кисточка левого уха — болтающаяся часть с инерцией */
-.cat-ear-tip {
-  transform-box: view-box;
-  transform-origin: 54px 25px;
-  animation: cat-ear-tip 3.7s ease-in-out infinite;
-}
-@keyframes cat-ear-tip {
-  0%,
-  100% {
-    transform: rotate(-5deg);
-  }
-  50% {
-    transform: rotate(9deg);
-  }
-}
-
-/* Моргание без JS — только для серверного первого кадра (MascotStatic) */
-.cat-lid-auto {
-  transform-box: fill-box;
-  transform-origin: 50% 0%;
-  transform: scaleY(0);
-  animation: cat-blink-auto 5.6s ease-in-out 2.4s infinite;
-}
-@keyframes cat-blink-auto {
-  0%,
-  5%,
-  100% {
-    transform: scaleY(0);
-  }
-  2% {
-    transform: scaleY(1);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .cat-rig *,
-  .cat-rig {
-    animation: none !important;
   }
 }
