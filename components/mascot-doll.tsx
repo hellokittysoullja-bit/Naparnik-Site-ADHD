@@ -47,6 +47,28 @@ export function loadDoll(): Promise<Rig | null> {
   return loading;
 }
 
+/**
+ * Живых WebGL-контекстов одновременно — не больше MAX_LIVE. У браузера общий лимит (Chrome 16, Safari меньше),
+ * сверх него он молча отбирает САМЫЙ СТАРЫЙ контекст: в длинной переписке у каждой группы реплик свой аватар,
+ * и 30 сообщений давали 18 котов — кот в шапке Дома терял контекст (замер 22.10, «Too many active WebGL contexts»).
+ * Контекст держит только кот в кадре (IntersectionObserver), ушедший из кадра отдаёт его через RELEASE_MS;
+ * кто не получил слот, стоит эталонным постером и ждёт очереди.
+ */
+const MAX_LIVE = 12;
+const RELEASE_MS = 1500;
+let liveCount = 0;
+const waiters = new Set<() => void>();
+function acquireSlot() {
+  if (liveCount >= MAX_LIVE) return false;
+  liveCount++;
+  return true;
+}
+function releaseSlot() {
+  liveCount = Math.max(0, liveCount - 1);
+  const next = waiters.values().next().value;
+  if (next) { waiters.delete(next); next(); }
+}
+
 export function MascotDoll(props: Props) {
   return <DollCanvas {...props} />;
 }
@@ -67,7 +89,14 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
   // кукла уже нарисовала кадр в холст: только тогда убираем постер. Иначе там, где кадры не идут (вкладка открыта
   // в фоне, iOS придержал requestAnimationFrame), холст пустой, а постера уже нет — кот исчезал
   const [drawn, setDrawn] = useState(false);
-  const [inView, setInView] = useState(true);
+  // в кадре ли кот (с запасом 60 px — успеть ожить до появления): без IntersectionObserver считаем, что да; с ним — ждём первого ответа, а не создаём контексты
+  // всем котам разом при монтировании длинной переписки
+  const [inView, setInView] = useState(() => typeof IntersectionObserver === "undefined");
+  // держать ли WebGL-контекст: в кадре — сразу, ушёл из кадра — через RELEASE_MS (быстрый скролл туда-обратно не дёргает)
+  const [wantLive, setWantLive] = useState(false);
+  // поколение холста: отпущенный (loseContext) или потерянный контекст на том же <canvas> не вернуть, поэтому каждый
+  // новый контекст — на новом холсте (ключ = поколение + ступень детальности texPx)
+  const [gen, setGen] = useState(0);
   const [px, setPx] = useState(0);
 
   // размер холста — по фактическому размеру на странице (класс size-[clamp(...)] на первом экране меняет его)
@@ -99,41 +128,61 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
     return () => { alive = false; };
   }, []);
 
-  // свой WebGL-контекст на видимом холсте; при потере контекста (фон на Android, лимит контекстов) — снова постер,
-  // после восстановления рендер пересоздаётся на том же холсте; нет WebGL — эталонный постер
   useEffect(() => {
-    if (state !== "doll") return;
+    const el = wrap.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { rootMargin: "60px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const liveRef = useRef(false);
+  useEffect(() => {
+    if (inView) {
+      if (!liveRef.current) { liveRef.current = true; setGen((g) => g + 1); setWantLive(true); }
+      return;
+    }
+    const t = window.setTimeout(() => { liveRef.current = false; setWantLive(false); }, RELEASE_MS);
+    return () => window.clearTimeout(t);
+  }, [inView]);
+
+  // WebGL-контекст на свежем холсте, пока кот в кадре и есть слот; потеря контекста (фон на Android, чужой лимит) —
+  // снова постер и новый холст через 300 мс; WebGL нет — эталонный постер навсегда (state static)
+  // детальность слоёв — ступенями степени двойки от размера холста: пересоздаём контекст только при смене ступени
+  const texPx = px ? 2 ** Math.ceil(Math.log2(px)) : 0;
+  useEffect(() => {
+    if (state !== "doll" || !wantLive || !texPx) return;
     const cv = canvas.current, rg = rig.current;
     if (!cv || !rg) return;
-    let alive = true;
-    const make = () => {
-      RigRenderer.create(rg, BASE, cv).then((r) => {
+    let alive = true, held = false, lostTimer = 0;
+    const onLost = (e: Event) => {
+      e.preventDefault();
+      rend.current = null; setReady(0); setDrawn(false);
+      lostTimer = window.setTimeout(() => { if (alive) setGen((g) => g + 1); }, 300);
+    };
+    const start = () => {
+      if (!alive) return;
+      if (!acquireSlot()) { waiters.add(start); return; }
+      held = true;
+      RigRenderer.create(rg, BASE, cv, texPx).then((r) => {
         if (!alive) { r?.dispose(); return; }
         if (!r) { setState("static"); return; }
         rend.current = r;
         setReady((n) => n + 1);
       }).catch(() => { if (alive) setState("static"); });
     };
-    const onLost = (e: Event) => { e.preventDefault(); rend.current = null; setReady(0); setDrawn(false); };
-    const onRestored = () => { if (alive) make(); };
     cv.addEventListener("webglcontextlost", onLost);
-    cv.addEventListener("webglcontextrestored", onRestored);
-    make();
+    start();
     return () => {
       alive = false;
+      waiters.delete(start);
+      window.clearTimeout(lostTimer);
       cv.removeEventListener("webglcontextlost", onLost);
-      cv.removeEventListener("webglcontextrestored", onRestored);
       rend.current?.dispose(); rend.current = null;
+      setReady(0); setDrawn(false);
+      if (held) releaseSlot();
     };
-  }, [state]);
-
-  useEffect(() => {
-    const el = wrap.current;
-    if (!el || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { rootMargin: "120px" });
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
+  }, [state, wantLive, gen, texPx]);
 
   useEffect(() => {
     const a = anim.current;
@@ -224,7 +273,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
       {state === "doll" ? (
         <>
           <canvas ref={under} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: ready ? "block" : "none" }} />
-          <canvas ref={canvas} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: ready ? "block" : "none" }} />
+          <canvas key={`${gen}-${texPx}`} ref={canvas} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: ready ? "block" : "none" }} />
           <canvas ref={over} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: ready ? "block" : "none", pointerEvents: "none" }} />
         </>
       ) : null}

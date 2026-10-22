@@ -92,6 +92,35 @@ export function loadRigImages(rig: RigData, baseUrl: string): Promise<HTMLImageE
 }
 
 /**
+ * Слой под размер кота на экране: текстура не детальнее, чем нужно холсту (с запасом ×1.5 на поворот и «касание»),
+ * ступенями степени двойки — копии кэшируются и общие для всех котов этого размера. Аватару 30 px полноразмерные
+ * слои не нужны: было ~6,6 МБ видеопамяти на каждый контекст, у аватара теперь ~0,05 МБ.
+ * Уменьшение — пополам за шаг (одним шагом в 16 раз браузер даёт рябь).
+ */
+const scaledCache = new Map<string, TexImageSource>();
+function scaledImage(img: HTMLImageElement, key: string, factor: number): TexImageSource {
+  if (factor >= 1 || typeof document === "undefined") return img;
+  const k = key + "@" + factor;
+  const hit = scaledCache.get(k);
+  if (hit) return hit;
+  const tw = Math.max(1, Math.ceil(img.naturalWidth * factor)), th = Math.max(1, Math.ceil(img.naturalHeight * factor));
+  let src: HTMLImageElement | HTMLCanvasElement = img, w = img.naturalWidth, h = img.naturalHeight;
+  while (w > tw || h > th) {
+    w = Math.max(tw, Math.ceil(w / 2)); h = Math.max(th, Math.ceil(h / 2));
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    if (!ctx) return img;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(src, 0, 0, w, h);
+    src = c;
+  }
+  scaledCache.set(k, src);
+  return src;
+}
+
+/**
  * WebGL-контекст прямо на видимом холсте экземпляра: кадр рисуется в него и больше никуда не копируется.
  * Прежняя схема (один скрытый холст 1024² + drawImage в 2D-холст каждого кота) на каждом кадре гоняла
  * 1024² пикселей через readback там, где 2D-холст не ускорен (слабые Android, software GL) — 85 % кадра
@@ -115,7 +144,8 @@ export class RigRenderer {
     for (const k of ["uBones", "uView", "uLocal", "uCenter", "uTex", "uOp"]) this.loc[k] = gl.getUniformLocation(prog, k);
   }
 
-  static async create(rig: RigData, baseUrl: string, canvas: HTMLCanvasElement): Promise<RigRenderer | null> {
+  /** targetPx — сторона холста в пикселях устройства: по ней подбирается детальность слоёв (0 — полная) */
+  static async create(rig: RigData, baseUrl: string, canvas: HTMLCanvasElement, targetPx = 0): Promise<RigRenderer | null> {
     const images = await loadRigImages(rig, baseUrl);
     const gl = canvas.getContext("webgl2", { premultipliedAlpha: true, alpha: true, antialias: true, preserveDrawingBuffer: false });
     if (!gl || gl.isContextLost()) return null;
@@ -137,7 +167,7 @@ export class RigRenderer {
     gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || "link");
     const r = new RigRenderer(canvas, gl, rig, prog);
-    r.upload(rig, images);
+    r.upload(rig, images, targetPx);
     return r;
   }
 
@@ -150,7 +180,7 @@ export class RigRenderer {
     gl.getExtension("WEBGL_lose_context")?.loseContext();
   }
 
-  private upload(rig: RigData, images: HTMLImageElement[]) {
+  private upload(rig: RigData, images: HTMLImageElement[], targetPx: number) {
     const gl = this.gl;
     gl.disableVertexAttribArray(4);
     gl.vertexAttrib2f(4, 0, 0);
@@ -183,7 +213,12 @@ export class RigRenderer {
       const tex = gl.createTexture()!;
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, images[i]);
+      // пикселей текстуры на единицу рисунка у слоя и сколько нужно холсту — отсюда степень уменьшения
+      const img = images[i];
+      const boxW = Math.max(1, p0.box[2] - p0.box[0]);
+      const need = targetPx > 0 ? ((targetPx / rig.view[2]) * 1.5) / (img.naturalWidth / boxW) : 1;
+      const factor = need >= 1 ? 1 : 2 ** Math.ceil(Math.log2(need));
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, scaledImage(img, p0.tex, factor));
       gl.generateMipmap(gl.TEXTURE_2D);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
