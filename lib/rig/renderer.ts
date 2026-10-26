@@ -47,7 +47,11 @@ type GpuPart = {
 };
 
 /** Части, которые колышутся формой: квад заменяется сеткой (столбцы, строки), иначе деформировать нечего. */
-const GRID: Record<string, [number, number]> = { flame: [8, 14] };
+// Глаза — сеткой 12×12: веко сжимает глаз к дуге закрытого века (doll.ts, eyeWarp), квадом дугу не изогнуть
+const EYE: [number, number] = [12, 12];
+const GRID: Record<string, [number, number]> = {
+  flame: [8, 14], "eye-l": EYE, "eye-r": EYE, "pupil-l": EYE, "pupil-r": EYE, "hl-l": EYE, "hl-r": EYE,
+};
 
 /** Сетка вместо квада из четырёх вершин (x, y, u, v, кости и веса — от первой вершины: у огонька они одинаковы). */
 function gridOf(verts: number[], cols: number, rows: number) {

@@ -68,6 +68,12 @@ export class DollAnimator {
   private B: Record<string, number> = {};
   private tail: number[] = [];
   private eyeR: number;
+  /** глаза эталона [cx, cy, rx, ry] слева направо — для века-дуги (eyeWarp) */
+  private eyeGeo: number[][] = [];
+  /** текущие веко и смещение зрачка — их читает eyeWarp во время отрисовки */
+  private lidNow = 0;
+  private pupilOff: [number, number][] = [[0, 0], [0, 0]];
+  private glanceBack = true;
   expression: DollExpression = "calm";
   action: DollAction = "idle";
   gaze: { x: number; y: number } | null = null;
@@ -114,10 +120,17 @@ export class DollAnimator {
     rig.bones.forEach((b, i) => (this.B[b.name] = i));
     for (let i = 0; this.B[`tail${i}`] !== undefined; i++) this.tail.push(this.B[`tail${i}`]);
     this.eyeR = rig.eyes?.[0]?.[2] ?? 96;
+    this.eyeGeo = (rig.eyes ?? []).map((e) => [e[0], e[1], e[2], e[3] ?? e[2]]).sort((a, b) => a[0] - b[0]);
     for (const n of PARTS) this.parts.set(n, { opacity: 1, dx: 0, dy: 0, sx: 1, sy: 1 });
     const fb = rig.parts.find((p) => p.name === "flame")?.box;
     if (fb) { this.flameTop = fb[1]; this.flameH = fb[3] - fb[1]; }
     this.parts.get("flame")!.warp = this.flameWarp;
+    if (this.eyeGeo.length === 2)
+      ["l", "r"].forEach((s, i) => {
+        this.parts.get(`eye-${s}`)!.warp = this.eyeWarp(i, false);
+        this.parts.get(`hl-${s}`)!.warp = this.eyeWarp(i, false);
+        this.parts.get(`pupil-${s}`)!.warp = this.eyeWarp(i, true);
+      });
     this.update(0);
   }
 
@@ -133,6 +146,31 @@ export class DollAnimator {
     out[o + 1] = ku * FLAME_LIFT * fbm(t * 4.1, 37);
   };
 
+  /**
+   * Моргание как у куклы роликов (doll_rig.py, `_eyes`): глаз сходится не к своей середине прямой линией (выходила
+   * «линза» — сплющенная картинка глаза), а к ДУГЕ закрытого века — той же, что рисует штрих века (`lid_stroke` в
+   * doll_build.py): у краёв дуга выше, в середине ниже. Верх глаза уходит вниз сильнее низа, середина опускается
+   * глубже краёв — на полпути глаз «сонный» под веком, у закрытия щёлка лежит точно под штрихом. Зрачок сдвигается
+   * взглядом ДО сжатия (в роликах он вклеен в глаз и сжимается вместе с ним), поэтому смещение взгляда — здесь же.
+   */
+  private eyeWarp = (i: number, pupil: boolean) => (x: number, y: number, out: Float32Array, o: number) => {
+    const [cx, cy, rx, ry] = this.eyeGeo[i];
+    const [gx, gy] = pupil ? this.pupilOff[i] : [0, 0];
+    const lid = this.lidNow, X = x + gx, Y = y + gy;
+    const sy = Math.max(0.03, 1 - lid * 0.97);
+    const l0 = cy + ry * 0.24;
+    const u = Math.max(-1, Math.min(1, (X - cx) / (rx * 0.98)));
+    const curve = l0 - ry * 0.12 + ry * 0.37 * Math.pow(1 - u * u, 0.55);
+    const L = l0 + (curve - l0) * sm(lid / 0.6);
+    out[o] = gx; out[o + 1] = L + (Y - L) * sy - y;
+  };
+
+  /** Моргание не пачкой: не ближе BLINK_MIN_GAP к уже назначенному (двойное через 0.32 с проходит) — как thin_blinks роликов */
+  private addBlink(at: number, gap = 0.3) {
+    if (this.blinks.some((b) => Math.abs(b - at) < gap) || Math.abs(this.nextBlink - at) < gap) return;
+    this.blinks.push(at);
+  }
+
   setAction(a: DollAction) {
     if (a === this.action) return;
     this.action = a;
@@ -144,7 +182,7 @@ export class DollAnimator {
   poke() {
     this.pokeAt = this.t;                      // присед: цель на 90 мс вниз, пружина возвращает с перелётом (без рывка за кадр)
     this.earL.v -= 260; this.earR.v += 260;
-    this.blinks.push(this.t + 0.05);
+    this.addBlink(this.t + 0.05);
   }
 
   private faceTargets() {
@@ -170,9 +208,10 @@ export class DollAnimator {
 
     // ----- моргание: вниз 80 мс, пауза 50, вверх 170 (как у куклы в роликах); иногда двойное
     if (!still && t >= this.nextBlink) {
-      this.blinks.push(t);
-      if (this.rand() < 0.15) this.blinks.push(t + 0.32);
-      this.nextBlink = t + 2.5 + this.rand() * 3;
+      const dbl = this.rand() < 0.15;
+      this.nextBlink = t + 2.5 + this.rand() * 3;      // сначала следующее: addBlink сверяется и с ним
+      this.addBlink(t);
+      if (dbl) this.addBlink(t + 0.32);
     }
     this.blinks = this.blinks.filter((b) => t - b < 0.4);
     let lid = 0;
@@ -191,8 +230,11 @@ export class DollAnimator {
     if (!still && !this.gaze && t > this.glanceAt) {
       this.glance = [-0.7, -0.4, 0.4, 0.7][Math.floor(this.rand() * 4)];
       this.glanceUntil = t + 1 + this.rand() * 1.2; this.glanceAt = this.glanceUntil + 2.5 + this.rand() * 3;
-      if (Math.abs(this.glance) >= 0.6) this.blinks.push(t);   // большой перевод взгляда — под веком
+      if (Math.abs(this.glance) >= 0.6) this.addBlink(t, 0.5); // большой перевод взгляда — под веком (не ближе 0.5 с к другому, как в роликах)
+      this.glanceBack = Math.abs(this.glance) < 0.6;
     }
+    // и обратно тоже под веком (как в роликах: взгляд возвращается на зрителя, моргание за 0.03 с до хода)
+    if (!still && !this.gaze && !this.glanceBack && t >= this.glanceUntil - 0.03) { this.addBlink(t, 0.5); this.glanceBack = true; }
     const g = this.gaze ?? { x: t < this.glanceUntil ? this.glance : 0, y: 0 };
     this.gx.target = Math.max(-1, Math.min(1, g.x)); this.gy.target = Math.max(-1, Math.min(1, g.y));
     const lx = still ? 0 : this.gx.step(dt), ly = still ? 0 : this.gy.step(dt);
@@ -253,16 +295,22 @@ export class DollAnimator {
 
     // ----- глаза
     const R = this.eyeR;
-    for (const s of ["l", "r"]) {
-      const eyeOp = eyeFade;
-      const sy = Math.max(0.03, 1 - lid * 0.97);
+    const curved = this.eyeGeo.length === 2;           // нет геометрии глаз в риге — прежнее сжатие к середине
+    this.lidNow = lid;
+    // у самого закрытия штрих века накрывает остаток щёлки (LID_COVER роликов: 0.84 → 0.99), а не зелёная полоска
+    // из-под штриха; в «линзе» прежнего сжатия этого не было видно, у дуги щёлка лежит ровно под штрихом
+    const cover = curved ? sm((lid - 0.84) / 0.15) : 0;
+    ["l", "r"].forEach((s, i) => {
+      const eyeOp = eyeFade * (1 - cover);
+      const sy = curved ? 1 : Math.max(0.03, 1 - lid * 0.97);
       for (const n of [`eye-${s}`, `hl-${s}`]) { const p = this.parts.get(n)!; p.opacity = eyeOp; p.sy = sy; p.dx = 0; p.dy = 0; }
       const pu = this.parts.get(`pupil-${s}`)!;
       pu.opacity = eyeOp; pu.sy = sy; pu.sx = 1;
-      pu.dx = lx * R * 0.26; pu.dy = ly * R * 0.2 * sy;
+      if (curved) { this.pupilOff[i] = [lx * R * 0.26, ly * R * 0.2]; pu.dx = 0; pu.dy = 0; }
+      else { pu.dx = lx * R * 0.26; pu.dy = ly * R * 0.2 * sy; }
       const ld = this.parts.get(`lid-${s}`)!;
       ld.opacity = eyeFade * sm((lid - 0.7) / 0.3);
-    }
+    });
     this.parts.get("happy")!.opacity = hk * (1 - sm(sk * 3));
     this.parts.get("sleep")!.opacity = sm((sk - 0.4) / 0.25);
 
