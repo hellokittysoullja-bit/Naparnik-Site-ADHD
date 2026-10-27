@@ -267,9 +267,12 @@
   animation: hero-word-in 0.32s ease-out forwards;
 }
 
+/* Старт с 0.01, а не с 0: глазу разницы нет (1 % цвета текста на тёмном фоне — меньше 2/255), а Chrome не считает
+   элемент с opacity: 0 отрисованным — LCP заголовка героя ждал конца проявления, и Lighthouse (lantern) тянул за ним
+   в цепочку весь JS страницы: LCP 6,2 с при настоящих 0,36 с. С 0.01 заголовок засчитан в первом же кадре. */
 @keyframes hero-rise-in {
   from {
-    opacity: 0;
+    opacity: 0.01;
     transform: translateY(10px);
   }
   to {
@@ -279,7 +282,7 @@
 }
 
 .hero-rise {
-  opacity: 0;
+  opacity: 0.01;
   animation: hero-rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   animation-delay: var(--rise-delay, 0s);
 }
@@ -328,9 +331,11 @@
    Плавный въезд при переходе лендинг → /app.
    Не teleport — мир продолжается, ты просто вошёл внутрь.
    once: анимируется только при первом рендере, не при SPA-навигации внутри /app. */
+/* 0.01 вместо 0 — та же причина, что у hero-rise-in выше: с нуля Chrome не считал экран отрисованным, и LCP всех
+   экранов /app ждал конца въезда вместе со всем JS страницы. Глазу разницы нет. */
 @keyframes app-page-in {
   from {
-    opacity: 0;
+    opacity: 0.01;
     transform: translateY(8px);
   }
   to {
@@ -357,12 +362,20 @@
 nav[aria-label="Основная навигация"] {
   transition:
     transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.4s ease;
+    opacity 0.4s ease,
+    visibility 0s linear 0s;
 }
+/* visibility, а не только прозрачность: невидимые ссылки «Дом/Фокус/Мир» оставались в порядке Tab и уводили с
+   экрана по Enter посреди знакомства или сессии. Скрытие — после того, как бар уехал (задержка 0.4 с). */
 body[data-focus-immersive] nav[aria-label="Основная навигация"] {
   transform: translateY(100%);
   opacity: 0;
   pointer-events: none;
+  visibility: hidden;
+  transition:
+    transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.4s ease,
+    visibility 0s linear 0.4s;
 }
 @media (prefers-reduced-motion: reduce) {
   nav[aria-label="Основная навигация"] {
@@ -1380,4 +1393,10 @@ body[data-companion-speaking] .app-hearth {
     border-color: Highlight;
     outline: 2px solid Highlight;
   }
+}
+
+/* components/landing/hero-gate.tsx: пока HTML сцены героя не получен целиком, она не рисуется — иначе в кадр попадала
+   верхняя половина колонки, и кот стоял посередине экрана, а потом прыгал на место. Фон страницы виден как раньше. */
+html.hero-wait .grain-hero {
+  visibility: hidden;
 }

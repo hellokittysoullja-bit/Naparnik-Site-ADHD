@@ -29,7 +29,9 @@ type SaidMap = Record<string, number[]>
 function readSaid(): SaidMap {
   if (typeof window === 'undefined') return {}
   try {
-    return JSON.parse(window.localStorage.getItem(SAID_KEY) ?? '{}') as SaidMap
+    const v: unknown = JSON.parse(window.localStorage.getItem(SAID_KEY) ?? '{}')
+    // `null`/массив в ключе (старый формат, чужая запись) — пустая карта, а не TypeError на map[key]
+    return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as SaidMap) : {}
   } catch {
     return {}
   }
@@ -51,7 +53,7 @@ function writeSaid(map: SaidMap) {
 function pickFresh(intent: string, variants: string[]): string {
   if (variants.length === 1) return variants[0]
   const said = readSaid()
-  const recent = said[intent] ?? []
+  const recent = Array.isArray(said[intent]) ? said[intent] : []
   // Полный цикл без повторов: исключаем ВСЕ недавние, кроме одного слота.
   // Прежняя формула (половина пула) на пуле из 3 исключала лишь последний
   // вариант — «Дробить — моё любимое» звучало дважды за четыре реплики,

@@ -22,7 +22,8 @@ import { MascotDoll as MascotSvg } from '@/components/mascot-doll';
 import { type MascotExpression } from '@/components/mascot-doll'
 import { EmphasisText } from '@/components/emphasis-text'
 import { HoldToStart } from '@/components/onboarding/hold-to-start'
-import { getPatterns } from '@/lib/memory'
+import { getPatterns, peekStarts } from '@/lib/memory'
+import { useClientMount } from '@/hooks/use-client-mount'
 import { hapticThreshold } from '@/lib/haptics'
 import {
   BLOCKERS,
@@ -82,6 +83,10 @@ const LAST_STEP = 4
 export function FirstRun() {
   const router = useRouter()
   const reduceMotion = useReducedMotion()
+  // Переход внутри сайта (встроенный скрипт страницы тут не срабатывает): у кого уже есть старты, первый вопрос
+  // не рисуем даже на кадр — эффект ниже сразу уводит домой
+  const clientMount = useClientMount()
+  const [returning] = useState(() => clientMount && peekStarts().length > 0)
   const [state, setState] = useState<OnboardingState>(EMPTY_ONBOARDING)
   const [nudge, setNudge] = useState(false)
   const [custom, setCustom] = useState('')
@@ -140,7 +145,11 @@ export function FirstRun() {
     (step === 2 && !!state.blocker) ||
     (step === 3 && !!chosenStep)
 
+  // двойной клик по «Продолжить» пролетал через шаг: на 3-м шаге выбор уже предзаполнен, и второй клик сразу
+  // уводил на удержание — вопрос «с чего начнём» человек так и не видел. Пока слайд въезжает, клики не считаются.
+  const lastGoRef = useRef(0)
   function next() {
+    if (performance.now() - lastGoRef.current < 400) return
     if (!canContinue) {
       // Не немая кнопка: кот мягко подсказывает, что сделать
       setNudge(true)
@@ -152,6 +161,7 @@ export function FirstRun() {
     if (step === 3 && customOpen && custom.trim()) {
       update({ firstStep: custom.trim() })
     }
+    lastGoRef.current = performance.now()
     go(step + 1)
   }
 
@@ -181,6 +191,14 @@ export function FirstRun() {
       d: String(FIRST_MINUTES),
       auto: '1',
     })
+    // Пропуск автостарта: auto=1 срабатывает, только если его выдала эта кнопка. Иначе чужая ссылка
+    // /app/session?step=…&auto=1 сама запускала сессию и записывала свой текст в старты — а старты уходят
+    // в промпт напарника при каждом разговоре (components/focus-session.tsx, AUTO_START_KEY).
+    try {
+      window.sessionStorage.setItem("naparnik:autoStart", label);
+    } catch {
+      /* хранилище недоступно — человек нажмёт «старт» сам */
+    }
     router.push(`/app/session?${params.toString()}`)
   }
 
@@ -215,6 +233,8 @@ export function FirstRun() {
         animate: { opacity: 1, x: 0 },
         exit: { opacity: 0, x: -20 * dirRef.current },
       }
+
+  if (returning) return <main className="h-dvh" aria-busy="true" />
 
   return (
     <main className="relative mx-auto flex h-dvh w-full max-w-md flex-col overflow-hidden px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">

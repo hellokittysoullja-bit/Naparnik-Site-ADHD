@@ -45,6 +45,19 @@ export function checkinSupported(): boolean {
 export type CheckinState = 'unsupported' | 'available' | 'enabled' | 'denied'
 
 /** Уже ли включены весточки (разрешение выдано и periodic sync зарегистрирован) */
+/**
+ * Синхронная часть getCheckinState — всё, что известно без service worker. Для первого кадра Дома при переходе
+ * по табу: строка «Весточки выключены…» появлялась кадром позже и сдвигала ленту. 'granted' уточняет getCheckinState.
+ */
+export function peekCheckinState(): CheckinState {
+  if (!checkinSupported()) return 'unsupported'
+  if (Notification.permission === 'denied') return 'denied'
+  // разрешение уже выдано — включены весточки или нет, знает только service worker; до его ответа не рисуем
+  // ничего ('unsupported'), иначе у тех, кто их уже включил, на кадр всплывало «Хочешь, я буду махать?»
+  if (Notification.permission === 'granted') return 'unsupported'
+  return 'available'
+}
+
 export async function getCheckinState(): Promise<CheckinState> {
   if (!checkinSupported()) return 'unsupported'
   if (Notification.permission === 'denied') return 'denied'

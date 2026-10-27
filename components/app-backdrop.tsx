@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useReducedMotion } from "motion/react";
-import { getFinds, getStarts } from "@/lib/memory";
+import { getFinds, getStarts, markHome } from "@/lib/memory";
 import { LANDMARK_COUNT } from "@/lib/island-elements";
 import { landmarkAnchors, landmarkNodes } from "@/lib/island-sprites";
 
@@ -193,6 +193,8 @@ export function AppBackdrop() {
     const readMemory = () => {
       void Promise.all([getFinds(), getStarts()]).then(([finds, starts]) => {
         if (!alive) return;
+        // каждый визит в /app продлевает метку «уже свой» (и ставит её тем, кто пришёл до её появления)
+        markHome(starts.length > 0);
         setHasAurora(finds.some((f) => f.key === "aurora"));
         setHasMoon(starts.length >= LANDMARK_COUNT);
         const count = Math.min(starts.length, RIDGE.length);
