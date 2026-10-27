@@ -86,3 +86,26 @@ test('ответ на лендинге: экран не прыгает, пока
   await page.waitForTimeout(800)
   expect(await page.evaluate(() => (window as unknown as { __late: number }).__late)).toBeLessThan(0.01)
 })
+
+test('лендинг на медленном телефоне: кот появляется сразу на своём месте и не прыгает', async ({ page, context }) => {
+  // медленная сеть + CPU ×4: HTML приходит порциями — раньше в кадр попадала половина колонки, и кот стоял посередине
+  const cdp = await context.newCDPSession(page)
+  await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 150, downloadThroughput: 1.12e6, uploadThroughput: 94e3 })
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 })
+  await page.addInitScript(() => {
+    const w = window as unknown as { __ys: number[] }
+    w.__ys = []
+    const tick = () => {
+      const sec = document.querySelector('.grain-hero')
+      const cat = document.querySelector('.cat-doll')
+      if (sec && cat && getComputedStyle(sec).visibility === 'visible') w.__ys.push(Math.round(cat.getBoundingClientRect().y))
+      if (performance.now() < 3500) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  })
+  await page.goto('/')
+  await page.waitForTimeout(3600)
+  const ys = await page.evaluate(() => (window as unknown as { __ys: number[] }).__ys)
+  expect(ys.length).toBeGreaterThan(0)
+  expect(new Set(ys).size, `позиции кота по кадрам: ${[...new Set(ys)].join(', ')}`).toBe(1)
+})

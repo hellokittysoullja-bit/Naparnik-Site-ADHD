@@ -1394,3 +1394,9 @@ body[data-companion-speaking] .app-hearth {
     outline: 2px solid Highlight;
   }
 }
+
+/* components/landing/hero-gate.tsx: пока HTML сцены героя не получен целиком, она не рисуется — иначе в кадр попадала
+   верхняя половина колонки, и кот стоял посередине экрана, а потом прыгал на место. Фон страницы виден как раньше. */
+html.hero-wait .grain-hero {
+  visibility: hidden;
+}

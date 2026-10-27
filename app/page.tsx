@@ -1,6 +1,7 @@
 import { Hero } from "@/components/landing/hero";
 import { LandingBackdrop } from "@/components/landing/landing-backdrop";
 import { ReturningRedirect } from "@/components/returning-redirect";
+import { HeroReady, HeroWait } from "@/components/landing/hero-gate";
 // вшитые подмножества шрифтов первого экрана — только здесь, /app их не грузит (design/fonts/build.py)
 import "./hero-fonts.css";
 
@@ -19,6 +20,7 @@ export default function LandingPage() {
     <>
       {/* Первым в body: у вернувшегося решение «домой» принимается до отрисовки лендинга */}
       <ReturningRedirect />
+      <HeroWait />
       {/* Деградация без JS: элементы с моушн-скрытием становятся видимыми */}
       <noscript>
         <style>{`[style*="opacity:0"], [style*="opacity: 0"] { opacity: 1 !important; transform: none !important; }`}</style>
@@ -28,6 +30,8 @@ export default function LandingPage() {
       <main className="relative min-h-dvh">
         <LandingBackdrop />
         <Hero />
+        {/* сцена получена целиком — показываем (components/landing/hero-gate.tsx) */}
+        <HeroReady />
       </main>
     </>
   );
