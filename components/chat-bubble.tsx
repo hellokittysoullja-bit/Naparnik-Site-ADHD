@@ -236,7 +236,7 @@ export function ChatBubble({
         onPointerDown={startLongPress}
         onPointerUp={cancelLongPress}
         onPointerLeave={cancelLongPress}
-        className={`glass-shine relative select-none whitespace-pre-wrap rounded-2xl ${bubbleClass} ${isUser ? 'message-land' : ''}`}
+        className={`glass-shine relative select-none whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl ${bubbleClass} ${isUser ? 'message-land' : ''}`}
       >
         {/* #10 · Настоящий хвостик — только у головы группы, как в реальных
             мессенджерах: продолжение реплики хвоста не получает. */}

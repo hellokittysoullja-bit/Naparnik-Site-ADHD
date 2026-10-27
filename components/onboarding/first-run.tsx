@@ -140,7 +140,11 @@ export function FirstRun() {
     (step === 2 && !!state.blocker) ||
     (step === 3 && !!chosenStep)
 
+  // двойной клик по «Продолжить» пролетал через шаг: на 3-м шаге выбор уже предзаполнен, и второй клик сразу
+  // уводил на удержание — вопрос «с чего начнём» человек так и не видел. Пока слайд въезжает, клики не считаются.
+  const lastGoRef = useRef(0)
   function next() {
+    if (performance.now() - lastGoRef.current < 400) return
     if (!canContinue) {
       // Не немая кнопка: кот мягко подсказывает, что сделать
       setNudge(true)
@@ -152,6 +156,7 @@ export function FirstRun() {
     if (step === 3 && customOpen && custom.trim()) {
       update({ firstStep: custom.trim() })
     }
+    lastGoRef.current = performance.now()
     go(step + 1)
   }
 
@@ -181,6 +186,14 @@ export function FirstRun() {
       d: String(FIRST_MINUTES),
       auto: '1',
     })
+    // Пропуск автостарта: auto=1 срабатывает, только если его выдала эта кнопка. Иначе чужая ссылка
+    // /app/session?step=…&auto=1 сама запускала сессию и записывала свой текст в старты — а старты уходят
+    // в промпт напарника при каждом разговоре (components/focus-session.tsx, AUTO_START_KEY).
+    try {
+      window.sessionStorage.setItem("naparnik:autoStart", label);
+    } catch {
+      /* хранилище недоступно — человек нажмёт «старт» сам */
+    }
     router.push(`/app/session?${params.toString()}`)
   }
 

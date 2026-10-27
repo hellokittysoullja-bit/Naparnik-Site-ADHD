@@ -1,5 +1,6 @@
 'use client'
 
+import '@/lib/zod-jitless' // первым — см. файл
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
@@ -26,13 +27,16 @@ import { PullToStretch } from '@/components/pull-to-stretch'
 import { hapticStart } from '@/lib/haptics'
 import { ChatBubble, BubbleTail, type Reaction } from '@/components/chat-bubble'
 import { EmphasisText } from '@/components/emphasis-text'
-import { SPRING_ITEM, SPRING_REVEAL, SPRING_SNAPPY, stagger } from '@/lib/motion'
+import { SPRING_ITEM, SPRING_SNAPPY, stagger } from '@/lib/motion'
 import Link from 'next/link'
 import {
   addNote,
   buildMemoryContext,
   getChatMessages,
   getChatTimestamps,
+  peekChatMessages,
+  peekChatTimestamps,
+  peekMemoryContext,
   saveChatMessages,
   saveChatTimestamps,
   savePlan,
@@ -40,6 +44,8 @@ import {
   type MemoryContext,
 } from '@/lib/memory'
 import { scriptedReply } from '@/lib/scripted-companion'
+import { useClientMount } from '@/hooks/use-client-mount'
+import type { UIMessage } from 'ai'
 
 type CompanionChatProps = {
   mode: 'companion' | 'focus'
@@ -61,6 +67,9 @@ type CompanionChatProps = {
       наверху ленты реально есть что обновлять (карточки «Дома») — в чистом
       чате жест был бы пустым обещанием. */
   onPullRefresh?: () => Promise<void> | void
+  /** Шапка ещё ждёт данных (холодная загрузка /app, скелетоны): ленту под ней не рисуем. Иначе переписка вставала
+      на высоте скелетона и с общей репликой, а через кадр прыгала на 270 px вниз и меняла текст (CLS до 0,10). */
+  holdFeed?: boolean
 }
 
 function CompanionAvatar({
@@ -196,10 +205,19 @@ export function CompanionChat({
   showSuggestions = true,
   header,
   onPullRefresh,
+  holdFeed = false,
 }: CompanionChatProps) {
   const router = useRouter()
+  // Переход по табу (не гидратация): память и переписка читаются сразу — лента приходит готовой в первом кадре,
+  // без прыжка на высоту восстановленной истории (hooks/use-client-mount.ts)
+  const clientMount = useClientMount()
+  const [boot] = useState(() =>
+    clientMount
+      ? { memory: peekMemoryContext(), chat: peekChatMessages<UIMessage>(), times: peekChatTimestamps() }
+      : null,
+  )
   const [input, setInput] = useState('')
-  const memoryRef = useRef<MemoryContext | null>(null)
+  const memoryRef = useRef<MemoryContext | null>(boot?.memory ?? null)
   const reduceMotion = useReducedMotion()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   // Счётчик отправок — ключ для "запуска" стрелки: старая улетает вверх,
@@ -240,10 +258,11 @@ export function CompanionChat({
   // state: от него зависят быстрые ответы (#16), а ref перерисовку не
   // вызывает. clientHour тоже в state — на сервере часа клиента нет, и
   // расчёт чипов прямо в рендере дал бы расхождение гидратации.
-  const [memoryCtx, setMemoryCtx] = useState<MemoryContext | null>(null)
-  const [clientHour, setClientHour] = useState<number | null>(null)
+  const [memoryCtx, setMemoryCtx] = useState<MemoryContext | null>(boot?.memory ?? null)
+  const [clientHour, setClientHour] = useState<number | null>(() => (boot ? new Date().getHours() : null))
 
   useEffect(() => {
+    if (boot) return
     setClientHour(new Date().getHours())
     buildMemoryContext().then((m) => {
       memoryRef.current = m
@@ -262,6 +281,7 @@ export function CompanionChat({
   )
 
   const { messages, sendMessage, status, addToolOutput, setMessages } = useChat({
+    ...(boot && boot.chat.length > 0 ? { messages: boot.chat } : {}),
     transport: new DefaultChatTransport({
       api: '/api/companion',
       body: () => ({
@@ -358,11 +378,11 @@ export function CompanionChat({
 
   // «Он тебя помнит»: разговор переживает перезагрузку страницы.
   // Восстанавливаем последние сообщения при открытии чата.
-  const chatRestoredRef = useRef(false)
+  const chatRestoredRef = useRef(boot !== null)
   // Момент первого появления каждой реплики — в state (не в ref), иначе
   // свежий таймстемп новой реплики никогда не попадёт на экран: ref не
   // вызывает перерендер сам по себе.
-  const [times, setTimes] = useState<Record<string, string>>({})
+  const [times, setTimes] = useState<Record<string, string>>(boot?.times ?? {})
   useEffect(() => {
     if (chatRestoredRef.current) return
     chatRestoredRef.current = true
@@ -734,6 +754,7 @@ export function CompanionChat({
               уже стоит закреплённый контекст «Дома»: она отделяет «карточки
               статуса» от «живого разговора» как два разных слоя экрана.
               В чистом чате (Фокус) это нечего было бы отделять. */}
+          {holdFeed ? null : (<>
           {header ? (
             <div className="conversation-rail flex items-center justify-between gap-3 px-1 pt-1">
               <span className="font-mono text-[0.68rem] uppercase tracking-[0.18em] text-muted-foreground">
@@ -1011,7 +1032,7 @@ export function CompanionChat({
                       <span className="text-sm font-semibold">{firstStep}</span>
                       <Button
                         size="sm"
-                        className="cta-sheen gap-1.5 font-semibold"
+                        className="cta-sheen h-11 gap-1.5 font-semibold"
                         onClick={() =>
                           router.push(
                             `/app/session?step=${encodeURIComponent(firstStep)}&d=${d}`,
@@ -1078,6 +1099,7 @@ export function CompanionChat({
             </div>
             )
           })}
+          </>)}
 
           {/* AnimatePresence: без ннего исчезновение индикатора не анимировано
               вообще (exit требует контекста AnimatePresence) — пузырь просто

@@ -76,7 +76,9 @@ export function readOnboarding(): OnboardingState {
     if (!raw) return EMPTY_ONBOARDING
     const saved = { ...EMPTY_ONBOARDING, ...(JSON.parse(raw) as Partial<OnboardingState>) }
     // Приветствие убрано: лендинг и есть приветствие, сразу к первому вопросу
-    return { ...saved, step: Math.max(1, saved.step) }
+    // шаг из чужой/старой записи (строка, NaN) — с первого вопроса, а не пустой экран без единого шага
+    const step = Number.isFinite(saved.step) ? Math.max(1, saved.step) : 1
+    return { ...saved, step }
   } catch {
     return EMPTY_ONBOARDING
   }

@@ -109,16 +109,39 @@ async function fetchVoice(moment: Moment, task: string, minutes: number): Promis
 
 type Phase = 'setup' | 'starting' | 'running' | 'done'
 
+const AUTO_START_KEY = 'naparnik:autoStart'
+/** Первый шаг — «крошечный и конкретный»: 120 знаков хватает с запасом, а экран сессии не уезжает вбок */
+const STEP_MAX = 120
+
 export function FocusSession() {
   const reducedMotion = useReducedMotion()
   const searchParams = useSearchParams()
-  const prefilledStep = searchParams.get('step') ?? ''
+  // шаг из адреса — с потолком: ссылка не должна приносить простыню на экран сессии и в память
+  const prefilledStep = (searchParams.get('step') ?? '').trim().slice(0, STEP_MAX)
   const fromPlan = searchParams.get('plan') === '1'
   const prefilledDuration = Number(searchParams.get('d'))
   // auto=1 приходит из знакомства (/app/start): человек уже выбрал шаг и
   // удержал кнопку — повторный сетап был бы вторым «точно?» подряд.
   // Только там разрешена короткая первая сессия (FIRST_MINUTES).
-  const autoStart = searchParams.get('auto') === '1' && Boolean(prefilledStep)
+  // Пропуск ставит само знакомство (first-run.tsx) прямо перед переходом: чужая ссылка с auto=1 только
+  // подставит шаг в поле, а «старт» человек нажмёт сам. Пропуск одноразовый.
+  const [autoPass] = useState(() => {
+    try {
+      return window.sessionStorage.getItem(AUTO_START_KEY)
+    } catch {
+      return null
+    }
+  })
+  // гасим в эффекте, не в инициализаторе: StrictMode в dev вызывает инициализатор дважды
+  useEffect(() => {
+    try {
+      window.sessionStorage.removeItem(AUTO_START_KEY)
+    } catch {
+      /* недоступно — пропуск и так не сработает повторно: параметры из адреса убираются при старте */
+    }
+  }, [])
+  const autoStart =
+    searchParams.get('auto') === '1' && Boolean(prefilledStep) && autoPass === prefilledStep
   const initialMinutes =
     durations.includes(prefilledDuration) ||
     (autoStart && prefilledDuration === FIRST_MINUTES)
@@ -418,6 +441,8 @@ export function FocusSession() {
     else if (progress >= 0.5) speak('middle', task, minutes)
   }, [secondsLeft, phase, speak, task, minutes])
 
+  // двойной тап по «Закончить раньше»: второй вызов писал бы минуты и награду повторно
+  const finishingRef = useRef(false)
   async function start() {
     if (!task.trim()) return
     hapticStart()
@@ -426,6 +451,7 @@ export function FocusSession() {
     setSecondsLeft(minutes * 60)
     firedMomentsRef.current = new Set()
     lastQuarterRef.current = 0
+    finishingRef.current = false
     setVoice(fallbackVoice.start)
     // Хореография: интерфейс растворяется, существо садится рядом,
     // таймер проявляется. При reduced-motion — сразу к делу.
@@ -459,6 +485,8 @@ export function FocusSession() {
   }
 
   async function finish(early: boolean) {
+    if (finishingRef.current) return
+    finishingRef.current = true
     await clearActiveSession()
     // Не больше длительности сессии: вкладка могла быть закрыта надолго
     const workedMin = Math.min(
@@ -603,6 +631,7 @@ export function FocusSession() {
             </div>
             <input
               value={task}
+              maxLength={STEP_MAX}
               onChange={(e) => {
                 setTask(e.target.value)
                 setBrokenSteps(null)
@@ -695,7 +724,7 @@ export function FocusSession() {
                       setTask(step)
                       setBrokenSteps(null)
                     }}
-                    className="glass glass-interactive press rounded-xl px-3 py-2 text-left text-sm font-medium"
+                    className="glass glass-interactive press min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium"
                   >
                     {step}
                   </button>
@@ -806,7 +835,10 @@ export function FocusSession() {
             сноска висела голым текстом прямо на силуэтах ростка/ёлки/фонаря.
             Скрим только у Фокуса, потому что только тут текст ничем не
             подложен. */}
+        {/* key: иначе React переиспользовал корневой <div> экрана «starting» под этот скрим — узел переезжал
+            из 390×780 в нижние 34vh, и каждая смена фазы давала сдвиг вёрстки 0,66 */}
         <div
+          key="running-scrim"
           aria-hidden="true"
           className="pointer-events-none fixed inset-x-0 bottom-0 h-[34vh] bg-gradient-to-t from-background/85 to-transparent"
         />
@@ -895,7 +927,9 @@ export function FocusSession() {
                 чуть плотнее и светлее ряда переключателей ниже, плюс кавычки
                 — та же пунктуация, что и в карточке Дома («Следующий шаг:
                 «X»»), а не голый капс без каких-либо знаков препинания. */}
-            <p className="text-center font-mono text-xs font-semibold uppercase tracking-widest text-foreground/80">
+            {/* перенос по любому месту и не больше трёх строк: вставленная ссылка или длинное слово иначе
+                растягивали страницу до 469 px на экране 390 и давали горизонтальный скролл */}
+            <p className="line-clamp-3 max-w-full text-center font-mono text-xs font-semibold uppercase tracking-widest text-foreground/80 [overflow-wrap:anywhere]">
               «{task}»
             </p>
             {hideDigits ? (
@@ -984,8 +1018,13 @@ export function FocusSession() {
             reducedMotion ? { duration: 0.3 } : { duration: 0.5, ease: 'easeOut' }
           }
         >
+          {/* Пока находка прорастает, карточка не кликается: второй тап по «Закончить раньше» приходился ровно на
+              неё (она встаёт на место кнопки) и уводил в Мир мимо самого пика награды */}
           <Link
             href="/app/world"
+            aria-disabled={!restRevealed}
+            tabIndex={restRevealed ? undefined : -1}
+            style={{ pointerEvents: restRevealed ? undefined : 'none' }}
             className="group glass glass-interactive press flex w-full flex-col items-center gap-2 overflow-hidden rounded-2xl px-4 pb-4 pt-3 text-center"
           >
             <RevealIsland
@@ -1036,9 +1075,11 @@ export function FocusSession() {
           </Link>
           <Button
             variant="ghost"
-            className="text-muted-foreground"
+            className="h-11 text-muted-foreground"
             onClick={() => {
               setTask(nextUp.step ?? task)
+              // первая сессия была двухминутной (FIRST_MINUTES) — «подольше» значит обычные 25, не те же 2
+              setMinutes(25)
               setFirstEver(false)
               setGrownElement(null)
               setPhase('setup')

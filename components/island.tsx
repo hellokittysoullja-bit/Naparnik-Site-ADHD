@@ -12,7 +12,11 @@ import {
   type IslandFindEntry,
   type Patterns,
   type StartEntry,
+  peekFinds,
+  peekPatterns,
+  peekStarts,
 } from '@/lib/memory'
+import { useClientMount } from '@/hooks/use-client-mount'
 import {
   drawFind,
   ISLAND_ELEMENT_NAMES,
@@ -110,9 +114,12 @@ export function Island() {
   // трогает (SMIL — отдельная система анимации). Условный рендер — единственный
   // способ отключить SMIL для reduced-motion.
   const reduceMotion = useReducedMotion()
-  const [starts, setStarts] = useState<StartEntry[] | null>(null)
-  const [finds, setFinds] = useState<IslandFindEntry[]>([])
-  const [patterns, setPatterns] = useState<Patterns | null>(null)
+  // переход по табу — остров из памяти в первом же кадре, без скелетона (hooks/use-client-mount.ts); бэкфилл
+  // находок и отметка «увидел» — по-прежнему в эффекте
+  const clientMount = useClientMount()
+  const [starts, setStarts] = useState<StartEntry[] | null>(() => (clientMount ? peekStarts() : null))
+  const [finds, setFinds] = useState<IslandFindEntry[]>(() => (clientMount ? peekFinds() : []))
+  const [patterns, setPatterns] = useState<Patterns | null>(() => (clientMount ? peekPatterns() : null))
 
   useEffect(() => {
     async function load() {

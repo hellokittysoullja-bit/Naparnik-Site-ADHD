@@ -64,12 +64,24 @@ function isBrowser() {
   return typeof window !== 'undefined'
 }
 
-function read<T>(key: string, fallback: T): T {
+/** Проверка формы прочитанного: запись могла остаться от старой версии, оборваться или быть чужой. */
+type Guard<T> = (v: unknown) => v is T
+
+function read<T>(key: string, fallback: T, guard?: Guard<T>): T {
   if (!isBrowser()) return fallback
-  const raw = isBrowser() ? window.localStorage.getItem(key) : null
-  if (raw === null) return fallback
+  let raw: string | null = null
   try {
-    return JSON.parse(raw) as T
+    raw = window.localStorage.getItem(key)
+  } catch {
+    // Хранилище заблокировано (Safari «Блокировать все cookie», встроенные браузеры соцсетей, песочница iframe):
+    // getItem бросает SecurityError. Раньше исключение уходило из getPlan/getStarts в refresh() Дома — экран навсегда
+    // оставался на скелетоне. Без хранилища продукт работает как первый визит.
+    return fallback
+  }
+  if (raw === null) return fallback
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
   } catch {
     /*
      * Битая запись НЕ должна навсегда обнулять память.
@@ -94,14 +106,44 @@ function read<T>(key: string, fallback: T): T {
         return bare as unknown as T
       }
     }
-    try {
-      window.localStorage.removeItem(key)
-    } catch {
-      /* приватный режим — просто живём с fallback */
-    }
+    forget(key)
     return fallback
   }
+  // JSON валиден, но форма чужая (`{"a":1}` вместо массива стартов): без проверки `.map`/`.filter` в вызывающем коде
+  // роняли весь экран в страницу ошибки. null — законное «пусто» для ключей, которые очищаются записью null.
+  if (parsed === null) return fallback
+  if (guard && !guard(parsed)) {
+    forget(key)
+    return fallback
+  }
+  return parsed as T
 }
+
+function forget(key: string) {
+  try {
+    window.localStorage.removeItem(key)
+  } catch {
+    /* приватный режим — просто живём с fallback */
+  }
+}
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+const isStr = (v: unknown): v is string => typeof v === 'string'
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+/** Массив, из которого молча выброшены битые элементы — одна испорченная запись не стирает всю историю. */
+function arrayOf<T>(item: Guard<T>) {
+  return (v: unknown): v is T[] => Array.isArray(v) && v.every(item)
+}
+function readList<T>(key: string, item: Guard<T>): T[] {
+  const raw = read<unknown[]>(key, [], Array.isArray as Guard<unknown[]>)
+  return raw.filter(item)
+}
+
+const isPlan: Guard<Plan> = (v): v is Plan =>
+  isObj(v) && isStr(v.forDate) && isStr(v.task) && isStr(v.firstStep) && (v.startTime === undefined || isStr(v.startTime))
+const isStart: Guard<StartEntry> = (v): v is StartEntry =>
+  isObj(v) && isStr(v.id) && isStr(v.date) && isStr(v.startedAt) && isStr(v.label) && isNum(v.minutes)
+const isNote: Guard<CompanionNote> = (v): v is CompanionNote => isObj(v) && isStr(v.text)
 
 function write(key: string, value: unknown) {
   if (!isBrowser()) return
@@ -138,8 +180,18 @@ export function tomorrowKey(): string {
 
 // ---------- План ----------
 
+/*
+ * peek* — тот же источник правды, но синхронно: для первого кадра экрана при переходе ВНУТРИ приложения
+ * (hooks/use-client-mount.ts). Там гидратации нет, и данные можно отдать сразу — без кадра скелетона и прыжка
+ * ленты на 270 px при каждом переключении таба (замер 27.10). Асинхронные get* остаются интерфейсом для всего
+ * остального: замена хранилища на базу данных — по-прежнему замена реализации, peek* тогда станут чтением кэша.
+ */
+export function peekPlan(): Plan | null {
+  return read<Plan | null>(KEYS.plan, null, isPlan)
+}
+
 export async function getPlan(): Promise<Plan | null> {
-  return read<Plan | null>(KEYS.plan, null)
+  return peekPlan()
 }
 
 export async function savePlan(input: {
@@ -165,8 +217,12 @@ export async function clearPlan(): Promise<void> {
 
 // ---------- Старты ----------
 
+export function peekStarts(): StartEntry[] {
+  return readList(KEYS.starts, isStart)
+}
+
 export async function getStarts(): Promise<StartEntry[]> {
-  return read<StartEntry[]>(KEYS.starts, [])
+  return peekStarts()
 }
 
 export async function recordStart(input: {
@@ -178,7 +234,8 @@ export async function recordStart(input: {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     date: todayKey(),
     startedAt: new Date().toISOString(),
-    label: input.label,
+    // потолок длины: подпись старта уходит в промпт напарника и на кнопки «Повторить» — не простыня из ссылки
+    label: input.label.trim().slice(0, 200),
     fromPlan: input.fromPlan ?? false,
     minutes: input.minutes ?? 0,
   }
@@ -211,8 +268,16 @@ export type IslandFindEntry = {
   startId: string
 }
 
+const isFind: Guard<IslandFindEntry> = (v): v is IslandFindEntry =>
+  isObj(v) && isStr(v.key) && isStr(v.name) && isStr(v.startId) && isNum(v.seed) &&
+  (v.rarity === 'common' || v.rarity === 'uncommon' || v.rarity === 'rare')
+
+export function peekFinds(): IslandFindEntry[] {
+  return readList(KEYS.finds, isFind)
+}
+
 export async function getFinds(): Promise<IslandFindEntry[]> {
-  return read<IslandFindEntry[]>(KEYS.finds, [])
+  return peekFinds()
 }
 
 export async function addFind(find: IslandFindEntry): Promise<void> {
@@ -232,8 +297,11 @@ export type ActiveSession = {
   startId: string
 }
 
+const isActiveSession: Guard<ActiveSession> = (v): v is ActiveSession =>
+  isObj(v) && isNum(v.startedAt) && isNum(v.minutes) && isStr(v.task) && isStr(v.startId)
+
 export async function getActiveSession(): Promise<ActiveSession | null> {
-  return read<ActiveSession | null>(KEYS.activeSession, null)
+  return read<ActiveSession | null>(KEYS.activeSession, null, isActiveSession)
 }
 
 export async function saveActiveSession(session: ActiveSession): Promise<void> {
@@ -255,9 +323,16 @@ export type StepQueue = {
 
 const STEP_QUEUE_KEY = 'naparnik:stepQueue'
 
-export async function getStepQueue(): Promise<StepQueue | null> {
-  const q = read<StepQueue | null>(STEP_QUEUE_KEY, null)
+const isStepQueue: Guard<StepQueue> = (v): v is StepQueue =>
+  isObj(v) && isStr(v.task) && arrayOf(isStr)(v.steps)
+
+export function peekStepQueue(): StepQueue | null {
+  const q = read<StepQueue | null>(STEP_QUEUE_KEY, null, isStepQueue)
   return q && q.steps.length > 0 ? q : null
+}
+
+export async function getStepQueue(): Promise<StepQueue | null> {
+  return peekStepQueue()
 }
 
 export async function saveStepQueue(task: string, steps: string[]): Promise<void> {
@@ -275,8 +350,12 @@ export async function consumeQueueStep(step: string): Promise<void> {
 
 // ---------- Имя существа (endowment: названное — становится своим) ----------
 
+export function peekCompanionName(): string | null {
+  return read<string | null>(KEYS.companionName, null, isStr)
+}
+
 export async function getCompanionName(): Promise<string | null> {
-  return read<string | null>(KEYS.companionName, null)
+  return peekCompanionName()
 }
 
 export async function saveCompanionName(name: string): Promise<void> {
@@ -293,8 +372,17 @@ const MAX_CHAT_MESSAGES = 30
  * Сохранённые сообщения чата в формате UIMessage (структурная копия).
  * Тип намеренно свободный: сообщения приходят из useChat и сериализуемы.
  */
+// Реплика формата useChat: без parts (старый формат AI SDK — { role, content }) лента падала на message.parts.map,
+// и Дом навсегда открывался страницей ошибки — «Попробовать снова» читал ту же запись
+const isChatMessage = (v: unknown): v is Record<string, unknown> =>
+  isObj(v) && isStr(v.id) && (v.role === 'user' || v.role === 'assistant') && Array.isArray(v.parts) && v.parts.every(isObj)
+
+export function peekChatMessages<T>(): T[] {
+  return readList(KEYS.chat, isChatMessage) as T[]
+}
+
 export async function getChatMessages<T>(): Promise<T[]> {
-  return read<T[]>(KEYS.chat, [])
+  return peekChatMessages<T>()
 }
 
 export async function saveChatMessages<T>(messages: T[]): Promise<void> {
@@ -306,8 +394,12 @@ export async function saveChatMessages<T>(messages: T[]): Promise<void> {
  * Отдельная карта, а не поле на сообщении: тип UIMessage приходит из
  * useChat и не резервирует место под свои метки времени.
  */
+export function peekChatTimestamps(): Record<string, string> {
+  return read<Record<string, string>>(KEYS.chatTimes, {}, isObj as Guard<Record<string, string>>)
+}
+
 export async function getChatTimestamps(): Promise<Record<string, string>> {
-  return read<Record<string, string>>(KEYS.chatTimes, {})
+  return peekChatTimestamps()
 }
 
 export async function saveChatTimestamps(map: Record<string, string>): Promise<void> {
@@ -322,7 +414,7 @@ export async function saveChatTimestamps(map: Record<string, string>): Promise<v
  */
 export async function getUnseenWorldCount(): Promise<number> {
   const starts = await getStarts()
-  const seen = read<number>(KEYS.worldSeen, 0)
+  const seen = read<number>(KEYS.worldSeen, 0, isNum)
   return Math.max(0, starts.length - seen)
 }
 
@@ -335,8 +427,12 @@ export async function markWorldSeen(): Promise<void> {
 
 const MAX_NOTES = 6
 
+export function peekNotes(): CompanionNote[] {
+  return readList(KEYS.notes, isNote)
+}
+
 export async function getNotes(): Promise<CompanionNote[]> {
-  return read<CompanionNote[]>(KEYS.notes, [])
+  return peekNotes()
 }
 
 export async function addNote(text: string): Promise<void> {
@@ -351,7 +447,11 @@ export async function addNote(text: string): Promise<void> {
 // ---------- Паттерны (производные) ----------
 
 export async function getPatterns(): Promise<Patterns> {
-  const starts = await getStarts()
+  return peekPatterns()
+}
+
+export function peekPatterns(): Patterns {
+  const starts = peekStarts()
   if (starts.length === 0) {
     return { totalStarts: 0, runningDays: 0, favoriteHour: null, lastStartDate: null, daysAway: null }
   }
@@ -416,14 +516,16 @@ export type MemoryContext = {
 }
 
 export async function buildMemoryContext(): Promise<MemoryContext> {
-  const [plan, starts, patterns, notes, finds, companionName] = await Promise.all([
-    getPlan(),
-    getStarts(),
-    getPatterns(),
-    getNotes(),
-    getFinds(),
-    getCompanionName(),
-  ])
+  return peekMemoryContext()
+}
+
+export function peekMemoryContext(): MemoryContext {
+  const plan = peekPlan()
+  const starts = peekStarts()
+  const patterns = peekPatterns()
+  const notes = peekNotes()
+  const finds = peekFinds()
+  const companionName = peekCompanionName()
   return {
     plan,
     recentStarts: starts.slice(-5).map(({ date, label, minutes, fromPlan }) => ({

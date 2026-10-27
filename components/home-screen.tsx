@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -11,12 +11,12 @@ import { EmphasisText } from "@/components/emphasis-text";
 import { MascotDoll as MascotSvg } from "@/components/mascot-doll";
 import { type MascotExpression } from "@/components/mascot-doll";
 import {
-  getCompanionName,
-  getFinds,
-  getPatterns,
-  getPlan,
-  getStarts,
-  getStepQueue,
+  peekCompanionName,
+  peekFinds,
+  peekPatterns,
+  peekPlan,
+  peekStarts,
+  peekStepQueue,
   saveCompanionName,
   savePlan,
   todayKey,
@@ -33,6 +33,7 @@ import {
   enableCheckins,
   getCheckinState,
   mirrorCompanionName,
+  peekCheckinState,
   registerServiceWorker,
   type CheckinState,
 } from "@/lib/checkin";
@@ -40,6 +41,7 @@ import { trimLabel } from "@/lib/utils";
 import { Bell, BellOff } from "lucide-react";
 import { GreetingSkeleton, RewardCardSkeleton } from "@/components/skeletons";
 import { SPRING_GESTURE } from "@/lib/motion";
+import { useClientMount } from "@/hooks/use-client-mount";
 
 type FirstWord = {
   greeting: string;
@@ -289,15 +291,51 @@ function buildChatGreeting(
   return `${who} тут. Помню ${totalStarts} твоих ${startsWord} — пиши, что нужно.`;
 }
 
+/** Всё, что Дом берёт из памяти, одним синхронным срезом: и для первого кадра при переходе по табу, и для refresh(). */
+function readHomeData() {
+  const plan = peekPlan();
+  const patterns = peekPatterns();
+  const name = peekCompanionName();
+  const starts = peekStarts();
+  const finds = peekFinds();
+  const queue = peekStepQueue();
+  const lastStart = starts.length > 0 ? starts[starts.length - 1] : null;
+  let pity = 0;
+  for (let i = finds.length - 1; i >= 0 && finds[i].rarity === "common"; i--)
+    pity++;
+  const lastFind = finds.length > 0 ? finds[finds.length - 1].name : null;
+  let intro: IntroChoice = null;
+  try {
+    const saved = window.localStorage.getItem("naparnik:intro");
+    if (saved === "procrastinate" || saved === "curious") intro = saved;
+  } catch {
+    /* приватный режим */
+  }
+  return {
+    lastStepLabel: lastStart?.label ?? null,
+    queuedStep: queue?.steps[0] ?? null,
+    queuedTask: queue?.task ?? null,
+    rareFound: finds.filter((f) => f.rarity === "rare").length,
+    pityRipe: pity >= 5,
+    firstWord: buildFirstWord(plan, patterns, new Date(), name, intro, lastFind),
+    stats: patterns,
+    companionName: name,
+  };
+}
+
 export function HomeScreen() {
   const router = useRouter();
-  const [firstWord, setFirstWord] = useState<FirstWord | null>(null);
-  const [stats, setStats] = useState<Patterns | null>(null);
+  // Переход по табу (не гидратация) — память читается прямо здесь, и Дом приходит готовым в первом же кадре.
+  // При гидратации HTML первый рендер обязан совпасть со статикой — там скелетон, данные приедут в эффекте.
+  const clientMount = useClientMount();
+  const [initial] = useState(() => (clientMount ? readHomeData() : null));
+  const [firstWord, setFirstWord] = useState<FirstWord | null>(initial?.firstWord ?? null);
+  const [stats, setStats] = useState<Patterns | null>(initial?.stats ?? null);
 
   // Endowment: названное существо становится «моим». Имя спрашиваем
   // после первого старта — когда ценность уже прожита, а не обещана.
-  const [companionName, setCompanionName] = useState<string | null>(null);
-  const [nameLoaded, setNameLoaded] = useState(false);
+  const [companionName, setCompanionName] = useState<string | null>(initial?.companionName ?? null);
+  const [nameLoaded, setNameLoaded] = useState(initial !== null);
   const [nameDraft, setNameDraft] = useState("");
 
   // nameBusy: saveCompanionName асинхронна, а форма до этого позволяла жать
@@ -321,7 +359,9 @@ export function HomeScreen() {
 
   // Проактивные весточки: «он пишет первым», когда приложение закрыто.
   // Работает только там, где браузер это умеет (установленная PWA на Chrome).
-  const [checkinState, setCheckinState] = useState<CheckinState>("unsupported");
+  const [checkinState, setCheckinState] = useState<CheckinState>(() =>
+    clientMount ? peekCheckinState() : "unsupported",
+  );
   const [checkinBusy, setCheckinBusy] = useState(false);
 
   // U5: enableCheckins может вернуть "available" при выданном разрешении —
@@ -370,7 +410,7 @@ export function HomeScreen() {
   // React откатывает и перестраивает всё поддерево с нуля, и клики рядом
   // теряются на те же мгновения. Тот же приём, что и у nameLoaded/stats
   // выше — реальные данные приходят только после mount.
-  const [mounted, setMounted] = useState(false);
+  const [mounted, setMounted] = useState(clientMount);
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -384,55 +424,35 @@ export function HomeScreen() {
           ? "sleepy"
           : "calm";
 
-  const [lastStepLabel, setLastStepLabel] = useState<string | null>(null);
+  const [lastStepLabel, setLastStepLabel] = useState<string | null>(initial?.lastStepLabel ?? null);
   // Очередь дробления приоритетнее повтора: «следующий шаг той же задачи» —
   // это продолжение работы, а не её повторение (Zeigarnik на самой работе)
-  const [queuedStep, setQueuedStep] = useState<string | null>(null);
+  const [queuedStep, setQueuedStep] = useState<string | null>(initial?.queuedStep ?? null);
   // Задача, из которой раздроблен queuedStep, — для честного заголовка плана
-  const [queuedTask, setQueuedTask] = useState<string | null>(null);
+  const [queuedTask, setQueuedTask] = useState<string | null>(initial?.queuedTask ?? null);
   // Однотаповый вечерний договор: мгновенный оптимистичный отклик до refresh
   const [eveningPlanBusy, setEveningPlanBusy] = useState(false);
-  const [rareFound, setRareFound] = useState(0);
+  const [rareFound, setRareFound] = useState(initial?.rareFound ?? 0);
   // Pity дозрел (5+ обычных находок подряд): следующая гарантированно
   // необычная+ (см. drawFind) — утренний триггер вправе это знать
-  const [pityRipe, setPityRipe] = useState(false);
+  const [pityRipe, setPityRipe] = useState(initial?.pityRipe ?? false);
 
   async function refresh() {
-    const [plan, patterns, name, starts, finds, queue] = await Promise.all([
-      getPlan(),
-      getPatterns(),
-      getCompanionName(),
-      getStarts(),
-      getFinds(),
-      getStepQueue(),
-    ]);
-    const lastStart = starts.length > 0 ? starts[starts.length - 1] : null;
-    setLastStepLabel(lastStart?.label ?? null);
-    setQueuedStep(queue?.steps[0] ?? null);
-    setQueuedTask(queue?.task ?? null);
-    setRareFound(finds.filter((f) => f.rarity === "rare").length);
-    let pity = 0;
-    for (let i = finds.length - 1; i >= 0 && finds[i].rarity === "common"; i--)
-      pity++;
-    setPityRipe(pity >= 5);
-    const lastFind = finds.length > 0 ? finds[finds.length - 1].name : null;
-    let intro: IntroChoice = null;
-    try {
-      const saved = window.localStorage.getItem("naparnik:intro");
-      if (saved === "procrastinate" || saved === "curious") intro = saved;
-    } catch {
-      /* приватный режим */
-    }
-    setFirstWord(
-      buildFirstWord(plan, patterns, new Date(), name, intro, lastFind),
-    );
-    setStats(patterns);
-    setCompanionName(name);
+    const d = readHomeData();
+    setLastStepLabel(d.lastStepLabel);
+    setQueuedStep(d.queuedStep);
+    setQueuedTask(d.queuedTask);
+    setRareFound(d.rareFound);
+    setPityRipe(d.pityRipe);
+    setFirstWord(d.firstWord);
+    setStats(d.stats);
+    setCompanionName(d.companionName);
     setNameLoaded(true);
   }
 
   useEffect(() => {
-    refresh();
+    // после перехода по табу данные уже прочитаны в первом рендере — повторное чтение ничего бы не поменяло
+    if (!initial) refresh();
     // Тихо ставим service worker и узнаём, доступны ли весточки
     void registerServiceWorker();
     void getCheckinState().then(setCheckinState);
@@ -476,7 +496,8 @@ export function HomeScreen() {
   const greetingClamped =
     !!stats && stats.totalStarts >= 3 && !greetingExpanded;
 
-  useEffect(() => {
+  // layout-эффект: «Дочитать» должен появиться в том же кадре, что и реплика, а не кадром позже со сдвигом ленты
+  useLayoutEffect(() => {
     if (!greetingClamped) {
       setGreetingOverflows(false);
       return;
@@ -1255,6 +1276,8 @@ export function HomeScreen() {
         onPlanSaved={refresh}
         showSuggestions={!firstWord?.showStarterChips}
         header={introHeader}
+        // холодная загрузка: пока шапка на скелетонах, ленту не ставим — иначе она встала бы не на свою высоту
+        holdFeed={stats === null}
         // #23 · Наверху ленты лежат карточки «Дома» — их и обновляем жестом.
         onPullRefresh={refresh}
       />

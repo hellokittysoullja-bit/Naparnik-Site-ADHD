@@ -603,7 +603,7 @@ export function Hero() {
               >
                 <Link
                   href={entryHref}
-                  className="glass-highlight press inline-flex items-center gap-1.5 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm font-semibold text-primary"
+                  className="glass-highlight press inline-flex min-h-11 items-center gap-1.5 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm font-semibold text-primary"
                 >
                   Пойдём попробуем
                   <ArrowRight className="size-4" aria-hidden="true" />

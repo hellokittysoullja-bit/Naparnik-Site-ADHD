@@ -28,7 +28,6 @@ export function AppNav() {
   // ушёл на Мир — сессия не «исчезла».
   const [minutesLeft, setMinutesLeft] = useState<number | null>(null);
   useEffect(() => {
-    let id: number | undefined;
     const tick = async () => {
       const s = await getActiveSession();
       if (!s) {
@@ -41,7 +40,7 @@ export function AppNav() {
       setMinutesLeft(left > 0 ? left : null);
     };
     tick();
-    id = window.setInterval(tick, 20000);
+    const id = window.setInterval(tick, 20000);
     return () => window.clearInterval(id);
   }, [pathname]);
 
