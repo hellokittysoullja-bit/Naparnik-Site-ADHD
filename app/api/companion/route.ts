@@ -42,7 +42,8 @@ const MemorySchema = z.object({
 const BodySchema = z.object({
   messages: z.array(z.unknown()).max(200),
   mode: z.enum(['companion', 'focus']).default('companion'),
-  memory: MemorySchema.nullable().default(null),
+  // память проверяется отдельно ниже: одно странное поле не должно выключать ИИ целиком
+  memory: z.unknown().optional(),
   clientHour: z.number().int().min(0).max(23).optional(),
 })
 
@@ -92,7 +93,11 @@ export const POST = handle(async (req) => {
   rateLimit(req, 'companion', 20)
   const parsed = BodySchema.safeParse(await readJsonBody(req, MAX_BODY))
   if (!parsed.success) return fail(400)
-  const { mode, memory, clientHour } = parsed.data
+  const { mode, clientHour } = parsed.data
+  // память чужой формы — разговор без памяти, а не отказ (иначе ИИ молчал бы, пока странная запись не уйдёт из
+  // последних пяти стартов)
+  const mem = MemorySchema.nullable().safeParse(parsed.data.memory ?? null)
+  const memory = mem.success ? mem.data : null
 
   let messages: UIMessage[]
   try {

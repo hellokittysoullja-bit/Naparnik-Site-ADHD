@@ -52,6 +52,9 @@ export type CheckinState = 'unsupported' | 'available' | 'enabled' | 'denied'
 export function peekCheckinState(): CheckinState {
   if (!checkinSupported()) return 'unsupported'
   if (Notification.permission === 'denied') return 'denied'
+  // разрешение уже выдано — включены весточки или нет, знает только service worker; до его ответа не рисуем
+  // ничего ('unsupported'), иначе у тех, кто их уже включил, на кадр всплывало «Хочешь, я буду махать?»
+  if (Notification.permission === 'granted') return 'unsupported'
   return 'available'
 }
 

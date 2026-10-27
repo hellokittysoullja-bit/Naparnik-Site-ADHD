@@ -477,7 +477,9 @@ export function FocusSession() {
     // человек сам начал шаг, лежащий в плане (иначе утром продукт
     // предложит уже сделанное — стейл-план подрывает доверие к памяти)
     const plan = await getPlan()
-    if (plan && ((fromPlan && plan.forDate === todayKey()) || plan.firstStep === task)) {
+    // шаг из адреса обрезан до STEP_MAX и без пробелов по краям — сравниваем в том же виде, иначе длинный шаг плана
+    // от ИИ, начатый из чата, не закрывал план
+    if (plan && ((fromPlan && plan.forDate === todayKey()) || plan.firstStep.trim().slice(0, STEP_MAX) === task.trim())) {
       await clearPlan()
     }
 

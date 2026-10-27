@@ -323,12 +323,34 @@ function readHomeData() {
   };
 }
 
+/** Дом первого визита — запасной вариант, если память не прочиталась вовсе */
+function emptyHomeData(): ReturnType<typeof readHomeData> {
+  const patterns: Patterns = { totalStarts: 0, runningDays: 0, favoriteHour: null, lastStartDate: null, daysAway: null };
+  return {
+    lastStepLabel: null,
+    queuedStep: null,
+    queuedTask: null,
+    rareFound: 0,
+    pityRipe: false,
+    firstWord: buildFirstWord(null, patterns, new Date(), null),
+    stats: patterns,
+    companionName: null,
+  };
+}
+
 export function HomeScreen() {
   const router = useRouter();
   // Переход по табу (не гидратация) — память читается прямо здесь, и Дом приходит готовым в первом же кадре.
   // При гидратации HTML первый рендер обязан совпасть со статикой — там скелетон, данные приедут в эффекте.
   const clientMount = useClientMount();
-  const [initial] = useState(() => (clientMount ? readHomeData() : null));
+  const [initial] = useState(() => {
+    if (!clientMount) return null;
+    try {
+      return readHomeData();
+    } catch {
+      return null; // эффект ниже повторит чтение через refresh() с запасным путём
+    }
+  });
   const [firstWord, setFirstWord] = useState<FirstWord | null>(initial?.firstWord ?? null);
   const [stats, setStats] = useState<Patterns | null>(initial?.stats ?? null);
 
@@ -438,7 +460,15 @@ export function HomeScreen() {
   const [pityRipe, setPityRipe] = useState(initial?.pityRipe ?? false);
 
   async function refresh() {
-    const d = readHomeData();
+    let d: ReturnType<typeof readHomeData>;
+    try {
+      d = readHomeData();
+    } catch (e) {
+      // память читается с гардами (lib/memory.ts), но если что-то всё же бросит — Дом первого визита, а не
+      // вечные скелетоны и спрятанная переписка (holdFeed ждёт stats)
+      console.error("[home] memory read failed", e);
+      d = emptyHomeData();
+    }
     setLastStepLabel(d.lastStepLabel);
     setQueuedStep(d.queuedStep);
     setQueuedTask(d.queuedTask);

@@ -289,6 +289,11 @@ export function CompanionChat({
         memory: memoryRef.current,
         clientHour: new Date().getHours(),
       }),
+      // На сервер — только последние 30 реплик (столько же хранится): в длинном разговоре полная история
+      // упиралась бы в потолок тела запроса (lib/api-guard.ts), и ИИ молча уходил бы в скрипт до перезагрузки
+      prepareSendMessagesRequest: ({ id, messages: all, body, trigger, messageId }) => ({
+        body: { ...body, id, messages: all.slice(-30), trigger, messageId },
+      }),
     }),
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
     // Graceful degradation: LLM недоступен (нет ключа, лимит, сеть) —

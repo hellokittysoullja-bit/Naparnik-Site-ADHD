@@ -20,13 +20,14 @@ test('хранилище заблокировано (Safari «Блокирова
 test('испорченная память не роняет ни один экран', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('naparnik:starts', '{"a":1}')
-    localStorage.setItem('naparnik:plan', '[]')
     localStorage.setItem('naparnik:finds', '"x"')
-    localStorage.setItem('naparnik:stepQueue', '{"steps":5}')
     // реплика старого формата AI SDK (без parts) — раньше Дом навсегда открывался страницей ошибки
     localStorage.setItem('naparnik:chat', '[{"role":"user","content":"привет"}]')
     localStorage.setItem('naparnik:activeSession', '{"startedAt":"вчера"}')
     localStorage.setItem('naparnik:onboarding', '{"step":"abc"}')
+    // сырой текст вместо JSON — раньше проходил «планом»/«очередью» мимо проверки формы
+    localStorage.setItem('naparnik:plan', 'abc')
+    localStorage.setItem('naparnik:stepQueue', 'abc')
   })
   const errors = collectErrors(page)
   // не только «нет страницы ошибки», но и «экран дорисовался», а не завис на скелетоне
@@ -70,4 +71,18 @@ test('чат без ключа ИИ: напарник отвечает скри�
   await box.fill('не могу начать отчёт')
   await box.press('Enter')
   await expect(page.locator('.chat-bubble-cat')).toHaveCount(2, { timeout: 15_000 })
+})
+
+test('испорченная память и переход по табу: Дом не падает в страницу ошибки', async ({ page }) => {
+  await seedStarts(page, 3)
+  await page.addInitScript(() => {
+    localStorage.setItem('naparnik:plan', 'abc')
+    localStorage.setItem('naparnik:stepQueue', 'abc')
+  })
+  await page.goto('/app/world')
+  await expect(page.getByRole('heading', { name: 'Остров' })).toBeVisible()
+  await page.getByRole('link', { name: 'Дом' }).click()
+  await expect(page.getByText('Следующий старт вырастит')).toBeVisible()
+  await expect(page.getByText('Я споткнулся')).toHaveCount(0)
+  await expect(page.locator('.conversation-rail')).toBeVisible()
 })

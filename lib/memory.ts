@@ -102,7 +102,9 @@ function read<T>(key: string, fallback: T, guard?: Guard<T>): T {
      */
     if (typeof fallback === 'string' || fallback === null) {
       const bare = raw.trim()
-      if (bare && !bare.startsWith('{') && !bare.startsWith('[')) {
+      // …но только там, где строка — законное значение (имя). Для плана, очереди, сессии сырая строка `abc`
+      // раньше проходила мимо гарда «планом», и Дом падал на plan.firstStep.toLowerCase() — навсегда.
+      if (bare && !bare.startsWith('{') && !bare.startsWith('[') && (!guard || guard(bare))) {
         return bare as unknown as T
       }
     }

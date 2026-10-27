@@ -30,6 +30,16 @@ describe('memory: битые и чужие записи не роняют экр
     expect(await memory.getPlan()).toBeNull()
   })
 
+  it('сырой текст (не JSON) в плане, очереди и сессии — пусто, а не «план» строкой', async () => {
+    store.data.set('naparnik:plan', 'abc')
+    store.data.set('naparnik:stepQueue', 'abc')
+    store.data.set('naparnik:activeSession', 'abc')
+    expect(await memory.getPlan()).toBeNull()
+    expect(await memory.getStepQueue()).toBeNull()
+    expect(await memory.getActiveSession()).toBeNull()
+    expect(store.data.has('naparnik:plan')).toBe(false)
+  })
+
   it('имя без кавычек (не JSON) принимается как есть', async () => {
     store.data.set('naparnik:companionName', 'Тень')
     expect(await memory.getCompanionName()).toBe('Тень')
