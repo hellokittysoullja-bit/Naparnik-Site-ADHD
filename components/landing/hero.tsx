@@ -100,7 +100,8 @@ function WordReveal({
  * слова через opacity — реflow ноль, ощущение «печатает» остаётся за
  * счёт последовательного появления слов, а не за счёт роста контейнера.
  */
-function TypedLine({ text, onDone }: { text: string; onDone?: () => void }) {
+/** paused — строка уже на своём месте (раскладка готова), но слова ещё не начали проявляться */
+function TypedLine({ text, onDone, paused = false }: { text: string; onDone?: () => void; paused?: boolean }) {
   const reduceMotion = useReducedMotion();
   const words = text.split(" ");
   const startDelay = 0.05;
@@ -111,6 +112,7 @@ function TypedLine({ text, onDone }: { text: string; onDone?: () => void }) {
   const [skipped, setSkipped] = useState(false);
 
   useEffect(() => {
+    if (paused) return;
     firedRef.current = false;
     const fireDone = () => {
       if (firedRef.current) return;
@@ -127,7 +129,7 @@ function TypedLine({ text, onDone }: { text: string; onDone?: () => void }) {
     const id = window.setTimeout(fireDone, totalMs);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text, reduceMotion]);
+  }, [text, reduceMotion, paused]);
 
   function skip() {
     setSkipped(true);
@@ -151,7 +153,11 @@ function TypedLine({ text, onDone }: { text: string; onDone?: () => void }) {
               style={
                 skipped
                   ? { animationDuration: "0.01s", animationDelay: "0s" }
-                  : { animationDelay: `${(startDelay + i * step).toFixed(2)}s` }
+                  : {
+                      animationDelay: `${(startDelay + i * step).toFixed(2)}s`,
+                      // на паузе стоит и сама задержка: слова начнут ровно с того же места, когда пауза снимется
+                      animationPlayState: paused ? "paused" : "running",
+                    }
               }
             >
               {word}
@@ -253,15 +259,16 @@ export function Hero() {
     } catch {
       // приватный режим — не критично
     }
-    setSteps([{ kind: "visitor", text: REPLIES[key].visitor, replyKey: key }]);
+    // Ответ кота занимает своё место сразу, в момент тапа, — сначала невидимый, с «печатает» в углу. Раньше реплика,
+    // а за ней кнопка «Пойдём попробуем» вставали в ленту через 0,55 и 1,9 с: отцентрованный экран трижды сдвигался
+    // вверх, пока человек читал (CLS 0,27 у каждого, кто ответил, — сдвиги позже 0,5 с после тапа засчитываются).
+    // Теперь раскладка меняется один раз — вместе с самим тапом, — дальше реплики только проявляются на месте.
+    setSteps([
+      { kind: "visitor", text: REPLIES[key].visitor, replyKey: key },
+      { kind: "companion", text: REPLIES[key].companion },
+    ]);
     setTyping(true);
-    setTimeout(() => {
-      setTyping(false);
-      setSteps((prev) => [
-        ...prev,
-        { kind: "companion", text: REPLIES[key].companion },
-      ]);
-    }, 550);
+    setTimeout(() => setTyping(false), 550);
   }
 
   return (
@@ -533,18 +540,38 @@ export function Hero() {
             <AnimatePresence initial={false}>
               {steps.map((step, i) =>
                 step.kind === "companion" ? (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, y: 12, scale: 0.97 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={SPRING_SNAPPY}
-                    className="max-w-[92%] self-start rounded-2xl rounded-tl-sm border border-white/5 bg-secondary/85 px-5 py-3.5 text-left shadow-xl backdrop-blur-md"
-                  >
-                    <TypedLine
-                      text={step.text}
-                      onDone={() => setCtaBoost(true)}
-                    />
-                  </motion.div>
+                  // Слот реплики: место занято с тапа; пока кот «печатает», видна только точка-пузырь в углу
+                  <div key={i} className="relative max-w-[92%] self-start">
+                    {typing && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 12, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={SPRING_SNAPPY}
+                        className="absolute left-0 top-0 flex items-center gap-1 rounded-2xl rounded-tl-sm border border-white/5 bg-secondary/85 px-4 py-3 shadow-xl backdrop-blur-md"
+                        aria-label="Напарник печатает"
+                      >
+                        <span
+                          className="size-1.5 animate-bounce rounded-full bg-muted-foreground/70 motion-reduce:animate-none"
+                          style={{ animationDelay: "-0.3s" }}
+                        />
+                        <span
+                          className="size-1.5 animate-bounce rounded-full bg-muted-foreground/70 motion-reduce:animate-none"
+                          style={{ animationDelay: "-0.15s" }}
+                        />
+                        <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/70 motion-reduce:animate-none" />
+                      </motion.div>
+                    )}
+                    <motion.div
+                      initial={{ opacity: 0, y: 12, scale: 0.97 }}
+                      animate={typing ? { opacity: 0, y: 12, scale: 0.97 } : { opacity: 1, y: 0, scale: 1 }}
+                      transition={SPRING_SNAPPY}
+                      aria-hidden={typing || undefined}
+                      className="rounded-2xl rounded-tl-sm border border-white/5 bg-secondary/85 px-5 py-3.5 text-left shadow-xl backdrop-blur-md"
+                    >
+                      {/* печатать начинает, когда пузырь проявился, — как раньше, когда он появлялся после точек */}
+                      <TypedLine text={step.text} paused={typing} onDone={() => setCtaBoost(true)} />
+                    </motion.div>
+                  </div>
                 ) : (
                   // Э3 · Морф-приёмник: реплика наследует layoutId чипа —
                   // выбранный чип физически перелетает и становится
@@ -567,38 +594,19 @@ export function Hero() {
                   </motion.div>
                 ),
               )}
-              {typing && (
-                <motion.div
-                  key="typing"
-                  initial={{ opacity: 0, y: 12, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={SPRING_SNAPPY}
-                  className="flex items-center gap-1 self-start rounded-2xl rounded-tl-sm border border-white/5 bg-secondary/85 px-4 py-3 shadow-xl backdrop-blur-md"
-                  aria-label="Напарник печатает"
-                >
-                  <span
-                    className="size-1.5 animate-bounce rounded-full bg-muted-foreground/70 motion-reduce:animate-none"
-                    style={{ animationDelay: "-0.3s" }}
-                  />
-                  <span
-                    className="size-1.5 animate-bounce rounded-full bg-muted-foreground/70 motion-reduce:animate-none"
-                    style={{ animationDelay: "-0.15s" }}
-                  />
-                  <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/70 motion-reduce:animate-none" />
-                </motion.div>
-              )}
             </AnimatePresence>
 
             {/* К-А · Диалог замыкается действием: после ответа существа в
                 чате появляется кнопка-продолжение — раньше разговор был
                 тупиком («Пойдём, покажу» — и ничего). Тихий glass-highlight:
                 командный лайм остаётся за главным CTA ниже */}
-            {ctaBoost && (
+            {/* место кнопки тоже занято с тапа: невидима и вне Tab, пока кот не договорил */}
+            {answered && (
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
+                animate={ctaBoost ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }}
                 transition={SPRING_SNAPPY}
+                style={{ visibility: ctaBoost ? "visible" : "hidden" }}
                 className="self-start"
               >
                 <Link
@@ -646,7 +654,9 @@ export function Hero() {
                   пропал на&nbsp;неделю
                 </p>
               </div>
-              <AnimatePresence>
+              {/* popLayout: чипы уходят из раскладки сразу в момент тапа (и дотаивают поверх), а не через 0,25 с
+                  со сдвигом всего экрана уже вне окна тапа */}
+              <AnimatePresence mode="popLayout">
                 {!answered && (
                   <motion.div
                     exit={{ opacity: 0 }}

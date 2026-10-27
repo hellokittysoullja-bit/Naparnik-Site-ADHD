@@ -69,3 +69,20 @@ test('длинная ссылка/слово вместо шага не даёт
   const width = page.viewportSize()!.width
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
 })
+
+test('ответ на лендинге: экран не прыгает, пока кот отвечает (сдвиги позже 0,5 с после тапа = CLS)', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __late: number }
+    w.__late = 0
+    new PerformanceObserver((l) => {
+      for (const e of l.getEntries() as unknown as { value: number; hadRecentInput: boolean }[]) if (!e.hadRecentInput) w.__late += e.value
+    }).observe({ type: 'layout-shift' })
+  })
+  await page.goto('/')
+  await page.waitForTimeout(3000)
+  await page.evaluate(() => ((window as unknown as { __late: number }).__late = 0))
+  await page.getByRole('button', { name: /откладываю/i }).click()
+  await expect(page.getByRole('link', { name: /Пойдём попробуем/ })).toBeVisible({ timeout: 8000 })
+  await page.waitForTimeout(800)
+  expect(await page.evaluate(() => (window as unknown as { __late: number }).__late)).toBeLessThan(0.01)
+})

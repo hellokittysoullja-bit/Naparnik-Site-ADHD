@@ -242,7 +242,44 @@ export async function recordStart(input: {
   const starts = await getStarts()
   starts.push(entry)
   write(KEYS.starts, starts)
+  keepMemory()
+  markHome(true)
   return entry
+}
+
+/**
+ * Просим браузер считать память сайта постоянной: без этого при нехватке места на устройстве Chrome/Edge/Safari
+ * вправе молча стереть localStorage целиком — остров, имя, переписку. Chrome и Safari решают сами, без окна
+ * (вовлечённость, установка на экран «Домой»); Firefox показал бы человеку непонятный запрос — там не спрашиваем.
+ * Зовём после старта: ценность уже заработана, и браузер видит живое использование.
+ */
+export function keepMemory(): void {
+  try {
+    const storage = typeof navigator !== 'undefined' ? navigator.storage : undefined
+    if (!storage?.persist || /Firefox\//.test(navigator.userAgent)) return
+    void storage.persisted().then((already) => (already ? true : storage.persist())).catch(() => {})
+  } catch {
+    /* нет API — живём как раньше */
+  }
+}
+
+/**
+ * Метка «уже свой» для сервера — как вход в аккаунт у Duolingo, только без аккаунта: в cookie лишь «1», никаких данных.
+ * По ней Vercel уводит с лендинга и знакомства на /app ещё ДО загрузки страницы (next.config.mjs, redirects) —
+ * вернувшийся на 3G не ждёт стили лендинга ради встроенного скрипта-перехода (components/returning-redirect.tsx —
+ * он остаётся запасным путём: Safari живёт с такими cookie 7 дней). Нет стартов — метку снимаем.
+ */
+const HOME_COOKIE = 'naparnik_home'
+export function markHome(hasStarts: boolean): void {
+  try {
+    if (typeof document === 'undefined') return
+    const has = document.cookie.split('; ').includes(`${HOME_COOKIE}=1`)
+    // продлеваем на каждом визите: 400 дней — предел, который браузеры дают cookie
+    if (hasStarts) document.cookie = `${HOME_COOKIE}=1; Max-Age=34560000; Path=/; SameSite=Lax; Secure`
+    else if (has) document.cookie = `${HOME_COOKIE}=; Max-Age=0; Path=/; SameSite=Lax; Secure`
+  } catch {
+    /* cookie запрещены — сработает встроенный скрипт */
+  }
 }
 
 export async function updateStartMinutes(id: string, minutes: number): Promise<void> {

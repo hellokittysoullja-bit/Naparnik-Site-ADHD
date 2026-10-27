@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { FirstRun } from "@/components/onboarding/first-run";
 import { preloadFonts } from "@/lib/font-preload";
+import { ReturningRedirect } from "@/components/returning-redirect";
 
 export const metadata: Metadata = {
   title: "Знакомство — Напарник",
@@ -9,5 +10,11 @@ export const metadata: Metadata = {
 
 export default function StartPage() {
   preloadFonts("manrope-700-cyr", "caveat-500-cyr"); // жирный заголовок и рукописный вопрос на первом экране
-  return <FirstRun />;
+  // у кого уже есть старты, знакомство не нужно: домой до первой отрисовки, а не кадр вопроса и потом переход
+  return (
+    <>
+      <ReturningRedirect />
+      <FirstRun />
+    </>
+  );
 }

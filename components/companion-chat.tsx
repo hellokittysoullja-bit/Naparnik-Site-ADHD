@@ -414,6 +414,14 @@ export function CompanionChat({
           changed = true
         }
       }
+      // метки ушедших из памяти реплик (храним последние 30) не копим: карта росла бы с каждым словом годами
+      const alive = new Set(messages.map((m) => m.id))
+      for (const id of Object.keys(next)) {
+        if (!alive.has(id)) {
+          delete next[id]
+          changed = true
+        }
+      }
       if (changed) saveChatTimestamps(next)
       return changed ? next : prev
     })

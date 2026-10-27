@@ -35,6 +35,17 @@ const nextConfig = {
   // (hooks/use-dictation.ts, Web Speech API) — реальная, проверенная рендером
   // рабочая фича продукта, глухой запрет `microphone=()` сломал бы её молча.
   // camera/geolocation продукт не использует нигде — им можно быть строгими.
+  // Вернувшийся (метка naparnik_home из lib/memory.ts, markHome) — сразу домой, до загрузки лендинга или знакомства.
+  // Редирект на уровне маршрутизации Vercel: без функции и без задержки; ?intro=1 — посмотреть лендинг всё равно
+  // (именно со значением: пустой ?intro маршрутизатор считает отсутствующим).
+  async redirects() {
+    const home = [{ type: 'cookie', key: 'naparnik_home', value: '1' }]
+    const intro = [{ type: 'query', key: 'intro' }]
+    return [
+      { source: '/', has: home, missing: intro, destination: '/app', permanent: false },
+      { source: '/app/start', has: home, destination: '/app', permanent: false },
+    ]
+  },
   async headers() {
     // Своя статика с версией содержимого в адресе (?v=хэш, scripts/asset-versions.mjs): шрифты и кот кэшируются
     // на год без перепроверки — повторный визит не переспрашивает сервер про ~20 файлов. Адреса без ?v не затронуты.
