@@ -16,7 +16,8 @@ const jetbrainsMono = JetBrains_Mono({
 
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://ai-rc-one.vercel.app"),
+  // адрес сайта для абсолютных ссылок превью (og:image); прежний ai-rc-one — старый домен
+  metadataBase: new URL("https://adhd-naparnik.vercel.app"),
   title: "Напарник — сдвинем твоё дело за 2 минуты",
   description:
     "Напарник сидит рядом, пока ты начинаешь, и растит остров из твоих стартов. Бесплатно, без регистрации, без стриков и стыда.",

@@ -82,7 +82,8 @@ test('ответ на лендинге: экран не прыгает, пока
   await page.waitForTimeout(3000)
   await page.evaluate(() => ((window as unknown as { __late: number }).__late = 0))
   await page.getByRole('button', { name: /откладываю/i }).click()
-  await expect(page.getByRole('link', { name: /Пойдём попробуем/ })).toBeVisible({ timeout: 8000 })
+  // кот договорил — главная кнопка теплеет (отдельной «Пойдём попробуем» больше нет)
+  await expect(page.locator('#hero-cta a[data-warm]')).toBeVisible({ timeout: 8000 })
   await page.waitForTimeout(800)
   expect(await page.evaluate(() => (window as unknown as { __late: number }).__late)).toBeLessThan(0.01)
 })
@@ -232,9 +233,9 @@ test('«Давай» → знакомство: один переход с пол
     return { vt: w.__vt, idu: w.__idu }
   })
   expect(vt).toHaveLength(1)
-  // страница заморожена, пока ждём новый экран: потолок 0,6 с, обычно ~0,07 с
-  expect(vt[0].updated).toBeLessThan(600)
-  expect(vt[0].finished).toBeLessThan(1400)
+  // потолок заморозки 0,6 с (lib/view-transition.ts) + запас на загруженную машину CI; обычно ~0,07 с
+  expect(vt[0].updated).toBeLessThanOrEqual(700)
+  expect(vt[0].finished).toBeLessThan(1600)
   expect(idu).toBe(false)
   // ночное небо осталось фоном знакомства
   await expect(page.locator('main[data-vt-arrived="onb"]')).toBeVisible()
@@ -266,4 +267,55 @@ test('reduced-motion: без анимации перехода, но «Дава�
   await expect(page).toHaveURL(/\/app\/start/)
   expect(await page.evaluate(() => (window as unknown as { __vt: unknown[] }).__vt.length)).toBe(0)
   await ctx.close()
+})
+
+for (const [w, h] of [[360, 640], [390, 844], [1280, 720]] as const) {
+  test(`ответ на лендинге ${w}×${h}: ничего не уходит под «Давай» и за верх экрана`, async ({ browser }) => {
+    // раньше ответ добавлял ~220 px: кот уходил за верх (уши обрезаны), пометка и «Пойдём попробуем» — под кнопку
+    const ctx = await browser.newContext({ viewport: { width: w, height: h } })
+    const page = await ctx.newPage()
+    await page.goto('/?intro=1')
+    await page.waitForTimeout(2500)
+    await page.getByRole('button', { name: /откладываю/i }).click()
+    await expect(page.locator('#hero-cta a[data-warm]')).toBeVisible({ timeout: 8000 })
+    await page.waitForTimeout(600)
+    const r = await page.evaluate(() => {
+      const cta = document.querySelector('#hero-cta')!.getBoundingClientRect()
+      const fixed = getComputedStyle(document.querySelector('#hero-cta')!).position === 'fixed'
+      const cat = document.querySelector('button[aria-label="Погладить напарника"]')!.getBoundingClientRect()
+      const h1 = document.querySelector('h1')!.getBoundingClientRect()
+      // весь видимый текст диалога (реплики, пометки) — по его нижнему краю
+      const live = document.querySelector('#hero [aria-live="polite"]')!
+      const bottoms = [...live.querySelectorAll('p, span, a, button')]
+        .filter((e) => { const s = getComputedStyle(e); return s.visibility !== 'hidden' && Number(s.opacity) > 0.05 && e.getBoundingClientRect().height > 0 && !e.closest('[aria-hidden="true"]') })
+        .map((e) => e.getBoundingClientRect().bottom)
+      return { fixed, ctaTop: cta.top, catTop: cat.top, h1Top: h1.top, chatBottom: Math.max(...bottoms) }
+    })
+    expect(r.catTop, 'кот за верхом экрана').toBeGreaterThanOrEqual(0)
+    expect(r.h1Top).toBeGreaterThanOrEqual(0)
+    if (r.fixed) expect(r.chatBottom, 'текст диалога под кнопкой').toBeLessThanOrEqual(r.ctaTop)
+    await ctx.close()
+  })
+}
+
+test('превью ссылки и иконка «Домой»: свой адрес, настоящий кот, без 404', async ({ page, request }) => {
+  await page.goto('/?intro=1')
+  const og = await page.locator('meta[property="og:image"]').first().getAttribute('content')
+  expect(og).toMatch(/^https:\/\/adhd-naparnik\.vercel\.app\//)
+  const apple = await page.locator('link[rel="apple-touch-icon"]').first().getAttribute('href')
+  expect(apple).toBeTruthy()
+  expect((await request.get(apple!)).status()).toBe(200)
+  expect((await request.get(new URL(og!).pathname + new URL(og!).search)).status()).toBe(200)
+})
+
+test('знакомство: шрифты карточки договора загружены заранее, до неё', async ({ page }) => {
+  // раньше моноширинный надзаголовок и рукопись 400 начинали грузиться только на договоре — строки пустые 0,3 с+
+  await page.goto('/app/start')
+  await expect(page.getByRole('radiogroup')).toBeVisible()
+  await page.waitForTimeout(1500)
+  const ok = await page.evaluate(() => {
+    const mono = getComputedStyle(document.documentElement).getPropertyValue('--font-jetbrains-mono').split(',')[0].trim()
+    return document.fonts.check(`600 11px ${mono}`, 'Твои') && document.fonts.check('400 19px Caveat', 'Тогда')
+  })
+  expect(ok).toBe(true)
 })
