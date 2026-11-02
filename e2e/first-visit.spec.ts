@@ -141,3 +141,16 @@ test('холм под котом не закрывает заголовок и �
     expect(part.z).toBeGreaterThan(result.knollZ)
   }
 })
+
+test('фон-видео: в разметке только ролик своей раскладки (Safari не учитывает media у <source> видео)', async ({ page }) => {
+  // На iPhone Safari брал первый <source> — широкий компьютерный кадр — и растягивал его на телефон (02.11).
+  for (const [width, height, variant] of [[390, 844, 'portrait'], [1440, 900, 'landscape']] as const) {
+    await page.setViewportSize({ width, height })
+    await page.goto('/')
+    const video = page.locator('video')
+    await expect(video).toHaveCount(1, { timeout: 10_000 })
+    const srcs = await video.locator('source').evaluateAll((els) => els.map((e) => e.getAttribute('src') ?? ''))
+    expect(srcs.length).toBeGreaterThan(0)
+    for (const s of srcs) expect(s).toContain(`night-${variant}.`)
+  }
+})
