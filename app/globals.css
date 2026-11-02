@@ -1459,8 +1459,12 @@ html.hero-wait .grain-hero {
 ::view-transition-new(nap-cat) { animation-duration: 560ms; }
 
 ::view-transition-group(nap-cta) { z-index: 2; animation-duration: 380ms; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
-::view-transition-old(nap-cta),
-::view-transition-new(nap-cta) { animation-duration: 260ms; }
+/* кнопка — «сквозь»: старая надпись уходит за 90 мс, новая проявляется после неё. При одновременном
+   кроссфейде 260 мс «Давай» и «Продолжить» ~150 мс читались наложенными друг на друга (аудит 02.11) */
+::view-transition-old(nap-cta) { animation: 90ms linear both vt-fade-out; }
+::view-transition-new(nap-cta) { animation: 160ms ease-out 90ms both vt-fade-in; }
+@keyframes vt-fade-out { to { opacity: 0; } }
+@keyframes vt-fade-in { from { opacity: 0; } }
 
 ::view-transition-old(nap-landing),
 ::view-transition-old(nap-onb) { animation: 180ms ease-out both vt-leave; }

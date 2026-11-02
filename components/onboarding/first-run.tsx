@@ -134,6 +134,17 @@ export function FirstRun() {
   }
 
   const step = state.step
+  // Шрифты карточки договора (моноширинный надзаголовок и рукопись 400) больше нигде в знакомстве не нужны и
+  // начинали грузиться только на ней: 0,3 с (на 3G — секунды) строки стояли пустыми (font-display: block).
+  // Просим браузер загрузить их заранее, пока человек отвечает на вопросы (аудит 02.11).
+  useEffect(() => {
+    const fonts = document.fonts
+    if (!fonts?.load) return
+    const mono = getComputedStyle(document.documentElement).getPropertyValue('--font-jetbrains-mono').split(',')[0].trim()
+    const sample = 'Твои первые минуты'
+    if (mono) void fonts.load(`600 11px ${mono}`, sample).catch(() => {})
+    void fonts.load('400 19px Caveat', sample).catch(() => {})
+  }, [])
   // экран старта загружаем заранее, пока человек читает договор: переход после удержания не ждёт сеть
   useEffect(() => {
     if (step === LAST_STEP) router.prefetch('/app/session')

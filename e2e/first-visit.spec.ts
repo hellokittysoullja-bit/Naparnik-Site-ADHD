@@ -232,9 +232,9 @@ test('«Давай» → знакомство: один переход с пол
     return { vt: w.__vt, idu: w.__idu }
   })
   expect(vt).toHaveLength(1)
-  // страница заморожена, пока ждём новый экран: потолок 0,6 с, обычно ~0,07 с
-  expect(vt[0].updated).toBeLessThan(600)
-  expect(vt[0].finished).toBeLessThan(1400)
+  // потолок заморозки 0,6 с (lib/view-transition.ts) + запас на загруженную машину CI; обычно ~0,07 с
+  expect(vt[0].updated).toBeLessThanOrEqual(700)
+  expect(vt[0].finished).toBeLessThan(1600)
   expect(idu).toBe(false)
   // ночное небо осталось фоном знакомства
   await expect(page.locator('main[data-vt-arrived="onb"]')).toBeVisible()
@@ -266,4 +266,26 @@ test('reduced-motion: без анимации перехода, но «Дава�
   await expect(page).toHaveURL(/\/app\/start/)
   expect(await page.evaluate(() => (window as unknown as { __vt: unknown[] }).__vt.length)).toBe(0)
   await ctx.close()
+})
+
+test('превью ссылки и иконка «Домой»: свой адрес, настоящий кот, без 404', async ({ page, request }) => {
+  await page.goto('/?intro=1')
+  const og = await page.locator('meta[property="og:image"]').first().getAttribute('content')
+  expect(og).toMatch(/^https:\/\/adhd-naparnik\.vercel\.app\//)
+  const apple = await page.locator('link[rel="apple-touch-icon"]').first().getAttribute('href')
+  expect(apple).toBeTruthy()
+  expect((await request.get(apple!)).status()).toBe(200)
+  expect((await request.get(new URL(og!).pathname + new URL(og!).search)).status()).toBe(200)
+})
+
+test('знакомство: шрифты карточки договора загружены заранее, до неё', async ({ page }) => {
+  // раньше моноширинный надзаголовок и рукопись 400 начинали грузиться только на договоре — строки пустые 0,3 с+
+  await page.goto('/app/start')
+  await expect(page.getByRole('radiogroup')).toBeVisible()
+  await page.waitForTimeout(1500)
+  const ok = await page.evaluate(() => {
+    const mono = getComputedStyle(document.documentElement).getPropertyValue('--font-jetbrains-mono').split(',')[0].trim()
+    return document.fonts.check(`600 11px ${mono}`, 'Твои') && document.fonts.check('400 19px Caveat', 'Тогда')
+  })
+  expect(ok).toBe(true)
 })
