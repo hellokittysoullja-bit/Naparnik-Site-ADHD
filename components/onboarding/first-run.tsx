@@ -111,14 +111,7 @@ export function FirstRun() {
     }
   }, [router])
 
-  // Нижний таб-бар прячем: онбординг — один путь, без боковых выходов
-  // (тот же механизм, что у иммерсивной сессии).
-  useEffect(() => {
-    document.body.dataset.focusImmersive = 'true'
-    return () => {
-      delete document.body.dataset.focusImmersive
-    }
-  }, [])
+  // Нижнего меню на знакомстве нет: AppNav не рисует его на /app/start (components/app-nav.tsx).
 
   function update(patch: Partial<OnboardingState>) {
     setState((s) => {
@@ -185,6 +178,9 @@ export function FirstRun() {
   function begin() {
     const label = chosenStep || steps[0]
     setLeaving(true)
+    // меню прячем ещё до перехода: страница Фокуса монтируется не в том же кадре, что новый адрес, и меню успевало
+    // мелькнуть между знакомством и стартом. Дальше флагом владеет сессия; на других экранах его снимает AppNav.
+    document.body.dataset.focusImmersive = 'true'
     update({ step: LAST_STEP, firstStep: label })
     const params = new URLSearchParams({
       step: label,

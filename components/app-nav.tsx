@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
@@ -51,6 +51,16 @@ export function AppNav() {
     }
     getUnseenWorldCount().then((n) => setWorldUnseen(n > 0));
   }, [pathname]);
+
+  // Флаг иммерсивного режима ставит только Фокус (и знакомство перед переходом в него); на любом другом экране он
+  // устаревший — снимаем до отрисовки, чтобы меню не пропало навсегда после сорванного перехода
+  useLayoutEffect(() => {
+    if (!pathname.startsWith("/app/session")) delete document.body.dataset.focusImmersive;
+  }, [pathname]);
+
+  // Знакомство — один путь без боковых выходов: меню нет уже в HTML. Раньше его прятал эффект знакомства после
+  // первой отрисовки, и «Дом/Фокус/Мир» мелькали внизу при каждом входе с лендинга (02.11).
+  if (pathname === "/app/start") return null;
 
   return (
     <nav

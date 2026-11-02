@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { motion, useReducedMotion } from 'motion/react'
@@ -148,7 +148,9 @@ export function FocusSession() {
       ? prefilledDuration
       : 25
 
-  const [phase, setPhase] = useState<Phase>('setup')
+  // Автостарт из знакомства сразу открывается хореографией старта: раньше до ответа памяти (getActiveSession) на
+  // ~0,15 с мелькал экран выбора шага с «Шаг уже выбран» — второй «точно?», которого быть не должно (02.11)
+  const [phase, setPhase] = useState<Phase>(autoStart ? 'starting' : 'setup')
   const [task, setTask] = useState(prefilledStep)
 
   // Имя и число прошлых сессий — тот же экран не должен объяснять
@@ -260,7 +262,8 @@ export function FocusSession() {
   // это его собственный таймер. На фазе 'done' (награда + план) навигация
   // возвращается — уйти на выросший остров как раз желанно.
   // Нав живёт в layout, фаза — здесь, поэтому связь через data-атрибут body.
-  useEffect(() => {
+  // useLayoutEffect: атрибут должен стоять до первой отрисовки — иначе при входе прямо в старт меню мелькает
+  useLayoutEffect(() => {
     const immersive = phase === 'starting' || phase === 'running'
     if (immersive) document.body.dataset.focusImmersive = 'true'
     else delete document.body.dataset.focusImmersive
