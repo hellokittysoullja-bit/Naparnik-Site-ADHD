@@ -117,7 +117,7 @@ export function HoldToStart({ onComplete, busy }: { onComplete: () => void; busy
         aria-label="Начать первую сессию"
         className="btn-chunky btn-hold block w-full touch-none select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
-        <span className="btn-face relative flex h-[52px] items-center justify-center gap-2 overflow-hidden rounded-[16px] bg-primary px-6 text-[15px] font-bold uppercase tracking-[0.06em] text-primary-foreground">
+        <span className="btn-face relative flex h-[52px] items-center justify-center gap-2 overflow-hidden rounded-[16px] bg-primary px-6 text-[17px] font-bold tracking-[-0.01em] text-primary-foreground">
           {/* Заливка удержания: светлый слой поверх лица, scaleX — без reflow */}
           <span
             aria-hidden="true"

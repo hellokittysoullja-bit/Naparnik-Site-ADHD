@@ -472,7 +472,7 @@ export function Hero() {
                 className="btn-chunky block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:w-auto"
               >
                 {/* btn-sheen — один едва заметный блик при появлении (app/globals.css), без повтора */}
-                <span className="btn-face btn-sheen btn-light flex h-[52px] items-center justify-center gap-2 rounded-[16px] bg-primary px-6 text-[15px] font-bold uppercase tracking-[0.06em] text-primary-foreground lg:px-10">
+                <span className="btn-face btn-sheen btn-light flex h-[52px] items-center justify-center gap-2 rounded-[16px] bg-primary px-6 text-[17px] font-bold tracking-[-0.01em] text-primary-foreground lg:px-10">
                   {navigating ? (
                     <>
                       <Loader2 className="size-4 animate-spin" aria-hidden="true" />
