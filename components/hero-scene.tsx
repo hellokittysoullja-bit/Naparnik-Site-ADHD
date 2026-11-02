@@ -7,27 +7,25 @@ const WARM = "oklch(0.75 0.15 65)";
  * на любом вьюпорте + мягкая тень под лапами (дышит в противофазе).
  */
 /**
- * Холм под котом на первом экране (02.11): тёмная земля, макушку подсвечивает тепло
- * огонька; края растворяются маской в грядах NightWorld (components/landing/night-world.tsx).
+ * Холм под котом на первом экране (02.11): тёмная земля, макушку подсвечивает тепло огонька,
+ * края растворяются в грядах сцены. Растворение — прозрачность в самой заливке, а не CSS mask-image:
+ * маска выносит элемент в отдельный слой, и Safari на iPhone при нагрузке терял её — холм
+ * рисовался прямоугольником поверх текста.
  */
 export function Knoll({ className }: { className?: string }) {
   const hill = "M0 500 L0 150 Q150 70 300 30 Q400 6 500 30 Q650 70 800 150 L800 500 Z";
+  // эллипс 70 % × 100 % от верхнего центра (rx 560, ry 500): земля светлее у макушки,
+  // плотная до 55 %, к краю растворяется в ноль — прозрачность прямо в заливке, без масок
+  const ellipse = "translate(400 0) scale(1.12 1) translate(-400 0)";
   return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 800 500"
-      className={className}
-      style={{
-        maskImage: "radial-gradient(ellipse 70% 100% at 50% 0%, black 55%, transparent 100%)",
-        WebkitMaskImage: "radial-gradient(ellipse 70% 100% at 50% 0%, black 55%, transparent 100%)",
-      }}
-    >
+    <svg aria-hidden="true" viewBox="0 0 800 500" className={className}>
       <defs>
-        <linearGradient id="knoll-ground" x1="0" y1="0" x2="0" y2="1">
+        <radialGradient id="knoll-ground" gradientUnits="userSpaceOnUse" cx="400" cy="0" r="500" gradientTransform={ellipse}>
           <stop offset="0%" stopColor="oklch(0.2 0.03 160)" />
           <stop offset="18%" stopColor="oklch(0.15 0.024 165)" />
-          <stop offset="100%" stopColor="oklch(0.13 0.02 170)" />
-        </linearGradient>
+          <stop offset="55%" stopColor="oklch(0.13 0.02 170)" />
+          <stop offset="100%" stopColor="oklch(0.13 0.02 170)" stopOpacity="0" />
+        </radialGradient>
         <radialGradient id="knoll-warm" cx="0.5" cy="0.02" r="0.32">
           <stop offset="0%" stopColor={WARM} stopOpacity="0.28" />
           <stop offset="100%" stopColor={WARM} stopOpacity="0" />
