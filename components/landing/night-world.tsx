@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type CSSProperties, type ReactNode } from "react";
 import {
   motion,
   useReducedMotion,
@@ -55,13 +55,15 @@ function ridge(seed: number, base: number, amp: number, peaks: number) {
           0.15 * Math.sin(t * peaks * 3.1 + ph[2]));
     pts.push([(i / N) * W, y]);
   }
-  let d = `M0 ${H} L0 ${pts[0][1].toFixed(1)}`;
+  // целые координаты: на ширине 1150–1600 px разница меньше пикселя, а HTML короче
+  const n = (v: number) => Math.round(v);
+  let d = `M0 ${H}V${n(pts[0][1])}`;
   for (let i = 1; i < pts.length; i++) {
     const [x0, y0] = pts[i - 1];
     const [x1, y1] = pts[i];
-    d += ` Q${x0.toFixed(1)} ${y0.toFixed(1)} ${((x0 + x1) / 2).toFixed(1)} ${((y0 + y1) / 2).toFixed(1)}`;
+    d += `Q${n(x0)} ${n(y0)} ${n((x0 + x1) / 2)} ${n((y0 + y1) / 2)}`;
   }
-  d += ` L${W} ${pts[pts.length - 1][1].toFixed(1)} L${W} ${H} Z`;
+  d += `L${W} ${n(pts[pts.length - 1][1])}V${H}Z`;
   return { d, pts };
 }
 
@@ -74,12 +76,10 @@ function yAt(pts: Pt[], x: number) {
 
 /** Ель силуэтом: три яруса и ствол */
 function pine(cx: number, base: number, h: number, w: number) {
-  return (
-    `M${cx} ${base - h} L${cx + w * 0.55} ${base - h * 0.5} L${cx + w * 0.3} ${base - h * 0.5} ` +
-    `L${cx + w * 0.8} ${base - h * 0.12} L${cx + w * 0.15} ${base - h * 0.12} L${cx + w * 0.15} ${base} ` +
-    `L${cx - w * 0.15} ${base} L${cx - w * 0.15} ${base - h * 0.12} L${cx - w * 0.8} ${base - h * 0.12} ` +
-    `L${cx - w * 0.3} ${base - h * 0.5} L${cx - w * 0.55} ${base - h * 0.5} Z`
-  );
+  const r = Math.round;
+  const a = r(w * 0.55), b = r(h * 0.5), c = r(w * 0.25), d = r(w * 0.5), e = r(h * 0.38);
+  const f = r(w * 0.65), g = r(h * 0.12), k = r(w * 0.3);
+  return `M${r(cx)} ${r(base - h)}l${a} ${b}h${-c}l${d} ${e}h${-f}v${g}h${-k}v${-g}h${-f}l${d} ${-e}h${-c}z`;
 }
 
 const FAR = ridge(7, 230, 150, 3);
@@ -130,6 +130,21 @@ const FRONT_PINES = (() => {
 
 type Star = { x: number; y: number; r: number; a: number; tw?: number };
 
+/** Неподвижные звёзды в корзинах размер × яркость: один path на корзину вместо сотни circle */
+function starBuckets(stars: Star[]) {
+  const map = new Map<string, { w: number; a: number; d: string }>();
+  for (const s of stars) {
+    if (s.tw) continue;
+    const w = Math.round(s.r * 2 * 2) / 2;
+    const a = Math.round(s.a * 5) / 5;
+    const key = `${w}|${a}`;
+    const b = map.get(key) ?? { w, a, d: "" };
+    b.d += `M${Math.round(s.x)} ${Math.round(s.y)}h0`;
+    map.set(key, b);
+  }
+  return [...map.values()];
+}
+
 // общий рассев + плотная полоса Млечного Пути
 const STARS: Star[] = (() => {
   const r = rng(5);
@@ -154,6 +169,8 @@ const STARS: Star[] = (() => {
   }
   return s;
 })();
+const STILL = starBuckets(STARS);
+const TWINKLE = STARS.filter((s): s is Star & { tw: number } => s.tw !== undefined);
 
 function Ridge({
   className,
@@ -224,53 +241,35 @@ export function NightWorld() {
           <ellipse cx="420" cy="190" rx="700" ry="110" fill="url(#nw-milky)" />
           <ellipse cx="470" cy="170" rx="420" ry="46" fill="url(#nw-milky)" />
         </g>
-        <g fill="oklch(0.95 0.015 240)">
-          {STARS.map((s, i) => (
-            <circle
-              key={i}
-              cx={s.x.toFixed(1)}
-              cy={s.y.toFixed(1)}
-              r={s.r.toFixed(2)}
-              opacity={s.a.toFixed(2)}
-            >
-              {s.tw && (
-                <animate
-                  attributeName="opacity"
-                  values={`${(s.a * 0.4).toFixed(2)};${s.a.toFixed(2)};${(s.a * 0.4).toFixed(2)}`}
-                  dur={`${s.tw.toFixed(1)}s`}
-                  repeatCount="indefinite"
-                />
-              )}
-            </circle>
+        <g stroke="oklch(0.95 0.015 240)" strokeLinecap="round">
+          {STILL.map((b) => (
+            <path key={`${b.w}|${b.a}`} d={b.d} strokeWidth={b.w} opacity={b.a} />
           ))}
         </g>
-        {/* падающая звезда — редкая */}
-        <g opacity="0">
-          <line
-            x1="0"
-            y1="0"
-            x2="60"
-            y2="34"
-            stroke="oklch(0.95 0.015 240)"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-          />
-          <animateTransform
-            attributeName="transform"
-            type="translate"
-            values="380 80; 200 182"
-            dur="13s"
-            repeatCount="indefinite"
-          />
-          <animate
-            attributeName="opacity"
-            values="0;0;0.8;0;0"
-            keyTimes="0;0.6;0.63;0.68;1"
-            dur="13s"
-            repeatCount="indefinite"
-          />
-        </g>
       </motion.svg>
+      {/* Мерцание и падающая звезда — HTML-элементы с CSS-анимацией opacity/transform: их считает
+          композитор, небо не перерисовывается каждый кадр (SMIL внутри SVG перерисовывал весь
+          слой неба: −6 % занятости главного потока в покое на слабом телефоне). */}
+      <motion.div className="absolute inset-0" style={{ x: sky }}>
+        {TWINKLE.map((s, i) => (
+          <span
+            key={i}
+            className="nw-twinkle"
+            style={
+              {
+                left: `calc(50% + ${(s.x - 500).toFixed(1)} * max(0.1vw, 0.1dvh))`,
+                top: `calc(${s.y.toFixed(1)} * max(0.1vw, 0.1dvh))`,
+                width: `calc(${(s.r * 2).toFixed(2)} * max(0.1vw, 0.1dvh))`,
+                height: `calc(${(s.r * 2).toFixed(2)} * max(0.1vw, 0.1dvh))`,
+                "--lo": (s.a * 0.4).toFixed(2),
+                "--hi": s.a.toFixed(2),
+                animationDuration: `${s.tw.toFixed(1)}s`,
+              } as CSSProperties
+            }
+          />
+        ))}
+        <span className="nw-meteor" />
+      </motion.div>
 
       <Ridge className="top-[calc(48dvh-230px)] lg:top-[calc(55dvh-230px)]" x={far}>
         <defs>

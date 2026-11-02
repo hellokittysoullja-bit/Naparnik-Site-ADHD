@@ -108,7 +108,9 @@ function TypedLine({ text, onDone, paused = false }: { text: string; onDone?: ()
   const startDelay = 0.05;
   const step = 0.045;
   const onDoneRef = useRef(onDone);
-  onDoneRef.current = onDone;
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
   const firedRef = useRef(false);
   const [skipped, setSkipped] = useState(false);
 
@@ -205,9 +207,8 @@ export function Hero() {
   const [navigating, setNavigating] = useState(false);
   const reduceMotion = useReducedMotion();
 
-  // А6 · Глубина за курсором (десктоп): слои сцены едва смещаются за
-  // мышью с ленивой пружиной — кадр получает объём (приём tvOS/дорогих
-  // лендингов). Луна дальше — двигается сильнее (обратный параллакс дали).
+  // А6 · Глубина за курсором (десктоп): луна едва смещается за мышью с ленивой
+  // пружиной; гряды ночного мира сдвигаются каждая по-своему внутри NightWorld.
   const moonX = useSpring(0, SPRING_PARALLAX);
   const moonY = useSpring(0, SPRING_PARALLAX);
   useEffect(() => {
@@ -460,7 +461,7 @@ export function Hero() {
                   setCelebrate(true);
                 }}
                 onMouseEnter={() => setExpression("happy")}
-                onMouseLeave={() => setExpression("calm")}
+                onMouseLeave={() => setExpression(answered ? "happy" : "calm")}
                 onPointerMove={(e: React.PointerEvent<HTMLAnchorElement>) => {
                   // точка блика под курсором (.btn-light в app/globals.css)
                   const r = e.currentTarget.getBoundingClientRect();
