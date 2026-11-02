@@ -27,11 +27,11 @@ export const ASSET_VERSIONS: Record<string, string> = {
   "/mascot/doll/rig.json": "7be893fcd0",
   "/mascot/doll/sleep.webp": "e7d4a9ffe4",
   "/mascot/doll/tail.webp": "f2042ed71b",
-  "/scene/night-landscape.mp4": "a9ec8791d5",
-  "/scene/night-landscape.webm": "bd63314c2d",
-  "/scene/night-landscape.webp": "db2d753168",
-  "/scene/night-portrait.mp4": "9bb5709ee7",
-  "/scene/night-portrait.webm": "6a3387037b",
+  "/scene/night-landscape.mp4": "3d86bc82f1",
+  "/scene/night-landscape.webm": "367beb6bb3",
+  "/scene/night-landscape.webp": "fa97fa4fe1",
+  "/scene/night-portrait.mp4": "0fc745da5f",
+  "/scene/night-portrait.webm": "48fb75e690",
   "/scene/night-portrait.webp": "b26916cf0a"
 };
 

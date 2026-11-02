@@ -106,10 +106,12 @@ export function NightScene({ children }: { children?: ReactNode }) {
             onPlaying={() => setPlaying(true)}
             className={`absolute inset-0 size-full object-cover transition-opacity duration-500 ${playing ? "opacity-100" : "opacity-0"}`}
           >
-            <source media={WIDE} src={src("landscape", "webm")} type="video/webm" />
-            <source media={WIDE} src={src("landscape", "mp4")} type="video/mp4" />
-            <source src={src("portrait", "webm")} type="video/webm" />
-            <source src={src("portrait", "mp4")} type="video/mp4" />
+            {/* точный кодек в type: браузер выбирает файл, который реально декодирует (H.264 High 4.0/4.2 —
+                любой iPhone с 6s), а не спотыкается на первом подходящем по контейнеру */}
+            <source media={WIDE} src={src("landscape", "webm")} type='video/webm; codecs="vp9"' />
+            <source media={WIDE} src={src("landscape", "mp4")} type='video/mp4; codecs="avc1.64002A"' />
+            <source src={src("portrait", "webm")} type='video/webm; codecs="vp9"' />
+            <source src={src("portrait", "mp4")} type='video/mp4; codecs="avc1.640028"' />
           </video>
         )}
       </div>
