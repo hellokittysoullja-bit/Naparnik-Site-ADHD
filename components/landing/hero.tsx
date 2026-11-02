@@ -7,14 +7,13 @@ import {
   AnimatePresence,
   LayoutGroup,
   useReducedMotion,
-  useSpring,
 } from "motion/react";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { MascotDoll as MascotSvg } from "@/components/mascot-doll";
 import { type MascotExpression } from "@/components/mascot-doll";
 import { GroundPool, Knoll, Moon } from "@/components/hero-scene";
-import { NightWorld } from "./night-world";
-import { SPRING_PARALLAX, SPRING_SNAPPY } from "@/lib/motion";
+import { NightScene } from "./night-scene";
+import { SPRING_SNAPPY } from "@/lib/motion";
 import { playPurr } from "@/lib/reward-sound";
 
 /**
@@ -205,24 +204,7 @@ export function Hero() {
   // обработчике: disabled на Link-рендере base-ui ничего не даёт
   // (:disabled — псевдокласс нативных форм, у <a> его не бывает).
   const [navigating, setNavigating] = useState(false);
-  const reduceMotion = useReducedMotion();
 
-  // А6 · Глубина за курсором (десктоп): луна едва смещается за мышью с ленивой
-  // пружиной; гряды ночного мира сдвигаются каждая по-своему внутри NightWorld.
-  const moonX = useSpring(0, SPRING_PARALLAX);
-  const moonY = useSpring(0, SPRING_PARALLAX);
-  useEffect(() => {
-    if (reduceMotion) return;
-    if (!window.matchMedia("(pointer: fine)").matches) return;
-    const onMove = (e: PointerEvent) => {
-      const nx = e.clientX / window.innerWidth - 0.5;
-      const ny = e.clientY / window.innerHeight - 0.5;
-      moonX.set(nx * -15);
-      moonY.set(ny * -9);
-    };
-    window.addEventListener("pointermove", onMove, { passive: true });
-    return () => window.removeEventListener("pointermove", onMove);
-  }, [reduceMotion, moonX, moonY]);
 
   // Э2 · Погладить кота: ни одно касание экрана не должно быть мёртвым.
   // Тап → искренний восторг (искры, широкие зрачки, виляние хвостом) +
@@ -311,17 +293,13 @@ export function Hero() {
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-dvh"
       >
-        {/* Э6 · Параллакс: при скролле небо отстаёт от контента (сцена
-            +10svh, луна +16svh к концу первого экрана) — мир глубже экрана.
-            Только браузеры со scroll-driven animations, только motion-safe */}
-        <div className="parallax-scene h-full w-full">
-          {/* Ночной мир: небо, Млечный Путь, четыре гряды; глубина за мышью — внутри */}
-          <NightWorld />
-        </div>
-        {/* Луна привязана к углу вьюпорта, а не к slice-сцене: видна целиком
-            на любом экране, никогда не сталкивается с котом и текстом */}
-        <div className="parallax-moon absolute right-1 top-6 w-28 md:right-[5%] md:top-[7%] md:w-32">
-          <motion.div style={{ x: moonX, y: moonY }} className="relative">
+        {/* Ночной мир — готовое видео (components/landing/night-scene.tsx). Луна — отдельно, привязана
+            к углу вьюпорта: видна целиком на любом экране, никогда не сталкивается с котом и текстом */}
+        <NightScene>
+          <div
+            className="nw-depth absolute right-1 top-6 w-28 md:right-[5%] md:top-[7%] md:w-32"
+            style={{ "--k": "-15px", "--ky": "-9px" } as CSSProperties}
+          >
           {/* А5 · Пылинки в лунном свете: живут в viewport-слое (урок
               светлячков — не в slice-сцене), дрейф на пороге различимости */}
           <span className="mote absolute left-[16%] top-[64%] size-[3px] rounded-full bg-[oklch(0.9_0.03_95)] opacity-[0.17]" />
@@ -341,8 +319,8 @@ export function Hero() {
             </g>
           </svg>
           <Moon className="w-full" />
-          </motion.div>
-        </div>
+          </div>
+        </NightScene>
       </div>
 
       {/* Продолжение земли под сценой: на мобильном hero длиннее 100svh,
@@ -503,7 +481,7 @@ export function Hero() {
             >
               <div
                 data-flare={celebrate ? "" : undefined}
-                className="hearth-flare hearth-breathe h-full w-full rounded-full bg-[radial-gradient(ellipse_at_center,oklch(0.72_0.17_55/0.22)_0%,transparent_70%)] blur-2xl" />
+                className="hearth-flare hearth-breathe h-full w-full rounded-full bg-[radial-gradient(ellipse_at_center,oklch(0.72_0.17_55/0.2)_0%,oklch(0.72_0.17_55/0.13)_28%,oklch(0.72_0.17_55/0.05)_52%,transparent_72%)]" />
             </div>
             {/* Э2 · Кот гладится: кнопка без визуального хрома, отклик —
                 сам персонаж (восторг + хаптика) */}

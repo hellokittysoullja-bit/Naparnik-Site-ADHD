@@ -1029,70 +1029,17 @@ body[data-focus-immersive] nav[aria-label="Основная навигация"]
   filter: brightness(1.8);
 }
 
-/* Дымка между грядами ночного мира (components/landing/night-world.tsx): медленный дрейф 44–60 с */
-@keyframes mist-drift {
-  from { transform: translateX(-4%); }
-  to { transform: translateX(4%); }
-}
-.mist-drift { animation: mist-drift 60s ease-in-out infinite alternate; }
-/* Мерцающие звёзды и падающая звезда ночного мира: только opacity/transform — работа композитора.
-   Единица неба = max(0.1vw, 0.1dvh) (SVG неба — slice 1000×1000 по ширине или высоте экрана). */
-@keyframes nw-twinkle {
-  0%, 100% { opacity: var(--lo); }
-  50% { opacity: var(--hi); }
-}
-.nw-twinkle {
-  position: absolute;
-  border-radius: 9999px;
-  background: oklch(0.95 0.015 240);
-  opacity: var(--hi);
-  translate: -50% -50%;
-  animation: nw-twinkle 4s ease-in-out infinite;
-}
-@keyframes nw-meteor {
-  0%, 60% { opacity: 0; transform: translate(0, 0) rotate(150.5deg); }
-  63% { opacity: 0.8; }
-  68%, 100% { opacity: 0; transform: translate(calc(-180 * max(0.1vw, 0.1dvh)), calc(102 * max(0.1vw, 0.1dvh))) rotate(150.5deg); }
-}
-.nw-meteor {
-  position: absolute;
-  left: calc(50% - 120 * max(0.1vw, 0.1dvh));
-  top: calc(80 * max(0.1vw, 0.1dvh));
-  width: calc(69 * max(0.1vw, 0.1dvh));
-  height: 1.6px;
-  border-radius: 9999px;
-  background: linear-gradient(to right, oklch(0.95 0.015 240 / 0), oklch(0.95 0.015 240));
-  transform-origin: 0 50%;
-  opacity: 0;
-  animation: nw-meteor 13s linear infinite;
-}
-.mist-drift-2 { animation-duration: 44s; animation-direction: alternate-reverse; }
-@media (prefers-reduced-motion: reduce) {
-  .mist-drift, .nw-twinkle, .nw-meteor { animation: none; }
-}
-
-/* Э6 · Скролл-параллакс сцены: при уходе вниз небо отстаёт от контента —
-   мир становится глубже экрана. Прогрессивное улучшение: только браузеры
-   с scroll-driven animations, только при разрешённом движении. */
-@supports (animation-timeline: scroll()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .parallax-scene {
-      animation: parallax-scene linear both;
-      animation-timeline: scroll();
-      animation-range: 0 130svh;
-    }
-    .parallax-moon {
-      animation: parallax-moon linear both;
-      animation-timeline: scroll();
-      animation-range: 0 130svh;
-    }
+/* Глубина за мышью на первом экране (components/landing/night-scene.tsx): корень сцены несёт
+   --px/--py (−0.5…0.5), слой — свои --k/--ky. Только мышь и только без reduced-motion: на тач-экранах
+   сдвига нет, слой не выносится в отдельную текстуру. nw-overscan прячет кромки при сдвиге. */
+@media (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .nw-depth {
+    translate: calc(var(--px, 0) * var(--k, 0px)) calc(var(--py, 0) * var(--ky, 0px));
+    transition: translate 900ms cubic-bezier(0.22, 1, 0.36, 1);
   }
-}
-@keyframes parallax-scene {
-  to { transform: translateY(10svh); }
-}
-@keyframes parallax-moon {
-  to { transform: translateY(16svh); }
+  .nw-overscan {
+    inset: -12px;
+  }
 }
 
 /* Э7 · Облако у луны: едва заметный силуэт, дрейф 60s. Небо дышит,

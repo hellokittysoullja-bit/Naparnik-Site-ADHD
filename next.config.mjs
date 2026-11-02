@@ -57,6 +57,7 @@ const nextConfig = {
     return [
       immutable('/fonts/:path*'),
       immutable('/mascot/:path*'),
+      immutable('/scene/:path*'),
       {
         source: '/:path*',
         headers: [

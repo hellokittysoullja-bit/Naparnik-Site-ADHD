@@ -26,7 +26,13 @@ export const ASSET_VERSIONS: Record<string, string> = {
   "/mascot/doll/pupil-r.webp": "29df3aebb3",
   "/mascot/doll/rig.json": "7be893fcd0",
   "/mascot/doll/sleep.webp": "e7d4a9ffe4",
-  "/mascot/doll/tail.webp": "f2042ed71b"
+  "/mascot/doll/tail.webp": "f2042ed71b",
+  "/scene/night-landscape.mp4": "a9ec8791d5",
+  "/scene/night-landscape.webm": "bd63314c2d",
+  "/scene/night-landscape.webp": "db2d753168",
+  "/scene/night-portrait.mp4": "9bb5709ee7",
+  "/scene/night-portrait.webm": "6a3387037b",
+  "/scene/night-portrait.webp": "b26916cf0a"
 };
 
 /** Адрес своей статики с версией содержимого: такой адрес кэшируется на год (next.config.mjs). */
