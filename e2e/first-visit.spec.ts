@@ -195,3 +195,75 @@ test('знакомство без JS: нижнего меню нет уже в H
   await expect(page.locator('nav[aria-label="Основная навигация"]')).toHaveCount(0)
   await ctx.close()
 })
+
+// Переходы экранов (lib/view-transition.ts): кот перелетает, фон перетекает, «Иду…» — только на медленной сети
+function recordTransitions() {
+  const w = window as unknown as { __vt: { start: number; updated?: number; finished?: number }[]; __idu: boolean }
+  w.__vt = []
+  w.__idu = false
+  const d = document as Document & { startViewTransition?: (cb: () => Promise<void>) => { updateCallbackDone: Promise<void>; finished: Promise<void> } }
+  const orig = d.startViewTransition?.bind(document)
+  if (orig) {
+    d.startViewTransition = (cb) => {
+      const rec: { start: number; updated?: number; finished?: number } = { start: performance.now() }
+      w.__vt.push(rec)
+      const vt = orig(cb)
+      vt.updateCallbackDone.then(() => (rec.updated = performance.now() - rec.start))
+      vt.finished.then(() => (rec.finished = performance.now() - rec.start))
+      return vt
+    }
+  }
+  const tick = () => {
+    if (document.querySelector('#hero-cta')?.textContent?.includes('Иду')) w.__idu = true
+    requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+}
+
+test('«Давай» → знакомство: один переход с полётом кота, кадр не застывает, «Иду…» не мелькает', async ({ page }) => {
+  await page.addInitScript(recordTransitions)
+  await page.goto('/?intro=1', { waitUntil: 'load' })
+  await page.waitForTimeout(1500) // маршрут знакомства предзагружен ссылкой
+  await page.getByRole('link', { name: /Давай/ }).first().click()
+  await expect(page).toHaveURL(/\/app\/start/)
+  await page.waitForTimeout(1200)
+  const { vt, idu } = await page.evaluate(() => {
+    const w = window as unknown as { __vt: { updated?: number; finished?: number }[]; __idu: boolean }
+    return { vt: w.__vt, idu: w.__idu }
+  })
+  expect(vt).toHaveLength(1)
+  // страница заморожена, пока ждём новый экран: потолок 0,6 с, обычно ~0,07 с
+  expect(vt[0].updated).toBeLessThan(600)
+  expect(vt[0].finished).toBeLessThan(1400)
+  expect(idu).toBe(false)
+  // ночное небо осталось фоном знакомства
+  await expect(page.locator('main[data-vt-arrived="onb"]')).toBeVisible()
+})
+
+test('знакомство: кот — один и тот же на всех шагах (не пересоздаётся), имя перехода у одного элемента', async ({ page }) => {
+  await page.goto('/app/start')
+  await expect(page.getByRole('radiogroup')).toBeVisible()
+  await page.evaluate(() => ((window as unknown as { __cat: Element | null }).__cat = document.querySelector('.vt-cat')))
+  for (let step = 0; step < 3; step++) {
+    await page.getByRole('radiogroup').getByRole('radio').first().click()
+    await page.getByRole('button', { name: 'Продолжить' }).click()
+    await page.waitForTimeout(900) // уход/въезд ответов и переезд кота
+    const same = await page.evaluate(() => {
+      const cats = document.querySelectorAll('.vt-cat')
+      return cats.length === 1 && cats[0] === (window as unknown as { __cat: Element | null }).__cat
+    })
+    expect(same, `шаг ${step + 2}`).toBe(true)
+  }
+  await expect(page.getByRole('button', { name: 'Начать первую сессию' })).toBeVisible()
+})
+
+test('reduced-motion: без анимации перехода, но «Давай» ведёт в знакомство', async ({ browser }) => {
+  const ctx = await browser.newContext({ reducedMotion: 'reduce', viewport: { width: 390, height: 844 } })
+  const page = await ctx.newPage()
+  await page.addInitScript(recordTransitions)
+  await page.goto('/?intro=1', { waitUntil: 'load' })
+  await page.getByRole('link', { name: /Давай/ }).first().click()
+  await expect(page).toHaveURL(/\/app\/start/)
+  expect(await page.evaluate(() => (window as unknown as { __vt: unknown[] }).__vt.length)).toBe(0)
+  await ctx.close()
+})

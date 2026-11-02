@@ -1431,3 +1431,63 @@ body[data-companion-speaking] .app-hearth {
 html.hero-wait .grain-hero {
   visibility: hidden;
 }
+
+/* ==========================================================================
+   Переходы между экранами (lib/view-transition.ts, 02.11). Лендинг → знакомство → старт.
+   Фон (root) перетекает, не обрывается (Material «fade through»; Apple: неподвижная рамка снижает дискомфорт).
+   Кот (nap-cat) — один и тот же персонаж: перелетает на новое место (общий элемент; Duolingo: сова сама
+   переезжает 0,7 с ease-in-out). Кнопка внизу (nap-cta) остаётся на месте и меняет надпись.
+   Старый интерфейс уходит быстрее (0,2 с), новый приходит после паузы (0,38 с) — NN/g: выход ≈ 60–70 % входа.
+   Анимируем только opacity/transform снимков; размеры группы считает браузер.
+   ========================================================================== */
+.vt-cat { view-transition-name: nap-cat; }
+.vt-cta { view-transition-name: nap-cta; }
+.vt-landing { view-transition-name: nap-landing; }
+.vt-onb { view-transition-name: nap-onb; }
+.vt-session { view-transition-name: nap-session; }
+
+::view-transition-group(root) { animation-duration: 450ms; animation-timing-function: ease; }
+::view-transition-old(root),
+::view-transition-new(root) { animation-duration: 450ms; animation-timing-function: ease; }
+
+::view-transition-group(nap-cat) {
+  z-index: 3;
+  animation-duration: 560ms;
+  animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+}
+::view-transition-old(nap-cat),
+::view-transition-new(nap-cat) { animation-duration: 560ms; }
+
+::view-transition-group(nap-cta) { z-index: 2; animation-duration: 380ms; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+::view-transition-old(nap-cta),
+::view-transition-new(nap-cta) { animation-duration: 260ms; }
+
+::view-transition-old(nap-landing),
+::view-transition-old(nap-onb) { animation: 180ms ease-out both vt-leave; }
+::view-transition-new(nap-onb),
+::view-transition-new(nap-session) { animation: 380ms cubic-bezier(0.16, 1, 0.3, 1) 160ms both vt-arrive; }
+@keyframes vt-leave { to { opacity: 0; transform: translateY(10px) scale(0.985); } }
+@keyframes vt-arrive { from { opacity: 0; transform: translateY(14px); } }
+
+/* пока идёт переход, собственный въезд страницы /app не играет — иначе экран проявлялся бы второй раз */
+html.vt-run .app-page-enter { animation: none; }
+
+/* Кнопка «Продолжить» оживает, когда ответ выбран (Brilliant: плоская серая → поднимается с губой за 0,1 с).
+   Пока выбора нет — приопущена и без цвета; выбрал — наливается цветом и встаёт на 0,18 с. */
+.btn-wake { transition: --lip 220ms ease; }
+.btn-wake .btn-face {
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 220ms ease,
+    color 220ms ease,
+    filter 150ms ease;
+}
+.btn-chunky.btn-wake[data-idle] .btn-face {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 var(--lip);
+}
+.btn-chunky.btn-wake[data-idle]:active .btn-face {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 var(--lip);
+}

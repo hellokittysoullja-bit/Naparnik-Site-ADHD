@@ -802,9 +802,10 @@ export function FocusSession() {
   if (phase === 'starting') {
     // Хореография: мир затихает, существо садится рядом, сессия проявляется
     return (
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 py-8">
+      <div data-vt-arrived="session" className="vt-session mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 py-8">
         <h1 className="sr-only">Напарник садится рядом</h1>
         <motion.div
+          className="vt-cat"
           initial={{ scale: 1.06 }}
           animate={{ scale: 1 }}
           transition={{ duration: 1.8, ease: 'easeOut' }}
