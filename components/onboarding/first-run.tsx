@@ -19,7 +19,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { MascotDoll as MascotSvg } from '@/components/mascot-doll';
-import { type MascotExpression } from '@/components/mascot-doll'
+import { type MascotAction, type MascotExpression } from '@/components/mascot-doll'
 import { EmphasisText } from '@/components/emphasis-text'
 import { HoldToStart } from '@/components/onboarding/hold-to-start'
 import { NightScene } from '@/components/landing/night-scene'
@@ -97,6 +97,23 @@ export function FirstRun() {
   // Кот отзывается на каждое «Продолжить» (Duolingo: сова жмурится и искрит на каждый шаг)
   const [hop, setHop] = useState(false)
   const hopTimer = useRef(0)
+  // «Собираю под тебя» между третьим вопросом и договором (Duolingo, Simple, Headway — честная «иллюзия работы»,
+  // Growth.Design): кот думает, ответы человека отмечаются по одной — видно, что договор собран из них, а не шаблон
+  const [building, setBuilding] = useState(false)
+  // Кот отвечает на выбор позой, а не только репликой (Headway: своя поза на каждый ответ; Duolingo: реакция
+  // в 0,2 с после тапа). Короткая поза, потом обычное лицо по реплике
+  const [react, setReact] = useState<{ face: MascotExpression; action: MascotAction } | null>(null)
+  const reactTimer = useRef(0)
+  function catReact(face: MascotExpression, action: MascotAction, ms = 850) {
+    if (reduceMotion) return
+    window.clearTimeout(reactTimer.current)
+    setReact({ face, action })
+    reactTimer.current = window.setTimeout(() => setReact(null), ms)
+  }
+  useEffect(() => () => window.clearTimeout(reactTimer.current), [])
+
+  const buildTimer = useRef(0)
+  useEffect(() => () => window.clearTimeout(buildTimer.current), [])
 
   // Направление перехода: вперёд экран уезжает влево, назад — вправо
   const dirRef = useRef(1)
@@ -128,6 +145,8 @@ export function FirstRun() {
   }
 
   function go(step: number) {
+    window.clearTimeout(buildTimer.current)
+    setBuilding(false)
     dirRef.current = step > state.step ? 1 : -1
     setNudge(false)
     update({ step })
@@ -163,7 +182,7 @@ export function FirstRun() {
   // уводил на удержание — вопрос «с чего начнём» человек так и не видел. Пока слайд въезжает, клики не считаются.
   const lastGoRef = useRef(0)
   function next() {
-    if (performance.now() - lastGoRef.current < 400) return
+    if (building || performance.now() - lastGoRef.current < 400) return
     if (!canContinue) {
       // Не немая кнопка: кот мягко подсказывает, что сделать
       setNudge(true)
@@ -179,6 +198,11 @@ export function FirstRun() {
     setHop(true)
     window.clearTimeout(hopTimer.current)
     hopTimer.current = window.setTimeout(() => setHop(false), 900)
+    if (step === LAST_STEP - 1) {
+      setBuilding(true)
+      buildTimer.current = window.setTimeout(() => go(LAST_STEP), reduceMotion ? 700 : BUILD_MS)
+      return
+    }
     go(step + 1)
   }
 
@@ -240,6 +264,9 @@ export function FirstRun() {
         ? blocker.reaction
         : 'А что обычно *мешает начать*?'
     face = blocker ? 'happy' : 'listening'
+  } else if (step === 3 && building) {
+    line = `Секунду — собираю *твои ${FIRST_MINUTES} минуты*.`
+    face = 'calm'
   } else if (step === 3) {
     line = nudge
       ? 'Напиши хоть одно слово — *этого хватит*.'
@@ -328,15 +355,33 @@ export function FirstRun() {
           меняется шапка */}
       <div className={`relative flex min-h-0 flex-1 flex-col ${step === LAST_STEP ? 'justify-center' : ''}`}>
       {step >= 1 && step <= LAST_STEP && (
-        <CatAsks line={line} face={step === LAST_STEP ? 'calm' : hop ? 'happy' : face} nudge={nudge} hop={hop} step={step} commit={step === LAST_STEP} />
+        <CatAsks
+          line={line}
+          face={step === LAST_STEP ? 'calm' : react && !building ? react.face : hop && !building ? 'happy' : face}
+          action={react && !building ? react.action : undefined}
+          nudge={nudge}
+          hop={hop && !building}
+          think={building}
+          step={building ? step + 0.5 : step}
+          commit={step === LAST_STEP}
+        />
       )}
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.div
-          key={step}
+          key={building ? 'build' : step}
           {...(step === LAST_STEP ? commitMotion : listMotion)}
           className={step === LAST_STEP ? 'flex flex-col' : 'flex min-h-0 flex-1 flex-col'}
         >
-          {(step === 1 || step === 2 || step === 3) && (
+          {building && (
+            <BuildList
+              rows={[
+                SPHERES.find((x) => x.key === state.sphere)?.label ?? 'Пока не знаю',
+                blocker ? `${blocker.label} — учту` : 'Подстроюсь по ходу',
+                `Первый шаг: ${chosenStep || steps[0]}`,
+              ]}
+            />
+          )}
+          {!building && (step === 1 || step === 2 || step === 3) && (
             <>
               <div
                 className="mt-5 flex flex-col gap-2.5 overflow-y-auto pb-2"
@@ -350,10 +395,14 @@ export function FirstRun() {
                       key={s.key}
                       firstTab={i === 0 && !state.sphere}
                       icon={SPHERE_ICON[s.key]}
+                      hue={OPTION_HUES[i % OPTION_HUES.length]}
                       label={s.label}
                       selected={state.sphere === s.key}
                       onSelect={() => {
-                        if (state.sphere !== s.key) hapticThreshold()
+                        if (state.sphere !== s.key) {
+                          hapticThreshold()
+                          catReact('excited', 'celebrate')
+                        }
                         setNudge(false)
                         // Новая сфера — новые шаги: старый выбор шага сбрасываем
                         update({ sphere: s.key, firstStep: STEPS[s.key][0] })
@@ -366,10 +415,18 @@ export function FirstRun() {
                       key={b.key}
                       firstTab={i === 0 && !state.blocker}
                       icon={BLOCKER_ICON[b.key]}
+                      hue={OPTION_HUES[i % OPTION_HUES.length]}
                       label={b.label}
                       selected={state.blocker === b.key}
                       onSelect={() => {
-                        if (state.blocker !== b.key) hapticThreshold()
+                        if (state.blocker !== b.key) {
+                          hapticThreshold()
+                          // «совсем нет сил» — кот сначала сонно соглашается, «боюсь» — слушает, «скучно» — оживляется
+                          if (b.key === 'tired') catReact('sleepy', 'idle', 1100)
+                          else if (b.key === 'fear') catReact('listening', 'idle')
+                          else if (b.key === 'where') catReact('calm', 'think')
+                          else catReact('excited', 'celebrate')
+                        }
                         setNudge(false)
                         update({ blocker: b.key })
                       }}
@@ -382,10 +439,14 @@ export function FirstRun() {
                         key={s}
                         firstTab={i === 0 && customOpen === false && !state.firstStep}
                         icon={Sparkles}
+                        hue={OPTION_HUES[i % OPTION_HUES.length]}
                         label={s}
                         selected={!customOpen && state.firstStep === s}
                         onSelect={() => {
-                          if (customOpen || state.firstStep !== s) hapticThreshold()
+                          if (customOpen || state.firstStep !== s) {
+                            hapticThreshold()
+                            catReact('happy', 'wave', 700)
+                          }
                           setNudge(false)
                           setCustomOpen(false)
                           update({ firstStep: s })
@@ -430,6 +491,10 @@ export function FirstRun() {
             <Commit
               label={chosenStep || steps[0]}
               reason={blocker?.reaction ?? null}
+              answers={[
+                SPHERES.find((x) => x.key === state.sphere)?.label,
+                blocker?.label,
+              ].filter((x): x is string => !!x && x !== 'Пока не знаю')}
             />
           )}
         </motion.div>
@@ -438,7 +503,7 @@ export function FirstRun() {
       </section>
 
       {/* Главное действие — всегда в одной точке у большого пальца */}
-      <div className="vt-cta fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-[max(1.125rem,env(safe-area-inset-bottom))]">
+      <div className="thumb-cta vt-cta fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-[max(1.125rem,env(safe-area-inset-bottom))]">
         {step === LAST_STEP ? (
           <HoldToStart onComplete={begin} busy={leaving} />
         ) : (
@@ -446,7 +511,7 @@ export function FirstRun() {
             type="button"
             onClick={next}
             onTouchStart={() => {}}
-            data-idle={canContinue ? undefined : ''}
+            data-idle={canContinue && !building ? undefined : ''}
             className="btn-chunky btn-wake block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <span className="btn-face flex h-[52px] items-center justify-center rounded-[16px] bg-primary px-6 text-[17px] font-bold tracking-[-0.01em] text-primary-foreground">
@@ -469,6 +534,8 @@ function CatAsks({
   face,
   nudge,
   hop,
+  think = false,
+  action,
   step,
   commit,
 }: {
@@ -476,6 +543,8 @@ function CatAsks({
   face: MascotExpression
   nudge: boolean
   hop: boolean
+  think?: boolean
+  action?: MascotAction
   step: number
   commit: boolean
 }) {
@@ -491,7 +560,7 @@ function CatAsks({
       >
         <MascotSvg
           expression={face}
-          action={hop ? 'wave' : 'idle'}
+          action={think ? 'think' : action ?? (hop ? 'wave' : 'idle')}
           size={148}
           className={commit ? 'size-[148px]' : 'size-[104px]'}
           label={commit ? 'Напарник готов' : 'Напарник'}
@@ -542,17 +611,24 @@ function CatAsks({
  * выбранной — выбор читается не только цветом. Нажатие проседает на 2px,
  * как у главной кнопки: один физический язык на весь продукт.
  */
+// Свой оттенок у каждого варианта (Duolingo, Brilliant: цветные иконки, а не серые контурные «как в настройках»).
+// Тёплые и холодные вперемешку, лайм не берём — он за выбором и главной кнопкой
+const OPTION_HUES = [65, 205, 330, 150, 265, 25]
+
 function Option({
   icon: Icon,
   label,
   selected,
   onSelect,
+  hue,
   firstTab = false,
 }: {
   icon: LucideIcon
   label: string
   selected: boolean
   onSelect: () => void
+  /** оттенок плитки иконки (oklch hue); без него — нейтральная плитка */
+  hue?: number
   /** Точка входа Tab, пока ничего не выбрано (roving tabindex) */
   firstTab?: boolean
 }) {
@@ -567,10 +643,21 @@ function Option({
       data-selected={selected ? '' : undefined}
       className="option-card flex min-h-14 w-full items-center gap-3 rounded-2xl px-4 py-3 text-left"
     >
-      <Icon
-        className={`size-5 shrink-0 transition-colors ${selected ? 'text-primary' : 'text-muted-foreground'}`}
+      {/* плитка 32×32 своего оттенка; у выбранного цвет ярче и плотнее */}
+      <span
         aria-hidden="true"
-      />
+        className="flex size-8 shrink-0 items-center justify-center rounded-[10px] transition-colors duration-200"
+        style={
+          hue === undefined
+            ? { background: 'oklch(1 0 0 / 0.07)', color: 'oklch(0.75 0.01 250)' }
+            : {
+                background: `oklch(${selected ? 0.8 : 0.72} 0.12 ${hue} / ${selected ? 0.3 : 0.16})`,
+                color: `oklch(${selected ? 0.93 : 0.85} ${selected ? 0.14 : 0.12} ${hue})`,
+              }
+        }
+      >
+        <Icon className="size-[18px]" strokeWidth={2.2} />
+      </span>
       <span className={`flex-1 text-base font-semibold ${selected ? 'text-primary' : 'text-foreground'}`}>
         {label}
       </span>
@@ -587,7 +674,37 @@ function Option({
 }
 
 /** Договор перед стартом: что именно делаем, сколько и почему не страшно */
-function Commit({ label, reason }: { label: string; reason: string | null }) {
+/** Ответы человека отмечаются по одной (раз в 0,4 с): договор собран из них, а не взят из шаблона */
+const BUILD_MS = 1500
+function BuildList({ rows }: { rows: string[] }) {
+  const reduce = useReducedMotion()
+  return (
+    <ul className="mt-5 flex flex-col gap-2.5" aria-label="Собираю твои первые минуты">
+      {rows.map((row, i) => (
+        <motion.li
+          key={i}
+          initial={reduce ? { opacity: 0 } : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1], delay: 0.15 + i * 0.4 }}
+          className="option-card flex min-h-14 items-center gap-3 rounded-2xl px-4 py-3"
+        >
+          <motion.span
+            aria-hidden="true"
+            initial={{ scale: 0.4, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={reduce ? { duration: 0.1 } : { type: 'spring', stiffness: 520, damping: 22, delay: 0.4 + i * 0.4 }}
+            className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary"
+          >
+            <Check className="size-3.5 text-primary-foreground" strokeWidth={3.5} />
+          </motion.span>
+          <span className="flex-1 text-base font-semibold text-foreground">{row}</span>
+        </motion.li>
+      ))}
+    </ul>
+  )
+}
+
+function Commit({ label, reason, answers }: { label: string; reason: string | null; answers: string[] }) {
   const promises: { text: ReactNode }[] = [
     { text: 'Я сижу рядом и молчу' },
     { text: 'Можно бросить в любой момент' },
@@ -601,9 +718,19 @@ function Commit({ label, reason }: { label: string; reason: string | null }) {
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1], delay: 0.32 }}
-        className="glass-hearthside w-full rounded-3xl px-5 pb-5 pt-4 text-center"
+        className="glass-hearthside commit-card w-full rounded-3xl px-5 pb-5 pt-4 text-center"
       >
         <div>
+        {/* твои ответы — на виду: договор собран под тебя (Duolingo «Here's what you can achieve») */}
+        {answers.length > 0 && (
+          <div className="mb-3 flex flex-wrap justify-center gap-1.5">
+            {answers.map((a) => (
+              <span key={a} className="rounded-full bg-white/[0.07] px-2.5 py-1 text-[13px] font-semibold text-foreground/85">
+                {a}
+              </span>
+            ))}
+          </div>
+        )}
         <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
           твои первые {FIRST_MINUTES} минуты
         </p>

@@ -385,7 +385,7 @@ export function Hero() {
             обещание от первого лица. Каракуля — под словом обещания */}
           <h1
             className="hero-rise relative z-10 order-2 mt-2 text-[clamp(1.75rem,min(10vw,5.4dvh),3rem)] font-bold leading-[1.08] tracking-tight [@media(max-height:700px)]:mt-0 md:text-5xl lg:order-none lg:mt-0 lg:text-[clamp(56px,4.6vw,68px)] lg:leading-[1.02] lg:tracking-[-0.025em]"
-            style={{ "--rise-delay": "0.1s" } as CSSProperties}
+            style={{ "--rise-delay": "0.08s" } as CSSProperties}
           >
             {/* Тёплый «прогрев» слов остывает до резкого текста ровно к
               моменту, когда начинает рисоваться каракуля (0.95s) — взгляд
@@ -396,7 +396,7 @@ export function Hero() {
               дело за{" "}
               <span
                 className="scribble-underline scribble-draw text-primary"
-                style={{ "--scribble-delay": "0.55s" } as CSSProperties}
+                style={{ "--scribble-delay": "0.45s" } as CSSProperties}
               >
                 2&nbsp;минуты
                 <svg
@@ -419,7 +419,7 @@ export function Hero() {
                     style={{
                       strokeWidth: 2.5,
                       opacity: 0.55,
-                      animationDelay: "1.35s",
+                      animationDelay: "0.6s",
                     }}
                   />
                 </svg>
@@ -437,7 +437,7 @@ export function Hero() {
             колонке под оффером, как раньше */}
           <div
             id="hero-cta"
-            className="vt-cta order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:px-4 max-lg:pb-[max(1.125rem,env(safe-area-inset-bottom))] lg:order-none lg:mt-1 lg:items-start"
+            className="thumb-cta vt-cta order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:px-4 max-lg:pb-[max(1.125rem,env(safe-area-inset-bottom))] lg:order-none lg:mt-8 lg:items-start"
           >
             <motion.div
               animate={ctaBoost ? { scale: [1, 1.02, 1] } : {}}
@@ -464,7 +464,7 @@ export function Hero() {
                 className="btn-chunky block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:w-auto"
               >
                 {/* btn-sheen — один едва заметный блик при появлении (app/globals.css), без повтора */}
-                <span className="btn-face btn-sheen btn-light flex h-[52px] items-center justify-center gap-2 rounded-[16px] bg-primary px-6 text-[17px] font-bold tracking-[-0.01em] text-primary-foreground lg:px-10">
+                <span className="btn-face btn-sheen btn-light flex h-[52px] items-center justify-center gap-2 rounded-[16px] bg-primary px-6 text-[17px] font-bold tracking-[-0.01em] text-primary-foreground lg:h-[60px] lg:min-w-[300px] lg:rounded-[18px] lg:px-12 lg:text-[20px]">
                   {navigating && slow ? (
                     <>
                       <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -510,7 +510,7 @@ export function Hero() {
                 action={celebrate ? "celebrate" : greeting ? "wave" : "idle"}
                 size={249}
                 label=""
-                className="size-[clamp(141px,33dvh,262px)] lg:size-[249px] lg:origin-bottom lg:scale-[1.15]"
+                className="size-[clamp(141px,33dvh,262px)] lg:size-[clamp(260px,40dvh,340px)] lg:origin-bottom lg:scale-[1.15]"
                 inlinePoster
               />
             </button>
@@ -525,7 +525,7 @@ export function Hero() {
           {/* Живой чат-вход: он здоровается, ты отвечаешь — премиальная реплика */}
           <div
             className="hero-rise relative z-10 order-4 mt-3 flex w-full flex-col gap-2.5 [@media(max-height:700px)]:mt-1 [@media(max-height:700px)]:gap-1.5 lg:order-none lg:mt-1"
-            style={{ "--rise-delay": "0.3s" } as CSSProperties}
+            style={{ "--rise-delay": "0.18s" } as CSSProperties}
             aria-live="polite"
           >
             {/* LayoutGroup — общий контекст FLIP-морфа: layoutId чипа и
@@ -555,8 +555,8 @@ export function Hero() {
                 </svg>
                 <WordReveal
                   text={OPENING_LINE}
-                  startDelay={0.5}
-                  step={0.06}
+                  startDelay={0.25}
+                  step={0.03}
                   className="font-hand text-[clamp(18px,3.1dvh,22px)] font-medium leading-snug text-balance text-secondary-foreground md:text-2xl"
                 />
               </div>
