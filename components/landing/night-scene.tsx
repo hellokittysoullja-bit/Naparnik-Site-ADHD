@@ -19,6 +19,10 @@ import { asset } from "@/lib/asset-versions";
  */
 
 const WIDE = "(min-width: 1024px)";
+type Variant = "portrait" | "landscape";
+const variantNow = (): Variant => (window.matchMedia(WIDE).matches ? "landscape" : "portrait");
+// H.264 High: level 4.0 у portrait, 4.2 у landscape (design/scene/build.mjs)
+const AVC: Record<Variant, string> = { portrait: "avc1.640028", landscape: "avc1.64002A" };
 const src = (variant: "portrait" | "landscape", ext: string) => asset(`/scene/night-${variant}.${ext}`);
 
 export function NightScene({ children }: { children?: ReactNode }) {
@@ -26,7 +30,9 @@ export function NightScene({ children }: { children?: ReactNode }) {
   preload(src("landscape", "webp"), { as: "image", media: WIDE, fetchPriority: "high" });
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const [video, setVideo] = useState(false);
+  // какой ролик играть, решает код, а не `<source media>`: Safari на iPhone у <video> атрибут media
+  // не учитывает и брал первый подходящий — компьютерный широкий кадр, растянутый на телефон (02.11)
+  const [video, setVideo] = useState<Variant | null>(null);
   const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
@@ -37,12 +43,20 @@ export function NightScene({ children }: { children?: ReactNode }) {
     let idle = 0;
     const start = () => {
       idle = window.requestIdleCallback
-        ? window.requestIdleCallback(() => setVideo(true), { timeout: 1500 })
-        : window.setTimeout(() => setVideo(true), 300);
+        ? window.requestIdleCallback(() => setVideo(variantNow()), { timeout: 1500 })
+        : window.setTimeout(() => setVideo(variantNow()), 300);
     };
     if (document.readyState === "complete") start();
     else window.addEventListener("load", start, { once: true });
+    // поворот или ресайз через границу lg — свой ролик под новую раскладку
+    const wide = window.matchMedia(WIDE);
+    const onChange = () => {
+      setPlaying(false);
+      setVideo((v) => (v ? variantNow() : v));
+    };
+    wide.addEventListener("change", onChange);
     return () => {
+      wide.removeEventListener("change", onChange);
       window.removeEventListener("load", start);
       if (window.cancelIdleCallback) window.cancelIdleCallback(idle);
       window.clearTimeout(idle);
@@ -89,6 +103,7 @@ export function NightScene({ children }: { children?: ReactNode }) {
         </picture>
         {video && (
           <video
+            key={video}
             ref={(el) => {
               if (!el) return;
               // iOS играет без звука только с выставленным muted ДО play (React ставит лишь свойство)
@@ -106,12 +121,10 @@ export function NightScene({ children }: { children?: ReactNode }) {
             onPlaying={() => setPlaying(true)}
             className={`absolute inset-0 size-full object-cover transition-opacity duration-500 ${playing ? "opacity-100" : "opacity-0"}`}
           >
-            {/* точный кодек в type: браузер выбирает файл, который реально декодирует (H.264 High 4.0/4.2 —
-                любой iPhone с 6s), а не спотыкается на первом подходящем по контейнеру */}
-            <source media={WIDE} src={src("landscape", "webm")} type='video/webm; codecs="vp9"' />
-            <source media={WIDE} src={src("landscape", "mp4")} type='video/mp4; codecs="avc1.64002A"' />
-            <source src={src("portrait", "webm")} type='video/webm; codecs="vp9"' />
-            <source src={src("portrait", "mp4")} type='video/mp4; codecs="avc1.640028"' />
+            {/* только ролик своей раскладки; H.264 первым — его аппаратно декодирует любой телефон и компьютер
+                (VP9 на части iPhone идёт программно и тратит батарею), VP9 — запасной */}
+            <source src={src(video, "mp4")} type={`video/mp4; codecs="${AVC[video]}"`} />
+            <source src={src(video, "webm")} type='video/webm; codecs="vp9"' />
           </video>
         )}
       </div>
