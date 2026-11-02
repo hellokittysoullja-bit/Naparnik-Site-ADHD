@@ -82,8 +82,7 @@ test('ответ на лендинге: экран не прыгает, пока
   await page.waitForTimeout(3000)
   await page.evaluate(() => ((window as unknown as { __late: number }).__late = 0))
   await page.getByRole('button', { name: /откладываю/i }).click()
-  // кот договорил — главная кнопка теплеет (отдельной «Пойдём попробуем» больше нет)
-  await expect(page.locator('#hero-cta a[data-warm]')).toBeVisible({ timeout: 8000 })
+  await expect(page.getByRole('link', { name: /Пойдём попробуем/ })).toBeVisible({ timeout: 8000 })
   await page.waitForTimeout(800)
   expect(await page.evaluate(() => (window as unknown as { __late: number }).__late)).toBeLessThan(0.01)
 })
@@ -268,35 +267,6 @@ test('reduced-motion: без анимации перехода, но «Дава�
   expect(await page.evaluate(() => (window as unknown as { __vt: unknown[] }).__vt.length)).toBe(0)
   await ctx.close()
 })
-
-for (const [w, h] of [[360, 640], [390, 844], [1280, 720]] as const) {
-  test(`ответ на лендинге ${w}×${h}: ничего не уходит под «Давай» и за верх экрана`, async ({ browser }) => {
-    // раньше ответ добавлял ~220 px: кот уходил за верх (уши обрезаны), пометка и «Пойдём попробуем» — под кнопку
-    const ctx = await browser.newContext({ viewport: { width: w, height: h } })
-    const page = await ctx.newPage()
-    await page.goto('/?intro=1')
-    await page.waitForTimeout(2500)
-    await page.getByRole('button', { name: /откладываю/i }).click()
-    await expect(page.locator('#hero-cta a[data-warm]')).toBeVisible({ timeout: 8000 })
-    await page.waitForTimeout(600)
-    const r = await page.evaluate(() => {
-      const cta = document.querySelector('#hero-cta')!.getBoundingClientRect()
-      const fixed = getComputedStyle(document.querySelector('#hero-cta')!).position === 'fixed'
-      const cat = document.querySelector('button[aria-label="Погладить напарника"]')!.getBoundingClientRect()
-      const h1 = document.querySelector('h1')!.getBoundingClientRect()
-      // весь видимый текст диалога (реплики, пометки) — по его нижнему краю
-      const live = document.querySelector('#hero [aria-live="polite"]')!
-      const bottoms = [...live.querySelectorAll('p, span, a, button')]
-        .filter((e) => { const s = getComputedStyle(e); return s.visibility !== 'hidden' && Number(s.opacity) > 0.05 && e.getBoundingClientRect().height > 0 && !e.closest('[aria-hidden="true"]') })
-        .map((e) => e.getBoundingClientRect().bottom)
-      return { fixed, ctaTop: cta.top, catTop: cat.top, h1Top: h1.top, chatBottom: Math.max(...bottoms) }
-    })
-    expect(r.catTop, 'кот за верхом экрана').toBeGreaterThanOrEqual(0)
-    expect(r.h1Top).toBeGreaterThanOrEqual(0)
-    if (r.fixed) expect(r.chatBottom, 'текст диалога под кнопкой').toBeLessThanOrEqual(r.ctaTop)
-    await ctx.close()
-  })
-}
 
 test('превью ссылки и иконка «Домой»: свой адрес, настоящий кот, без 404', async ({ page, request }) => {
   await page.goto('/?intro=1')

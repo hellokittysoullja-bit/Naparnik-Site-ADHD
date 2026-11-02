@@ -10,7 +10,7 @@ import {
   LayoutGroup,
   useReducedMotion,
 } from "motion/react";
-import { Loader2 } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { MascotDoll as MascotSvg } from "@/components/mascot-doll";
 import { type MascotExpression } from "@/components/mascot-doll";
 import { GroundPool, Knoll, Moon } from "@/components/hero-scene";
@@ -536,17 +536,6 @@ export function Hero() {
                 («Привет. Я Напарник») и живой кот в шапке — аватар у пузыря
                 был третьим котом в кадре и снят по правилу «убери один
                 аксессуар» (выбор владельца, вариант Б). */}
-            {/* После ответа приветствие уходит вверх, как старое сообщение в чате: твой ответ и реплика кота встают
-                на его место, и колонка не становится выше. Раньше ответ добавлял ~220 px — на 360×640 кот уезжал
-                за верх экрана, а пометка и «Пойдём попробуем» прятались под «Давай» (прокрутки нет, 02.11) */}
-            <motion.div
-              initial={false}
-              animate={answered ? { height: 0, opacity: 0 } : { height: "auto", opacity: 1 }}
-              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              // обрезка только на время ухода — иначе срезала бы тень пузыря и его хвостик на компьютере
-              className={answered ? "overflow-hidden" : undefined}
-              aria-hidden={answered || undefined}
-            >
             <div className="flex self-start">
               {/* А7: ближний к сцене пузырь ловит тепло очага нижней кромкой
                   стекла — свет мира касается материала */}
@@ -572,7 +561,6 @@ export function Hero() {
                 />
               </div>
             </div>
-            </motion.div>
 
             <AnimatePresence initial={false}>
               {steps.map((step, i) =>
@@ -633,14 +621,34 @@ export function Hero() {
               )}
             </AnimatePresence>
 
-            {/* Диалог замыкается главной кнопкой: когда кот договорил, «Давай» теплеет и мягко пульсирует (ctaBoost).
-                Отдельная «Пойдём попробуем» убрана — второе действие с тем же адресом и лишняя высота (02.11) */}
+            {/* К-А · Диалог замыкается действием: после ответа существа в
+                чате появляется кнопка-продолжение — раньше разговор был
+                тупиком («Пойдём, покажу» — и ничего). Тихий glass-highlight:
+                командный лайм остаётся за главным CTA ниже */}
+            {/* место кнопки тоже занято с тапа: невидима и вне Tab, пока кот не договорил */}
+            {answered && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={ctaBoost ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }}
+                transition={SPRING_SNAPPY}
+                style={{ visibility: ctaBoost ? "visible" : "hidden" }}
+                className="self-start"
+              >
+                <Link
+                  href={entryHref}
+                  onClick={enter}
+                  className="glass-highlight press inline-flex min-h-11 items-center gap-1.5 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm font-semibold text-primary"
+                >
+                  Пойдём попробуем
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                </Link>
+              </motion.div>
+            )}
+
             {/* Ряд «поля письма»: слева рукописная приписка к реплике
                 напарника (стрелка вверх — на его пузырь: он придёт первым,
                 даже если ты пропал), справа — чипы твоих ответов. Заметка
                 больше не рвёт поток по центру и не тычет стрелкой в лес. */}
-            {/* после ответа ряд уходит целиком: чип перелетает в твою реплику (layoutId), пометка — вместе с ним */}
-            {!answered && (
             <div className="flex flex-col items-start gap-3 pt-0.5 min-[360px]:flex-row min-[360px]:items-start">
               <div
                 className="flex min-w-0 flex-1 items-start gap-1.5 pl-1"
@@ -705,7 +713,6 @@ export function Hero() {
                 )}
               </AnimatePresence>
             </div>
-            )}
             </LayoutGroup>
           </div>
         </div>
