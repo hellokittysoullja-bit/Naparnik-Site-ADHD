@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { canViewTransition, navigateWithTransition } from "@/lib/view-transition";
 import {
   motion,
   AnimatePresence,
@@ -204,6 +206,25 @@ export function Hero() {
   // обработчике: disabled на Link-рендере base-ui ничего не даёт
   // (:disabled — псевдокласс нативных форм, у <a> его не бывает).
   const [navigating, setNavigating] = useState(false);
+  // «Иду…» — только если переход правда задержался (Linear: индикатор через 1 с). На нормальной сети его
+  // не видно вовсе: отклик на нажатие — сама кнопка и прыжок кота в первые 0,1 с (NN/g, время отклика).
+  const [slow, setSlow] = useState(false);
+  const router = useRouter();
+  function enter(e: React.MouseEvent) {
+    if (navigating) {
+      e.preventDefault();
+      return;
+    }
+    setNavigating(true);
+    setCelebrate(true);
+    window.setTimeout(() => setSlow(true), 1000);
+    // клик с модификатором (новая вкладка) — обычной ссылкой
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    if (entryHref !== "/app/start" || !canViewTransition()) return;
+    e.preventDefault();
+    // сразу: отклик на нажатие — сам полёт кота, без паузы (NN/g: движение в первые 0,1 с)
+    navigateWithTransition(() => router.push(entryHref), "onb");
+  }
 
 
   // Э2 · Погладить кота: ни одно касание экрана не должно быть мёртвым.
@@ -355,7 +376,7 @@ export function Hero() {
         </svg>
       </div>
 
-      <div className="relative flex w-full max-w-md flex-col items-center gap-3 text-center lg:gap-4 lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,1fr)_minmax(0,27rem)] lg:items-center lg:gap-x-16 lg:text-left">
+      <div className="vt-landing relative flex w-full max-w-md flex-col items-center gap-3 text-center lg:gap-4 lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,1fr)_minmax(0,27rem)] lg:items-center lg:gap-x-16 lg:text-left">
         {/* Десктоп по референсу: оффер слева, существо и живой чат справа.
             На мобильном обе колонки схлопываются в display:contents,
             порядок кадра задают order-классы (сцена → промис → чат → CTA) */}
@@ -416,7 +437,7 @@ export function Hero() {
             колонке под оффером, как раньше */}
           <div
             id="hero-cta"
-            className="order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:px-4 max-lg:pb-[max(1.125rem,env(safe-area-inset-bottom))] lg:order-none lg:mt-1 lg:items-start"
+            className="vt-cta order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:px-4 max-lg:pb-[max(1.125rem,env(safe-area-inset-bottom))] lg:order-none lg:mt-1 lg:items-start"
           >
             <motion.div
               animate={ctaBoost ? { scale: [1, 1.02, 1] } : {}}
@@ -430,14 +451,7 @@ export function Hero() {
                 href={entryHref}
                 // iOS Safari включает :active только при наличии touch-слушателя
                 onTouchStart={() => {}}
-                onClick={(e: React.MouseEvent) => {
-                  if (navigating) {
-                    e.preventDefault();
-                    return;
-                  }
-                  setNavigating(true);
-                  setCelebrate(true);
-                }}
+                onClick={enter}
                 onMouseEnter={() => setExpression("happy")}
                 onMouseLeave={() => setExpression(answered ? "happy" : "calm")}
                 onPointerMove={(e: React.PointerEvent<HTMLAnchorElement>) => {
@@ -451,7 +465,7 @@ export function Hero() {
               >
                 {/* btn-sheen — один едва заметный блик при появлении (app/globals.css), без повтора */}
                 <span className="btn-face btn-sheen btn-light flex h-[52px] items-center justify-center gap-2 rounded-[16px] bg-primary px-6 text-[17px] font-bold tracking-[-0.01em] text-primary-foreground lg:px-10">
-                  {navigating ? (
+                  {navigating && slow ? (
                     <>
                       <Loader2 className="size-4 animate-spin" aria-hidden="true" />
                       Иду…
@@ -489,7 +503,7 @@ export function Hero() {
               type="button"
               onClick={petCat}
               aria-label="Погладить напарника"
-              className="press relative z-10 cursor-pointer rounded-full outline-offset-8"
+              className="vt-cat press relative z-10 cursor-pointer rounded-full outline-offset-8"
             >
               <MascotSvg
                 expression={shownExpression}
@@ -622,6 +636,7 @@ export function Hero() {
               >
                 <Link
                   href={entryHref}
+                  onClick={enter}
                   className="glass-highlight press inline-flex min-h-11 items-center gap-1.5 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm font-semibold text-primary"
                 >
                   Пойдём попробуем

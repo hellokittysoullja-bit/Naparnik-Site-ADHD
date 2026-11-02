@@ -90,6 +90,8 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
   // кукла уже нарисовала кадр в холст: только тогда убираем постер. Иначе там, где кадры не идут (вкладка открыта
   // в фоне, iOS придержал requestAnimationFrame), холст пустой, а постера уже нет — кот исчезал
   const [drawn, setDrawn] = useState(false);
+  // постер уже на экране (декодирован) — для переходов между экранами: снимок нового экрана ждёт, пока кот виден
+  const [posterShown, setPosterShown] = useState(false);
   // в кадре ли кот (с запасом 60 px — успеть ожить до появления): без IntersectionObserver считаем, что да; с ним — ждём первого ответа, а не создаём контексты
   // всем котам разом при монтировании длинной переписки
   const [inView, setInView] = useState(() => typeof IntersectionObserver === "undefined");
@@ -250,6 +252,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
       role={label ? "img" : undefined}
       aria-label={label || undefined}
       aria-hidden={label ? undefined : true}
+      data-cat-ready={(state === "doll" && ready && drawn) || posterShown ? "" : undefined}
       style={{ ...(/(^|\s)(lg:|md:|sm:)?size-/.test(className ?? "") ? {} : { width: size, height: size }), position: "relative", display: "inline-block", verticalAlign: "bottom", touchAction: "manipulation" }}
       onPointerDown={interactive ? () => anim.current?.poke() : undefined}
     >
@@ -267,6 +270,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
           {/* у героя внешний постер идёт обычным приоритетом картинки в кадре: первый кадр уже дал инлайн, а шрифты
               первого экрана вшиты в CSS (app/hero-fonts.css), уступать полосу ему больше некому */}
           <img src={asset("/mascot/poster/neutral.webp")} alt="" draggable={false} loading={inlinePoster ? "eager" : "lazy"} decoding="async"
+            onLoad={() => setPosterShown(true)}
             style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
         </>
       ) : null}
