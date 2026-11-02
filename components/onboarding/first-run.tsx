@@ -395,7 +395,7 @@ export function FirstRun() {
             data-idle={canContinue ? undefined : ''}
             className="btn-chunky block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            <span className="btn-face flex h-[52px] items-center justify-center rounded-[16px] bg-primary px-6 text-[15px] font-bold uppercase tracking-[0.06em] text-primary-foreground">
+            <span className="btn-face flex h-[52px] items-center justify-center rounded-[16px] bg-primary px-6 text-[17px] font-bold tracking-[-0.01em] text-primary-foreground">
               Продолжить
             </span>
           </button>

@@ -1018,6 +1018,58 @@ body[data-focus-immersive] nav[aria-label="Основная навигация"]
 @media (prefers-reduced-motion: reduce) {
   .hearth-breathe { animation: none; }
 }
+/* Вспышка очага на нажатие «Давай» (02.11, research/02 §4.7 «свет как событие»): тепло за котом
+   разгорается, пока открывается знакомство */
+.hearth-flare {
+  transition: transform 600ms cubic-bezier(0.16, 1, 0.3, 1), filter 600ms ease;
+}
+.hearth-flare[data-flare] {
+  animation: none;
+  transform: scale(1.9);
+  filter: brightness(1.8);
+}
+
+/* Дымка между грядами ночного мира (components/landing/night-world.tsx): медленный дрейф 44–60 с */
+@keyframes mist-drift {
+  from { transform: translateX(-4%); }
+  to { transform: translateX(4%); }
+}
+.mist-drift { animation: mist-drift 60s ease-in-out infinite alternate; }
+/* Мерцающие звёзды и падающая звезда ночного мира: только opacity/transform — работа композитора.
+   Единица неба = max(0.1vw, 0.1dvh) (SVG неба — slice 1000×1000 по ширине или высоте экрана). */
+@keyframes nw-twinkle {
+  0%, 100% { opacity: var(--lo); }
+  50% { opacity: var(--hi); }
+}
+.nw-twinkle {
+  position: absolute;
+  border-radius: 9999px;
+  background: oklch(0.95 0.015 240);
+  opacity: var(--hi);
+  translate: -50% -50%;
+  animation: nw-twinkle 4s ease-in-out infinite;
+}
+@keyframes nw-meteor {
+  0%, 60% { opacity: 0; transform: translate(0, 0) rotate(150.5deg); }
+  63% { opacity: 0.8; }
+  68%, 100% { opacity: 0; transform: translate(calc(-180 * max(0.1vw, 0.1dvh)), calc(102 * max(0.1vw, 0.1dvh))) rotate(150.5deg); }
+}
+.nw-meteor {
+  position: absolute;
+  left: calc(50% - 120 * max(0.1vw, 0.1dvh));
+  top: calc(80 * max(0.1vw, 0.1dvh));
+  width: calc(69 * max(0.1vw, 0.1dvh));
+  height: 1.6px;
+  border-radius: 9999px;
+  background: linear-gradient(to right, oklch(0.95 0.015 240 / 0), oklch(0.95 0.015 240));
+  transform-origin: 0 50%;
+  opacity: 0;
+  animation: nw-meteor 13s linear infinite;
+}
+.mist-drift-2 { animation-duration: 44s; animation-direction: alternate-reverse; }
+@media (prefers-reduced-motion: reduce) {
+  .mist-drift, .nw-twinkle, .nw-meteor { animation: none; }
+}
 
 /* Э6 · Скролл-параллакс сцены: при уходе вниз небо отстаёт от контента —
    мир становится глубже экрана. Прогрессивное улучшение: только браузеры
@@ -1290,6 +1342,37 @@ body[data-companion-speaking] .app-hearth {
   .btn-chunky:hover .btn-face {
     filter: brightness(1.06);
   }
+}
+/* Кнопка «чувствует» курсор (02.11, research/02 §5.2 — CTA SL UI): под мышью лицо приподнимается
+   на 1px, губа 4 → 5px, под курсором мягкий блик (фон-картинка лица: под текстом, не поверх).
+   Нажатие — лицо вниз до конца, как раньше. На тач-экранах всё как было: hover там нет. */
+@property --glow {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+.btn-light {
+  background-image: radial-gradient(150px 95px at var(--mx, 50%) var(--my, 50%), oklch(1 0 0 / calc(var(--glow) * 0.3)), transparent 70%);
+}
+.btn-chunky .btn-light {
+  transition:
+    transform 110ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 110ms cubic-bezier(0.22, 1, 0.36, 1),
+    --glow 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (hover: hover) {
+  .btn-chunky:hover .btn-light {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 0 var(--lip);
+    filter: none;
+    --glow: 1;
+  }
+}
+.btn-chunky:hover:active .btn-light,
+.btn-chunky:active .btn-light {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 var(--lip);
+  transition-duration: 45ms;
 }
 @media (prefers-reduced-motion: reduce) {
   .btn-chunky,

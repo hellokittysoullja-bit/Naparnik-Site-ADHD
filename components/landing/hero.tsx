@@ -12,7 +12,8 @@ import {
 import { ArrowRight, Loader2 } from "lucide-react";
 import { MascotDoll as MascotSvg } from "@/components/mascot-doll";
 import { type MascotExpression } from "@/components/mascot-doll";
-import { GroundPool, HeroScene, Moon } from "@/components/hero-scene";
+import { GroundPool, Knoll, Moon } from "@/components/hero-scene";
+import { NightWorld } from "./night-world";
 import { SPRING_PARALLAX, SPRING_SNAPPY } from "@/lib/motion";
 import { playPurr } from "@/lib/reward-sound";
 
@@ -107,7 +108,9 @@ function TypedLine({ text, onDone, paused = false }: { text: string; onDone?: ()
   const startDelay = 0.05;
   const step = 0.045;
   const onDoneRef = useRef(onDone);
-  onDoneRef.current = onDone;
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
   const firedRef = useRef(false);
   const [skipped, setSkipped] = useState(false);
 
@@ -204,11 +207,8 @@ export function Hero() {
   const [navigating, setNavigating] = useState(false);
   const reduceMotion = useReducedMotion();
 
-  // А6 · Глубина за курсором (десктоп): слои сцены едва смещаются за
-  // мышью с ленивой пружиной — кадр получает объём (приём tvOS/дорогих
-  // лендингов). Луна дальше — двигается сильнее (обратный параллакс дали).
-  const sceneX = useSpring(0, SPRING_PARALLAX);
-  const sceneY = useSpring(0, SPRING_PARALLAX);
+  // А6 · Глубина за курсором (десктоп): луна едва смещается за мышью с ленивой
+  // пружиной; гряды ночного мира сдвигаются каждая по-своему внутри NightWorld.
   const moonX = useSpring(0, SPRING_PARALLAX);
   const moonY = useSpring(0, SPRING_PARALLAX);
   useEffect(() => {
@@ -217,14 +217,12 @@ export function Hero() {
     const onMove = (e: PointerEvent) => {
       const nx = e.clientX / window.innerWidth - 0.5;
       const ny = e.clientY / window.innerHeight - 0.5;
-      sceneX.set(nx * -8);
-      sceneY.set(ny * -5);
       moonX.set(nx * -15);
       moonY.set(ny * -9);
     };
     window.addEventListener("pointermove", onMove, { passive: true });
     return () => window.removeEventListener("pointermove", onMove);
-  }, [reduceMotion, sceneX, sceneY, moonX, moonY]);
+  }, [reduceMotion, moonX, moonY]);
 
   // Э2 · Погладить кота: ни одно касание экрана не должно быть мёртвым.
   // Тап → искренний восторг (искры, широкие зрачки, виляние хвостом) +
@@ -250,6 +248,32 @@ export function Hero() {
   // паттерн точек, что уже есть в companion-chat.tsx — переиспользован,
   // не изобретён заново.
   const [typing, setTyping] = useState(false);
+
+  // Кот засыпает, если 20 с ничего не происходит, и просыпается от любого движения
+  // (research/02 §4.4: персонаж реагирует на бездействие — Heckhoff засыпает с «zZ»).
+  // На нажатие главной кнопки — радость и прыжок, очаг вспыхивает (§4.7: свет как событие).
+  const [asleep, setAsleep] = useState(false);
+  const [celebrate, setCelebrate] = useState(false);
+  useEffect(() => {
+    let timer = 0;
+    const wake = () => {
+      window.clearTimeout(timer);
+      setAsleep(false);
+      timer = window.setTimeout(() => setAsleep(true), 20000);
+    };
+    wake();
+    const events = ["pointermove", "pointerdown", "keydown", "touchstart"] as const;
+    events.forEach((e) => window.addEventListener(e, wake, { passive: true }));
+    return () => {
+      window.clearTimeout(timer);
+      events.forEach((e) => window.removeEventListener(e, wake));
+    };
+  }, []);
+  const shownExpression: MascotExpression = celebrate
+    ? "excited"
+    : asleep
+      ? "sleepy"
+      : expression;
 
   function choose(key: ReplyKey) {
     setAnswered(true);
@@ -291,15 +315,8 @@ export function Hero() {
             +10svh, луна +16svh к концу первого экрана) — мир глубже экрана.
             Только браузеры со scroll-driven animations, только motion-safe */}
         <div className="parallax-scene h-full w-full">
-          {/* А6: мышиная глубина живёт на вложенном слое (scale 1.03 прячет
-              кромки при сдвиге), scroll-параллакс — на внешнем: трансформы
-              не воюют */}
-          <motion.div
-            style={{ x: sceneX, y: sceneY, scale: 1.03 }}
-            className="h-full w-full"
-          >
-            <HeroScene />
-          </motion.div>
+          {/* Ночной мир: небо, Млечный Путь, четыре гряды; глубина за мышью — внутри */}
+          <NightWorld />
         </div>
         {/* Луна привязана к углу вьюпорта, а не к slice-сцене: видна целиком
             на любом экране, никогда не сталкивается с котом и текстом */}
@@ -360,7 +377,7 @@ export function Hero() {
         </svg>
       </div>
 
-      <div className="relative flex w-full max-w-md flex-col items-center gap-3 text-center lg:gap-4 lg:grid lg:max-w-5xl lg:grid-cols-[minmax(0,1fr)_minmax(0,27rem)] lg:items-center lg:gap-x-16 lg:text-left">
+      <div className="relative flex w-full max-w-md flex-col items-center gap-3 text-center lg:gap-4 lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,1fr)_minmax(0,27rem)] lg:items-center lg:gap-x-16 lg:text-left">
         {/* Десктоп по референсу: оффер слева, существо и живой чат справа.
             На мобильном обе колонки схлопываются в display:contents,
             порядок кадра задают order-классы (сцена → промис → чат → CTA) */}
@@ -368,7 +385,7 @@ export function Hero() {
           {/* Промис голосом персонажа: первая фраза — боль, вторая —
             обещание от первого лица. Каракуля — под словом обещания */}
           <h1
-            className="hero-rise order-2 mt-2 text-[clamp(1.75rem,min(10vw,5.4dvh),3rem)] font-bold leading-[1.08] tracking-tight [@media(max-height:700px)]:mt-0 md:text-5xl lg:order-none lg:mt-0"
+            className="hero-rise order-2 mt-2 text-[clamp(1.75rem,min(10vw,5.4dvh),3rem)] font-bold leading-[1.08] tracking-tight [@media(max-height:700px)]:mt-0 md:text-5xl lg:order-none lg:mt-0 lg:text-[clamp(56px,4.6vw,68px)] lg:leading-[1.02] lg:tracking-[-0.025em]"
             style={{ "--rise-delay": "0.1s" } as CSSProperties}
           >
             {/* Тёплый «прогрев» слов остывает до резкого текста ровно к
@@ -441,12 +458,21 @@ export function Hero() {
                     return;
                   }
                   setNavigating(true);
+                  setCelebrate(true);
+                }}
+                onMouseEnter={() => setExpression("happy")}
+                onMouseLeave={() => setExpression(answered ? "happy" : "calm")}
+                onPointerMove={(e: React.PointerEvent<HTMLAnchorElement>) => {
+                  // точка блика под курсором (.btn-light в app/globals.css)
+                  const r = e.currentTarget.getBoundingClientRect();
+                  e.currentTarget.style.setProperty("--mx", `${e.clientX - r.left}px`);
+                  e.currentTarget.style.setProperty("--my", `${e.clientY - r.top}px`);
                 }}
                 data-warm={ctaBoost ? "" : undefined}
                 className="btn-chunky block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:w-auto"
               >
                 {/* btn-sheen — один едва заметный блик при появлении (app/globals.css), без повтора */}
-                <span className="btn-face btn-sheen flex h-[52px] items-center justify-center gap-2 rounded-[16px] bg-primary px-6 text-[15px] font-bold uppercase tracking-[0.06em] text-primary-foreground lg:px-10">
+                <span className="btn-face btn-sheen btn-light flex h-[52px] items-center justify-center gap-2 rounded-[16px] bg-primary px-6 text-[17px] font-bold tracking-[-0.01em] text-primary-foreground lg:px-10">
                   {navigating ? (
                     <>
                       <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -475,7 +501,9 @@ export function Hero() {
               aria-hidden="true"
               className="pointer-events-none absolute left-1/2 top-0 h-56 w-56 -translate-x-1/2 -translate-y-1/4"
             >
-              <div className="hearth-breathe h-full w-full rounded-full bg-[radial-gradient(ellipse_at_center,oklch(0.72_0.17_55/0.22)_0%,transparent_70%)] blur-2xl" />
+              <div
+                data-flare={celebrate ? "" : undefined}
+                className="hearth-flare hearth-breathe h-full w-full rounded-full bg-[radial-gradient(ellipse_at_center,oklch(0.72_0.17_55/0.22)_0%,transparent_70%)] blur-2xl" />
             </div>
             {/* Э2 · Кот гладится: кнопка без визуального хрома, отклик —
                 сам персонаж (восторг + хаптика) */}
@@ -486,14 +514,16 @@ export function Hero() {
               className="press relative z-10 cursor-pointer rounded-full outline-offset-8"
             >
               <MascotSvg
-                expression={expression}
-                action={greeting ? "wave" : "idle"}
+                expression={shownExpression}
+                action={celebrate ? "celebrate" : greeting ? "wave" : "idle"}
                 size={249}
                 label=""
                 className="size-[clamp(141px,33dvh,262px)] lg:size-[249px] lg:origin-bottom lg:scale-[1.15]"
                 inlinePoster
               />
             </button>
+            {/* Под котом холм: кот сидит на земле, а не висит перед дальними горами */}
+            <Knoll className="pointer-events-none absolute left-1/2 top-[calc(100%-56px)] w-[760px] -translate-x-1/2" />
             <GroundPool className="-mt-12 -mb-12" />
           </div>
 
