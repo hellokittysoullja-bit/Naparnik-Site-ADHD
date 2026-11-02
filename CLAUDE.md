@@ -65,6 +65,10 @@ lib/
   ambient.ts      — звук костра (start/stopCampfire)
   reward-sound.ts — playStartSigh и т.п.
   island-elements.ts — LANDMARK_COUNT, имена ориентиров
+
+research/          — исследование источников по UI/UX/моушну от владельца (02.11): taste-skill,
+                     ui-ux-pro-max, motion-design-agent, Godly, SL UI, Mobbin, Growth.Design, Baymard,
+                     NN/g. Начинать с research/README.md; сравнения с Напарником там нет намеренно
 ```
 
 ## 3. Визуальный язык — жёсткие константы, не трогать не подумав
