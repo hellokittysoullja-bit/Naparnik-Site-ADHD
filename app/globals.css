@@ -1246,8 +1246,9 @@ body[data-companion-speaking] .app-hearth {
   --lip: oklch(0.7 0.16 70);
 }
 
-/* Блик по главной кнопке: ОДИН очень слабый проход (12 % белого, у cta-sheen 38 %) через 2,2 с после появления —
-   заметен боковым зрением, не отвлекает. Без повтора: кнопка стоит на экране долго, метроном здесь не нужен. */
+/* Блик по главной кнопке: ОДИН очень слабый проход (12 % белого, у cta-sheen 38 %), без повтора — кнопка стоит на
+   экране долго, метроном здесь не нужен. Идёт одновременно с бликом чипа ответа (.glass-shine: 1,7 с, 0,7 с) — одним
+   общим «вдохом» света, а не двумя вразнобой: раньше кнопка ждала 2,2 с и тянулась 1,2 с (владелец, 02.11). */
 @keyframes btn-sheen-sweep {
   from { transform: translateX(-140%) skewX(-18deg); }
   to { transform: translateX(320%) skewX(-18deg); }
@@ -1264,8 +1265,8 @@ body[data-companion-speaking] .app-hearth {
   pointer-events: none;
   background: linear-gradient(105deg, transparent 0%, oklch(1 0 0 / 0.12) 50%, transparent 100%);
   transform: translateX(-140%) skewX(-18deg);
-  animation: btn-sheen-sweep 1.2s ease-out 1 both;
-  animation-delay: 2.2s;
+  animation: btn-sheen-sweep 0.7s ease-out 1 both;
+  animation-delay: 1.7s;
 }
 @media (prefers-reduced-motion: reduce) {
   .btn-sheen::after {
