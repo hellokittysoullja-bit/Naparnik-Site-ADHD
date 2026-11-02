@@ -26,7 +26,9 @@ const FPS = 15;
 const VARIANTS = [
   // H.264 level 4.0/4.2 — аппаратный декодер любого iPhone с 6s (у них потолок High@4.2); кадр ≤ 8192
   // макроблоков, поэтому landscape — 1728×1080, а не 1920×1200 (тот требовал level 5 и мог не заиграть)
-  { name: "portrait", width: 420, height: 748, dpr: 2, level: "4.0" },
+  // portrait 1080×1920: на iPhone (DPR 3, ~390 px CSS) кадр растягивается ×1,08, а не ×1,4 — звёзды не мылятся;
+  // 1080×1920 = 8160 макроблоков, ещё укладывается в level 4.0
+  { name: "portrait", width: 432, height: 768, dpr: 2.5, level: "4.0" },
   { name: "landscape", width: 1600, height: 1000, dpr: 1.08, level: "4.2" },
 ];
 
