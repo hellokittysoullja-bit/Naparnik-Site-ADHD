@@ -109,3 +109,35 @@ test('лендинг на медленном телефоне: кот появл
   expect(ys.length).toBeGreaterThan(0)
   expect(new Set(ys).size, `позиции кота по кадрам: ${[...new Set(ys)].join(', ')}`).toBe(1)
 })
+
+test('холм под котом не закрывает заголовок и диалог в любом движке (порядок — z-index, не order флекса)', async ({ page }) => {
+  // Safari рисует слои по порядку в коде, а не по `order` флекса: заголовок стоит в коде раньше колонки кота,
+  // и на iPhone холм закрывал его целиком (02.11). Chrome это не воспроизводит — проверяем само правило:
+  // всё, что холм перекрывает, поднято явным z-index выше холма.
+  await page.setViewportSize({ width: 390, height: 664 })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  const result = await page.evaluate(() => {
+    const zOf = (el: Element | null) => {
+      for (let e = el; e; e = e.parentElement) {
+        const cs = getComputedStyle(e)
+        if (cs.zIndex !== 'auto' && cs.position !== 'static') return Number(cs.zIndex)
+      }
+      return 0
+    }
+    const knoll = document.querySelector('svg[viewBox="0 0 800 500"]')!
+    const k = knoll.getBoundingClientRect()
+    const overlaps = (r: DOMRect) => r.left < k.right && r.right > k.left && r.top < k.bottom && r.bottom > k.top
+    const h1 = document.querySelector('h1')!
+    const chat = document.querySelector('.glass-hearthside')!
+    return {
+      knollZ: zOf(knoll),
+      h1: { z: zOf(h1), overlaps: overlaps(h1.getBoundingClientRect()) },
+      chat: { z: zOf(chat), overlaps: overlaps(chat.getBoundingClientRect()) },
+    }
+  })
+  for (const part of [result.h1, result.chat]) {
+    expect(part.overlaps).toBe(true)
+    expect(part.z).toBeGreaterThan(result.knollZ)
+  }
+})

@@ -363,7 +363,7 @@ export function Hero() {
           {/* Промис голосом персонажа: первая фраза — боль, вторая —
             обещание от первого лица. Каракуля — под словом обещания */}
           <h1
-            className="hero-rise order-2 mt-2 text-[clamp(1.75rem,min(10vw,5.4dvh),3rem)] font-bold leading-[1.08] tracking-tight [@media(max-height:700px)]:mt-0 md:text-5xl lg:order-none lg:mt-0 lg:text-[clamp(56px,4.6vw,68px)] lg:leading-[1.02] lg:tracking-[-0.025em]"
+            className="hero-rise relative z-10 order-2 mt-2 text-[clamp(1.75rem,min(10vw,5.4dvh),3rem)] font-bold leading-[1.08] tracking-tight [@media(max-height:700px)]:mt-0 md:text-5xl lg:order-none lg:mt-0 lg:text-[clamp(56px,4.6vw,68px)] lg:leading-[1.02] lg:tracking-[-0.025em]"
             style={{ "--rise-delay": "0.1s" } as CSSProperties}
           >
             {/* Тёплый «прогрев» слов остывает до резкого текста ровно к
@@ -500,14 +500,17 @@ export function Hero() {
                 inlinePoster
               />
             </button>
-            {/* Под котом холм: кот сидит на земле, а не висит перед дальними горами */}
+            {/* Под котом холм: кот сидит на земле, а не висит перед дальними горами. Он заходит под
+                заголовок и диалог, поэтому они подняты явным z-10: порядок отрисовки по `order` флекса
+                Safari не соблюдает (рисует по порядку в коде, где заголовок раньше колонки кота) —
+                на iPhone холм закрывал заголовок целиком (02.11, скриншоты владельца) */}
             <Knoll className="pointer-events-none absolute left-1/2 top-[calc(100%-56px)] w-[760px] -translate-x-1/2" />
             <GroundPool className="-mt-12 -mb-12" />
           </div>
 
           {/* Живой чат-вход: он здоровается, ты отвечаешь — премиальная реплика */}
           <div
-            className="hero-rise order-4 mt-3 flex w-full flex-col gap-2.5 [@media(max-height:700px)]:mt-1 [@media(max-height:700px)]:gap-1.5 lg:order-none lg:mt-1"
+            className="hero-rise relative z-10 order-4 mt-3 flex w-full flex-col gap-2.5 [@media(max-height:700px)]:mt-1 [@media(max-height:700px)]:gap-1.5 lg:order-none lg:mt-1"
             style={{ "--rise-delay": "0.3s" } as CSSProperties}
             aria-live="polite"
           >
