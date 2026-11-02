@@ -154,3 +154,44 @@ test('фон-видео: в разметке только ролик своей 
     for (const s of srcs) expect(s).toContain(`night-${variant}.`)
   }
 })
+
+test('переходы знакомства без чужих кадров: нет нижнего меню и нет экрана выбора шага перед автостартом', async ({ page }) => {
+  // каждый кадр: видно ли нижнее меню и не мелькнул ли экран выбора шага Фокуса (было: ~0,15 с «Шаг уже выбран»
+  // и полный сетап перед хореографией старта; меню «Дом/Фокус/Мир» в первом кадре знакомства)
+  await page.addInitScript(() => {
+    const w = window as unknown as { __seen: string[] }
+    w.__seen = []
+    const tick = () => {
+      const nav = document.querySelector('nav[aria-label="Основная навигация"]')
+      if (nav) {
+        const r = nav.getBoundingClientRect()
+        const s = getComputedStyle(nav)
+        if (s.visibility !== 'hidden' && Number(s.opacity) > 0.05 && r.top < window.innerHeight - 4) w.__seen.push('nav ' + location.pathname)
+      }
+      if (location.pathname === '/app/session' && document.body.innerText.includes('выбери первый шаг')) w.__seen.push('setup')
+      requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  })
+  await page.goto('/?intro=1')
+  await page.getByRole('link', { name: /Давай/ }).first().click()
+  await expect(page).toHaveURL(/\/app\/start/)
+  for (let step = 0; step < 3; step++) {
+    await page.getByRole('radiogroup').getByRole('radio').first().click()
+    await page.getByRole('button', { name: 'Продолжить' }).click()
+  }
+  const hold = page.getByRole('button', { name: /Удерживай|Начать|старт/i }).last()
+  await hold.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('timer')).toBeVisible({ timeout: 10_000 })
+  const seen = await page.evaluate(() => (window as unknown as { __seen: string[] }).__seen)
+  expect([...new Set(seen)]).toEqual([])
+})
+
+test('знакомство без JS: нижнего меню нет уже в HTML', async ({ browser }) => {
+  const ctx = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } })
+  const page = await ctx.newPage()
+  await page.goto('/app/start')
+  await expect(page.locator('nav[aria-label="Основная навигация"]')).toHaveCount(0)
+  await ctx.close()
+})
