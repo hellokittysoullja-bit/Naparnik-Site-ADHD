@@ -17,7 +17,9 @@
 // первого экрана, и диапазон начинается с пробела и «!» (U+20-21). У внешних файлов такого нет (кириллица — U+20-40,
 // латиница — без пробела); их ждать нельзя — это сеть. Разбор вшитых запускаем сразу, ещё до раскладки.
 const WAIT = `(function(){var d=document.documentElement,f=document.fonts,w=[];d.classList.add("hero-wait");if(f&&f.forEach)f.forEach(function(x){var n=x.family.replace(/["']/g,"");if((n==="Manrope"||n==="Caveat")&&/U\\+20-21(,|$)/i.test(x.unicodeRange))w.push(x.load())});window.__heroFonts=Promise.all(w).catch(function(){});setTimeout(function(){d.classList.remove("hero-wait")},1500)})()`
-const READY = `(window.__heroFonts||Promise.resolve()).then(function(){document.documentElement.classList.remove("hero-wait")})`
+// …и заставку ночной сцены (не дольше 0,3 с): без неё первый кадр на компьютере был голым градиентом с прямоугольником
+// холма, а небо доезжало следом (аудит 02.11)
+const READY = `(function(){var d=document.documentElement,i=document.querySelector("#hero picture img"),p=i&&i.decode?i.decode().catch(function(){}):null,t=new Promise(function(r){setTimeout(r,300)});Promise.all([window.__heroFonts||Promise.resolve(),p?Promise.race([p,t]):null]).then(function(){d.classList.remove("hero-wait")})})()`
 
 export function HeroWait() {
   return <script dangerouslySetInnerHTML={{ __html: WAIT }} />

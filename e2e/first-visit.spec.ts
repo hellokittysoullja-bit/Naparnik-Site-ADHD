@@ -289,3 +289,67 @@ test('знакомство: шрифты карточки договора за�
   })
   expect(ok).toBe(true)
 })
+
+test('лендинг: всё появление укладывается в 1,25 с (taste-skill ≤ 1,2 с; было 2,4 с)', async ({ page }) => {
+  await page.goto('/?intro=1')
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  await page.waitForTimeout(300)
+  const ends = await page.evaluate(() =>
+    document
+      .getAnimations()
+      .filter((a) => a instanceof CSSAnimation && (a.effect as KeyframeEffect | null)?.target?.closest('#hero'))
+      .map((a) => ({ name: (a as CSSAnimation).animationName, end: Number(a.effect!.getComputedTiming().endTime) }))
+      .filter((a) => Number.isFinite(a.end)),
+  )
+  const late = ends.filter((a) => a.end > 1250)
+  expect(late, JSON.stringify(late)).toEqual([])
+})
+
+for (const path of ['/?intro=1', '/app/start']) {
+  test(`главная кнопка ${path}: касание на 10 px ниже рисунка попадает в неё (нижний край — зона промахов)`, async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 664 }, hasTouch: true, isMobile: true })
+    const page = await ctx.newPage()
+    await page.goto(path)
+    await page.waitForTimeout(1500)
+    const hit = await page.evaluate(() => {
+      const btn = document.querySelector('.thumb-cta .btn-chunky') as HTMLElement
+      const face = btn.querySelector('.btn-face')!.getBoundingClientRect()
+      const el = document.elementFromPoint(face.left + face.width / 2, face.bottom + 10)
+      return { inside: !!el && btn.contains(el), gap: Math.round(innerHeight - btn.getBoundingClientRect().bottom) }
+    })
+    expect(hit.inside).toBe(true)
+    await ctx.close()
+  })
+}
+
+for (const [w, h] of [[1280, 720], [1440, 900]] as const) {
+  test(`компьютер ${w}×${h}: кнопка «Давай» не налезает на каракулю под заголовком`, async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h } })
+    const page = await ctx.newPage()
+    await page.goto('/?intro=1')
+    await page.waitForTimeout(1800)
+    const gap = await page.evaluate(() => {
+      const btn = document.querySelector('#hero-cta .btn-face')!.getBoundingClientRect()
+      const scribble = document.querySelector('.scribble-underline svg')!.getBoundingClientRect()
+      return btn.top - scribble.bottom
+    })
+    expect(gap).toBeGreaterThanOrEqual(16)
+    await ctx.close()
+  })
+}
+
+test('знакомство: перед договором кот собирает твои ответы, и они видны на карточке', async ({ page }) => {
+  await page.goto('/app/start')
+  await page.getByRole('radiogroup').getByRole('radio', { name: 'Учёба' }).click()
+  await page.getByRole('button', { name: 'Продолжить' }).click()
+  await page.getByRole('radiogroup').getByRole('radio').nth(1).click()
+  await page.getByRole('button', { name: 'Продолжить' }).click()
+  await page.getByRole('radiogroup').getByRole('radio').first().click()
+  await page.getByRole('button', { name: 'Продолжить' }).click()
+  // «собираю»: три строки с ответами отмечаются по одной
+  await expect(page.getByRole('list', { name: 'Собираю твои первые минуты' })).toBeVisible()
+  await expect(page.getByText(/^Первый шаг: /)).toBeVisible()
+  // договор: ответы чипами на карточке
+  await expect(page.getByRole('button', { name: 'Начать первую сессию' })).toBeVisible({ timeout: 4000 })
+  await expect(page.locator('.commit-card').getByText('Учёба', { exact: true })).toBeVisible()
+})

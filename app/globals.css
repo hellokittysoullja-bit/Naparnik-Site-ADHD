@@ -158,7 +158,7 @@
 .scribble-draw path {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  animation: scribble-draw 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation: scribble-draw 0.4s cubic-bezier(0.65, 0, 0.35, 1) forwards;
   animation-delay: var(--scribble-delay, 1s);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -250,21 +250,22 @@
 
 /* Первый кадр «статика прежде скрипта»: весь контент уже в серверном HTML,
    появление хореографирует чистый CSS — работает даже с выключенным JS */
+/* Без filter: blur — анимируемый фильтр выносит каждое слово в свой слой (на iPhone такие слои терялись, §5.5) */
 @keyframes hero-word-in {
   from {
     opacity: 0;
-    filter: blur(2px);
+    transform: translateY(3px);
   }
   to {
     opacity: 1;
-    filter: blur(0);
+    transform: translateY(0);
   }
 }
 
 .hero-word {
   display: inline-block;
   opacity: 0;
-  animation: hero-word-in 0.32s ease-out forwards;
+  animation: hero-word-in 0.28s ease-out forwards;
 }
 
 /* Старт с 0.01, а не с 0: глазу разницы нет (1 % цвета текста на тёмном фоне — меньше 2/255), а Chrome не считает
@@ -283,7 +284,7 @@
 
 .hero-rise {
   opacity: 0.01;
-  animation: hero-rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: hero-rise-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   animation-delay: var(--rise-delay, 0s);
 }
 
@@ -304,22 +305,19 @@
     text-shadow:
       0 0 22px oklch(0.75 0.15 65 / 0.45),
       0 0 3px oklch(0.75 0.15 65 / 0.5);
-    filter: blur(0.5px);
   }
   55% {
     text-shadow:
       0 0 10px oklch(0.75 0.15 65 / 0.16),
       0 0 1px oklch(0.75 0.15 65 / 0.2);
-    filter: blur(0);
   }
   100% {
     text-shadow: none;
-    filter: blur(0);
   }
 }
 .chroma-appear {
-  animation: chroma-flash 0.85s ease-out both;
-  animation-delay: 0.12s;
+  animation: chroma-flash 0.6s ease-out both;
+  animation-delay: 0.08s;
 }
 @media (prefers-reduced-motion: reduce) {
   .chroma-appear {
@@ -993,8 +991,8 @@ body[data-focus-immersive] nav[aria-label="Основная навигация"]
     transparent 100%
   );
   transform: translateX(-140%) skewX(-18deg);
-  animation: glass-shine 0.7s ease-out 1 both;
-  animation-delay: 1.7s;
+  animation: glass-shine 0.35s ease-out 1 both;
+  animation-delay: 0.85s;
   pointer-events: none;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1247,7 +1245,7 @@ body[data-companion-speaking] .app-hearth {
 }
 
 /* Блик по главной кнопке: ОДИН очень слабый проход (12 % белого, у cta-sheen 38 %), без повтора — кнопка стоит на
-   экране долго, метроном здесь не нужен. Идёт одновременно с бликом чипа ответа (.glass-shine: 1,7 с, 0,7 с) — одним
+   экране долго, метроном здесь не нужен. Идёт одновременно с бликом чипа ответа (.glass-shine: 0,85 с, 0,35 с — вся загрузка укладывается в 1,2 с, taste-skill) — одним
    общим «вдохом» света, а не двумя вразнобой: раньше кнопка ждала 2,2 с и тянулась 1,2 с (владелец, 02.11). */
 @keyframes btn-sheen-sweep {
   from { transform: translateX(-140%) skewX(-18deg); }
@@ -1265,8 +1263,8 @@ body[data-companion-speaking] .app-hearth {
   pointer-events: none;
   background: linear-gradient(105deg, transparent 0%, oklch(1 0 0 / 0.12) 50%, transparent 100%);
   transform: translateX(-140%) skewX(-18deg);
-  animation: btn-sheen-sweep 0.7s ease-out 1 both;
-  animation-delay: 1.7s;
+  animation: btn-sheen-sweep 0.35s ease-out 1 both;
+  animation-delay: 0.85s;
 }
 @media (prefers-reduced-motion: reduce) {
   .btn-sheen::after {
@@ -1309,9 +1307,10 @@ body[data-companion-speaking] .app-hearth {
     --glow 200ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 @media (hover: hover) {
+  /* под мышью лицо встаёт на 2 px, губа 4 → 6 (Brilliant поднимает на 4 px за 100 мс; 1 px читался слабо) */
   .btn-chunky:hover .btn-light {
-    transform: translateY(-1px);
-    box-shadow: 0 5px 0 var(--lip);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 0 var(--lip);
     filter: none;
     --glow: 1;
   }
@@ -1431,6 +1430,12 @@ body[data-companion-speaking] .app-hearth {
 html.hero-wait .grain-hero {
   visibility: hidden;
 }
+/* хореография появления (≤ 1,2 с) стартует, когда сцену показали, а не пока она скрыта — иначе на медленной сети
+   человек видел уже доигранные въезды */
+html.hero-wait .grain-hero *,
+html.hero-wait .grain-hero *::after {
+  animation-play-state: paused !important;
+}
 
 /* ==========================================================================
    Переходы между экранами (lib/view-transition.ts, 02.11). Лендинг → знакомство → старт.
@@ -1494,4 +1499,31 @@ html.vt-run .app-page-enter { animation: none; }
 .btn-chunky.btn-wake[data-idle]:active .btn-face {
   transform: translateY(4px);
   box-shadow: 0 0 0 var(--lip);
+}
+
+/* Карточка договора («Открыть конспект», 02.11, выбор владельца): стекло плотнее и размытие слабее, чем у остальных
+   пузырей, — сквозь неё чуть видно ночь, но текст стоит на почти ровном тоне. Остальные поверхности — как были. */
+.glass-hearthside.commit-card {
+  background:
+    linear-gradient(155deg, oklch(1 0 0 / 0.1) 0%, oklch(1 0 0 / 0.03) 55%, oklch(0.72 0.17 55 / 0.04) 100%),
+    oklch(0.2 0.022 235 / 0.72);
+  -webkit-backdrop-filter: blur(6px) saturate(140%);
+  backdrop-filter: blur(6px) saturate(140%);
+}
+
+/* Главная кнопка внизу — зона касания выше её рисунка (02.11). Рисунок как у Duolingo: поля 16 px, ширина 358, низ
+   в 16–20 px от края видимой области (замер Duolingo «Continue»: 16/358/50/16–20; наша 16/358/56/18). Но у нижнего
+   края экрана палец промахивается сильнее, чем в центре: Hoober — нижнему краю нужно ~12 мм (≈ 72 pt), а у нас 56.
+   Невидимо продлеваем касание вниз на 16 px (до 72), но не в зону полоски «Домой» — на экране «Домой» (PWA) отступ
+   уже равен safe-area, и продления нет (Apple HIG: не мешать жесту полоски). */
+@media (max-width: 1023px) {
+  .thumb-cta .btn-chunky {
+    position: relative;
+  }
+  .thumb-cta .btn-chunky::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    bottom: calc(-1 * max(0px, min(16px, 18px - env(safe-area-inset-bottom, 0px))));
+  }
 }
