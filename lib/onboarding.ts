@@ -1,5 +1,5 @@
 /**
- * Первый вход: два вопроса голосом напарника → шаг на 2 минуты → старт.
+ * Первый вход: три вопроса голосом напарника → шаг на 2 минуты → старт.
  *
  * Правило Appelune из базы знаний: каждый вопрос обязан менять то, что
  * человек увидит дальше, иначе его не задают. Здесь «что висит» меняет
@@ -9,6 +9,7 @@
  */
 
 export type Sphere = 'study' | 'work' | 'home' | 'message' | 'unsure'
+export type Hanging = 'day' | 'week' | 'month' | 'unknown'
 export type Blocker = 'where' | 'phone' | 'fear' | 'boring' | 'tired'
 
 export const SPHERES: { key: Sphere; label: string }[] = [
@@ -17,6 +18,18 @@ export const SPHERES: { key: Sphere; label: string }[] = [
   { key: 'home', label: 'Дом и быт' },
   { key: 'message', label: 'Написать или позвонить' },
   { key: 'unsure', label: 'Пока не знаю' },
+]
+
+/**
+ * «Сколько уже висит?» — сразу после «что висит». Ответ без оценки: кот не считает, сколько потеряно, а снимает
+ * вес — «двух минут хватит». Висящее дело тянет вернуться (эффект Овсянкиной), а длинный срок без упрёка снимает
+ * стыд, на котором держится избегание (Fee и Tangney). Метка срока видна на договоре и при сборке.
+ */
+export const HANGING: { key: Hanging; label: string; reaction: string; chip: string }[] = [
+  { key: 'day', label: 'День', reaction: 'Свежее. *Двух минут* хватит.', chip: 'Висит день' },
+  { key: 'week', label: 'Неделю', reaction: 'Неделя — нормально. *Двух минут* хватит.', chip: 'Висит неделю' },
+  { key: 'month', label: 'Месяц или дольше', reaction: 'Бывает. Без разборов — просто *2 минуты*.', chip: 'Висит месяц и дольше' },
+  { key: 'unknown', label: 'Не помню', reaction: 'Неважно. Начнём *сейчас*.', chip: '' },
 ]
 
 export const BLOCKERS: { key: Blocker; label: string; reaction: string }[] = [
@@ -61,6 +74,7 @@ export const FIRST_MINUTES = 2
 export type OnboardingState = {
   step: number
   sphere: Sphere | null
+  hanging: Hanging | null
   blocker: Blocker | null
   firstStep: string | null
 }
@@ -70,6 +84,7 @@ const KEY = 'naparnik:onboarding'
 export const EMPTY_ONBOARDING: OnboardingState = {
   step: 1,
   sphere: null,
+  hanging: null,
   blocker: null,
   firstStep: null,
 }

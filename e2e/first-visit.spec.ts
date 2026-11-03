@@ -8,7 +8,7 @@ test('новичок: лендинг → знакомство → первая �
   await page.getByRole('link', { name: /Давай/ }).first().click()
   await expect(page).toHaveURL(/\/app\/start/)
 
-  for (let step = 0; step < 3; step++) {
+  for (let step = 0; step < 4; step++) {
     await page.getByRole('radiogroup').getByRole('radio').first().click()
     await page.getByRole('button', { name: 'Продолжить' }).click()
   }
@@ -176,7 +176,7 @@ test('переходы знакомства без чужих кадров: не
   await page.goto('/?intro=1')
   await page.getByRole('link', { name: /Давай/ }).first().click()
   await expect(page).toHaveURL(/\/app\/start/)
-  for (let step = 0; step < 3; step++) {
+  for (let step = 0; step < 4; step++) {
     await page.getByRole('radiogroup').getByRole('radio').first().click()
     await page.getByRole('button', { name: 'Продолжить' }).click()
   }
@@ -244,7 +244,7 @@ test('знакомство: кот — один и тот же на всех ш�
   await page.goto('/app/start')
   await expect(page.getByRole('radiogroup')).toBeVisible()
   await page.evaluate(() => ((window as unknown as { __cat: Element | null }).__cat = document.querySelector('.vt-cat')))
-  for (let step = 0; step < 3; step++) {
+  for (let step = 0; step < 4; step++) {
     await page.getByRole('radiogroup').getByRole('radio').first().click()
     await page.getByRole('button', { name: 'Продолжить' }).click()
     await page.waitForTimeout(900) // уход/въезд ответов и переезд кота
@@ -342,6 +342,9 @@ test('знакомство: перед договором кот собирае�
   await page.goto('/app/start')
   await page.getByRole('radiogroup').getByRole('radio', { name: 'Учёба' }).click()
   await page.getByRole('button', { name: 'Продолжить' }).click()
+  // «сколько уже висит» — второй вопрос, ответ виден на договоре
+  await page.getByRole('radiogroup', { name: 'Сколько уже висит' }).getByRole('radio', { name: 'Неделю' }).click()
+  await page.getByRole('button', { name: 'Продолжить' }).click()
   await page.getByRole('radiogroup').getByRole('radio').nth(1).click()
   await page.getByRole('button', { name: 'Продолжить' }).click()
   await page.getByRole('radiogroup').getByRole('radio').first().click()
@@ -352,4 +355,5 @@ test('знакомство: перед договором кот собирае�
   // договор: ответы чипами на карточке
   await expect(page.getByRole('button', { name: 'Начать первую сессию' })).toBeVisible({ timeout: 4000 })
   await expect(page.locator('.commit-card').getByText('Учёба', { exact: true })).toBeVisible()
+  await expect(page.locator('.commit-card').getByText('Висит неделю', { exact: true })).toBeVisible()
 })

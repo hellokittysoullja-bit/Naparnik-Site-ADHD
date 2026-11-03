@@ -7,8 +7,11 @@ import {
   BatteryLow,
   BookOpen,
   Briefcase,
+  CalendarClock,
+  CalendarDays,
   Check,
   ChevronLeft,
+  CircleQuestionMark,
   Compass,
   Feather,
   Hourglass,
@@ -17,6 +20,7 @@ import {
   PenLine,
   Smartphone,
   Sparkles,
+  Sun,
   type LucideIcon,
 } from 'lucide-react'
 import { MascotDoll as MascotSvg } from '@/components/mascot-doll';
@@ -30,6 +34,7 @@ import { useClientMount } from '@/hooks/use-client-mount'
 import { hapticThreshold } from '@/lib/haptics'
 import {
   BLOCKERS,
+  HANGING,
   EMPTY_ONBOARDING,
   FIRST_MINUTES,
   SPHERES,
@@ -37,6 +42,7 @@ import {
   readOnboarding,
   writeOnboarding,
   type Blocker,
+  type Hanging,
   type OnboardingState,
   type Sphere,
 } from '@/lib/onboarding'
@@ -65,6 +71,13 @@ const SPHERE_ICON: Record<Sphere, LucideIcon> = {
   unsure: Compass,
 }
 
+const HANGING_ICON: Record<Hanging, LucideIcon> = {
+  day: Sun,
+  week: CalendarDays,
+  month: CalendarClock,
+  unknown: CircleQuestionMark,
+}
+
 const BLOCKER_ICON: Record<Blocker, LucideIcon> = {
   where: Compass,
   phone: Smartphone,
@@ -81,8 +94,12 @@ const SPHERE_REACTION: Record<Sphere, string> = {
   unsure: 'Нормально. Начнём с того, что *под рукой*.',
 }
 
-/** Вопросы и шаг выбора — 4 точки прогресса; приветствие вне шкалы */
-const LAST_STEP = 4
+/** Три вопроса, выбор шага и договор — 5 точек прогресса; приветствие вне шкалы */
+const STEP_SPHERE = 1
+const STEP_HANGING = 2
+const STEP_BLOCKER = 3
+const STEP_FIRST = 4
+const LAST_STEP = 5
 
 export function FirstRun() {
   const router = useRouter()
@@ -99,7 +116,7 @@ export function FirstRun() {
   // Кот отзывается на каждое «Продолжить» (Duolingo: сова жмурится и искрит на каждый шаг)
   const [hop, setHop] = useState(false)
   const hopTimer = useRef(0)
-  // «Собираю под тебя» между третьим вопросом и договором (Duolingo, Simple, Headway — честная «иллюзия работы»,
+  // «Собираю под тебя» между выбором шага и договором (Duolingo, Simple, Headway — честная «иллюзия работы»,
   // Growth.Design): кот думает, ответы человека отмечаются по одной — видно, что договор собран из них, а не шаблон
   const [building, setBuilding] = useState(false)
   // Кот отвечает на выбор позой, а не только репликой (Headway: своя поза на каждый ответ; Duolingo: реакция
@@ -173,12 +190,14 @@ export function FirstRun() {
   const steps = state.sphere ? STEPS[state.sphere] : STEPS.unsure
   const chosenStep = customOpen ? custom.trim() : state.firstStep
   const blocker = BLOCKERS.find((b) => b.key === state.blocker)
+  const hanging = HANGING.find((h) => h.key === state.hanging)
 
   // Можно ли идти дальше с текущего экрана
   const canContinue =
-    (step === 1 && !!state.sphere) ||
-    (step === 2 && !!state.blocker) ||
-    (step === 3 && !!chosenStep)
+    (step === STEP_SPHERE && !!state.sphere) ||
+    (step === STEP_HANGING && !!state.hanging) ||
+    (step === STEP_BLOCKER && !!state.blocker) ||
+    (step === STEP_FIRST && !!chosenStep)
 
   // двойной клик по «Продолжить» пролетал через шаг: на 3-м шаге выбор уже предзаполнен, и второй клик сразу
   // уводил на удержание — вопрос «с чего начнём» человек так и не видел. Пока слайд въезжает, клики не считаются.
@@ -190,10 +209,10 @@ export function FirstRun() {
       setNudge(true)
       return
     }
-    if (step === 1 && state.sphere && !state.firstStep) {
+    if (step === STEP_SPHERE && state.sphere && !state.firstStep) {
       update({ firstStep: STEPS[state.sphere][0] })
     }
-    if (step === 3 && customOpen && custom.trim()) {
+    if (step === STEP_FIRST && customOpen && custom.trim()) {
       update({ firstStep: custom.trim() })
     }
     lastGoRef.current = performance.now()
@@ -252,24 +271,31 @@ export function FirstRun() {
   // Что говорит кот и с каким лицом — реакция на выбор, а не статичный текст
   let line = ''
   let face: MascotExpression = 'calm'
-  if (step === 1) {
+  if (step === STEP_SPHERE) {
     line = nudge
       ? 'Выбери любой вариант — *ошибиться нельзя*.'
       : state.sphere
         ? SPHERE_REACTION[state.sphere]
         : 'Что сейчас *висит* больше всего?'
     face = state.sphere ? 'happy' : nudge ? 'listening' : 'calm'
-  } else if (step === 2) {
+  } else if (step === STEP_HANGING) {
+    line = nudge
+      ? 'Примерно — *этого хватит*.'
+      : hanging
+        ? hanging.reaction
+        : 'А сколько это уже *висит*?'
+    face = hanging ? 'happy' : 'listening'
+  } else if (step === STEP_BLOCKER) {
     line = nudge
       ? 'Любой ответ подойдёт — *я подстроюсь*.'
       : blocker
         ? blocker.reaction
         : 'А что обычно *мешает начать*?'
     face = blocker ? 'happy' : 'listening'
-  } else if (step === 3 && building) {
+  } else if (step === STEP_FIRST && building) {
     line = `Секунду — собираю *твои ${FIRST_MINUTES} минуты*.`
     face = 'calm'
-  } else if (step === 3) {
+  } else if (step === STEP_FIRST) {
     line = nudge
       ? 'Напиши хоть одно слово — *этого хватит*.'
       : `Первый шаг на *${FIRST_MINUTES} минуты*. Выбери или напиши свой.`
@@ -377,21 +403,31 @@ export function FirstRun() {
           {building && (
             <BuildList
               rows={[
-                SPHERES.find((x) => x.key === state.sphere)?.label ?? 'Пока не знаю',
+                [SPHERES.find((x) => x.key === state.sphere)?.label ?? 'Пока не знаю', hanging?.chip.toLowerCase()]
+                  .filter(Boolean)
+                  .join(' · '),
                 blocker ? `${blocker.label}\u00a0—\u00a0учту` : 'Подстроюсь по ходу',
                 `Первый шаг: ${chosenStep || steps[0]}`,
               ]}
             />
           )}
-          {!building && (step === 1 || step === 2 || step === 3) && (
+          {!building && step >= STEP_SPHERE && step < LAST_STEP && (
             <>
               <div
                 className="mt-5 flex flex-col gap-2.5 overflow-y-auto pb-2"
                 role="radiogroup"
-                aria-label={step === 1 ? 'Что висит' : step === 2 ? 'Что мешает начать' : 'Первый шаг'}
+                aria-label={
+                  step === STEP_SPHERE
+                    ? 'Что висит'
+                    : step === STEP_HANGING
+                      ? 'Сколько уже висит'
+                      : step === STEP_BLOCKER
+                        ? 'Что мешает начать'
+                        : 'Первый шаг'
+                }
                 onKeyDown={onRadioKeys}
               >
-                {step === 1 &&
+                {step === STEP_SPHERE &&
                   SPHERES.map((s, i) => (
                     <Option
                       key={s.key}
@@ -411,7 +447,30 @@ export function FirstRun() {
                       }}
                     />
                   ))}
-                {step === 2 &&
+                {step === STEP_HANGING &&
+                  HANGING.map((h, i) => (
+                    <Option
+                      key={h.key}
+                      firstTab={i === 0 && !state.hanging}
+                      icon={HANGING_ICON[h.key]}
+                      hue={OPTION_HUES[i % OPTION_HUES.length]}
+                      label={h.label}
+                      selected={state.hanging === h.key}
+                      onSelect={() => {
+                        if (state.hanging !== h.key) {
+                          hapticThreshold()
+                          // свежее — кот оживляется, долгое — спокойно слушает (без упрёка), «не помню» — пожимает плечами
+                          if (h.key === 'day') catReact('excited', 'celebrate')
+                          else if (h.key === 'week') catReact('happy', 'wave')
+                          else if (h.key === 'month') catReact('listening', 'idle')
+                          else catReact('calm', 'think')
+                        }
+                        setNudge(false)
+                        update({ hanging: h.key })
+                      }}
+                    />
+                  ))}
+                {step === STEP_BLOCKER &&
                   BLOCKERS.map((b, i) => (
                     <Option
                       key={b.key}
@@ -435,7 +494,7 @@ export function FirstRun() {
                       }}
                     />
                   ))}
-                {step === 3 && (
+                {step === STEP_FIRST && (
                   <>
                     {steps.map((s, i) => (
                       <Option
@@ -496,6 +555,7 @@ export function FirstRun() {
               reason={blocker?.reaction ?? null}
               answers={[
                 SPHERES.find((x) => x.key === state.sphere)?.label,
+                hanging?.chip,
                 blocker?.label,
               ].filter((x): x is string => !!x && x !== 'Пока не знаю')}
             />
