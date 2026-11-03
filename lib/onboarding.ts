@@ -22,7 +22,7 @@ export const SPHERES: { key: Sphere; label: string }[] = [
 export const BLOCKERS: { key: Blocker; label: string; reaction: string }[] = [
   {
     key: 'where',
-    label: 'Не понимаю, с чего начать',
+    label: 'Не знаю, с чего начать',
     reaction: 'Тогда первый шаг подберу *я*. Крошечный.',
   },
   {
