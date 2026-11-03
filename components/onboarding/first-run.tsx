@@ -15,6 +15,7 @@ import {
   House,
   MessageCircle,
   PenLine,
+  Smartphone,
   Sparkles,
   type LucideIcon,
 } from 'lucide-react'
@@ -66,6 +67,7 @@ const SPHERE_ICON: Record<Sphere, LucideIcon> = {
 
 const BLOCKER_ICON: Record<Blocker, LucideIcon> = {
   where: Compass,
+  phone: Smartphone,
   boring: Hourglass,
   fear: Feather,
   tired: BatteryLow,
@@ -376,7 +378,7 @@ export function FirstRun() {
             <BuildList
               rows={[
                 SPHERES.find((x) => x.key === state.sphere)?.label ?? 'Пока не знаю',
-                blocker ? `${blocker.label} — учту` : 'Подстроюсь по ходу',
+                blocker ? `${blocker.label}\u00a0—\u00a0учту` : 'Подстроюсь по ходу',
                 `Первый шаг: ${chosenStep || steps[0]}`,
               ]}
             />
@@ -421,10 +423,11 @@ export function FirstRun() {
                       onSelect={() => {
                         if (state.blocker !== b.key) {
                           hapticThreshold()
-                          // «совсем нет сил» — кот сначала сонно соглашается, «боюсь» — слушает, «скучно» — оживляется
+                          // «нет сил» — кот сначала сонно соглашается, «боюсь» — слушает, «телефон» — машет «я посторожу», «скучно» — оживляется
                           if (b.key === 'tired') catReact('sleepy', 'idle', 1100)
                           else if (b.key === 'fear') catReact('listening', 'idle')
                           else if (b.key === 'where') catReact('calm', 'think')
+                          else if (b.key === 'phone') catReact('happy', 'wave')
                           else catReact('excited', 'celebrate')
                         }
                         setNudge(false)
