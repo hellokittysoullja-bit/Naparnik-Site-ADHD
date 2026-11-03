@@ -251,7 +251,19 @@ async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
     touch(u, now)
     u.awaiting = null
     await d.store.saveUser(u)
-    await say(d, chat, isNew ? T.hello : T.helloBack, sphereKeyboard())
+    if (isNew) {
+      // Первое знакомство — открытка с котом у костра (та же, что в превью ссылки на сайт): человек сразу видит,
+      // кто с ним говорит. Не загрузилась картинка — то же приветствие текстом.
+      const sent = await d.send('sendPhoto', {
+        chat_id: chat,
+        photo: `${d.site}/opengraph-image.png`,
+        caption: T.hello,
+        reply_markup: { inline_keyboard: sphereKeyboard() },
+      })
+      if (!sent) await say(d, chat, T.hello, sphereKeyboard())
+    } else {
+      await say(d, chat, T.helloBack, sphereKeyboard())
+    }
     return
   }
 

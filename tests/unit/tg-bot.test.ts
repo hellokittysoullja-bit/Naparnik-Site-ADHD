@@ -36,7 +36,10 @@ describe('бот: первый разговор', () => {
   it('/start с меткой источника: приветствие, сферы кнопками, источник посчитан', async () => {
     const r = rig()
     await r.msg('/start c_lina')
-    expect(r.texts()[0]).toMatch(/^Мяу\. Я Напарник/)
+    // первое знакомство — открытка с котом и приветствием в подписи
+    expect(r.sent[0].method).toBe('sendPhoto')
+    expect(r.sent[0].body.photo).toBe('https://adhd-naparnik.vercel.app/opengraph-image.png')
+    expect(String(r.sent[0].body.caption)).toMatch(/^Мяу\. Я Напарник/)
     const kb = (r.sent[0].body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard
     expect(kb.flat().map((b) => b.text)).toContain('Учёба')
     expect(r.store.sources.get('c_lina')).toBe(1)
@@ -48,8 +51,8 @@ describe('бот: первый разговор', () => {
     await r.msg('/start')
     await r.tap('sp:study')
     const t = r.texts()
-    expect(t[1]).toContain('«Открыть конспект»')
-    expect(t[2]).toMatch(/буду звать тебя раз в день/)
+    expect(t[0]).toContain('«Открыть конспект»')
+    expect(t[1]).toMatch(/буду звать тебя раз в день/)
     const go = (r.sent.find((s) => String(s.body.text).includes('Открыть конспект'))!.body.reply_markup as {
       inline_keyboard: { url?: string }[][]
     }).inline_keyboard[0][0].url!
@@ -76,6 +79,20 @@ describe('бот: первый разговор', () => {
     await r.tap('rm:9')
     await r.msg('11:30') // в 06:00 UTC у человека 11:30 → UTC+5:30
     expect((await r.store.getUser(CHAT))?.tz).toBe(330)
+  })
+})
+
+describe('бот: приветствие', () => {
+  it('картинка не ушла — то же приветствие текстом; вернувшегося встречает без открытки', async () => {
+    const r = rig()
+    r.deps.send = async (method, body) => {
+      r.sent.push({ method, body })
+      return method === 'sendPhoto' ? null : true
+    }
+    await r.msg('/start')
+    expect(r.texts()[0]).toMatch(/^Мяу\. Я Напарник/)
+    await r.msg('/start')
+    expect(r.texts().at(-1)).toMatch(/ты вернулся — засчитано/)
   })
 })
 
