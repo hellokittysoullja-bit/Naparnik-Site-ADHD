@@ -9,7 +9,7 @@
  */
 
 export type Sphere = 'study' | 'work' | 'home' | 'message' | 'unsure'
-export type Blocker = 'where' | 'boring' | 'fear' | 'tired'
+export type Blocker = 'where' | 'phone' | 'fear' | 'boring' | 'tired'
 
 export const SPHERES: { key: Sphere; label: string }[] = [
   { key: 'study', label: 'Учёба' },
@@ -26,9 +26,9 @@ export const BLOCKERS: { key: Blocker; label: string; reaction: string }[] = [
     reaction: 'Тогда первый шаг подберу *я*. Крошечный.',
   },
   {
-    key: 'boring',
-    label: 'Скучно — тянет на другое',
-    reaction: 'Значит, коротко: всего *две минуты*, и я рядом.',
+    key: 'phone',
+    label: 'Рука сама тянется к телефону',
+    reaction: 'Тогда положи его *экраном вниз*. Я посторожу.',
   },
   {
     key: 'fear',
@@ -36,8 +36,13 @@ export const BLOCKERS: { key: Blocker; label: string; reaction: string }[] = [
     reaction: 'Можно криво. Черновик *никто не увидит*.',
   },
   {
+    key: 'boring',
+    label: 'Скучно, сбегаю в другое',
+    reaction: 'Значит, коротко: всего *две минуты*, и я рядом.',
+  },
+  {
     key: 'tired',
-    label: 'Совсем нет сил',
+    label: 'Нет сил даже начать',
     reaction: 'Хватит *двух минут*. Можно даже лёжа.',
   },
 ]
