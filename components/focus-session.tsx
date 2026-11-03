@@ -144,7 +144,9 @@ export function FocusSession() {
     searchParams.get('auto') === '1' && Boolean(prefilledStep) && autoPass === prefilledStep
   const initialMinutes =
     durations.includes(prefilledDuration) ||
-    (autoStart && prefilledDuration === FIRST_MINUTES)
+    // 2 минуты — из знакомства (автостарт) и из Telegram-бота: его кнопка «Сесть рядом» обещает «две минуты».
+    // Сам старт из бота человек жмёт сам: src=tg только подставляет короткую длительность.
+    ((autoStart || searchParams.get('src') === 'tg') && prefilledDuration === FIRST_MINUTES)
       ? prefilledDuration
       : 25
 
@@ -742,7 +744,8 @@ export function FocusSession() {
               Длительность
             </span>
             <div className="flex gap-2">
-              {durations.map((d) => (
+              {/* пришёл из бота с «двумя минутами» — показываем и их, иначе ни одна кнопка не была бы выбрана */}
+              {(minutes === FIRST_MINUTES ? [FIRST_MINUTES, ...durations] : durations).map((d) => (
                 <div key={d} className="flex flex-1 flex-col items-center gap-1">
                   <button
                     type="button"
@@ -774,7 +777,9 @@ export function FocusSession() {
                 сделанным выбором — снимает микро-сомнение «а не мало/много
                 ли я взял», не задавая нового решения */}
             <p className="text-center text-xs leading-relaxed text-muted-foreground">
-              {minutes === 15
+              {minutes === FIRST_MINUTES
+                ? '2 — только начать; дальше — по желанию'
+                : minutes === 15
                 ? '15 — короткий разгон, если просто нужно сдвинуться с места'
                 : minutes === 25
                   ? '25 — классический фокус-блок, не выматывает'
