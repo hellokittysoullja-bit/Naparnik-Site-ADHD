@@ -1,0 +1,237 @@
+
+===== 01-s | https://www.noom.com/survey/weightLossGoal?route=_direct | 2026-11-03T01:04:21.769Z
+DEMOGRAPHIC PROFILE
+
+What is your weight loss goal?
+Lose 1-20 lbs for good
+Lose 21-50 lbs for good
+Lose over 50 lbs for good
+Maintain weight and get fit
+I haven’t decided yet
+
+===== 02-s | https://www.noom.com/survey/sex?route=_direct | 2026-11-03T01:04:28.582Z
+DEMOGRAPHIC PROFILE
+
+Hormones impact how our bodies metabolize food.
+What sex were you assigned at birth?
+Male
+Female
+Intersex
+Prefer not to say
+
+===== 03-s | https://www.noom.com/survey/gender?route=_direct | 2026-11-03T01:04:35.981Z
+DEMOGRAPHIC PROFILE
+
+What is your gender identity?
+Man
+Woman
+Non-binary
+I use a different term
+Prefer not to say
+
+===== 04-s | https://www.noom.com/survey/ageRange?route=_direct | 2026-11-03T01:04:42.465Z
+DEMOGRAPHIC PROFILE
+
+What is your age?
+20s
+30s
+40s
+50s
+60s
+70s
+80s+
+
+===== 05-s | https://www.noom.com/survey/basicHeight?route=_direct | 2026-11-03T01:04:48.863Z
+DEMOGRAPHIC PROFILE
+
+What's your height?
+ft.
+ft.
+in.
+in.
+Next
+
+===== 06-s | https://www.noom.com/survey/basicWeight?route=_direct | 2026-11-03T01:04:57.981Z
+DEMOGRAPHIC PROFILE
+
+What’s your current weight?
+We don't mean to pry, we just need to know so we can build a plan that's right for you.
+lb.
+lb.
+Next
+
+===== 07-s | https://www.noom.com/survey/employmentLifestyle?route=_direct | 2026-11-03T01:05:06.474Z
+DEMOGRAPHIC PROFILE
+
+Your daily schedule and routines can affect your weight.
+How would you describe your lifestyle?
+Student
+Employed part-time
+Employed full-time
+Not employed
+Retired
+
+===== 08-s | https://www.noom.com/survey/eatingDisorderPreConfirmation?route=_direct | 2026-11-03T01:05:13.383Z
+DEMOGRAPHIC PROFILE
+
+Do you have an active diagnosis of an eating disorder (e.g. bulimia, anorexia, or similar diagnosis)?
+Yes
+No
+
+===== 09-s | https://www.noom.com/survey/currentHealthRiskMale?route=_direct | 2026-11-03T01:05:19.908Z
+DEMOGRAPHIC PROFILE
+
+Do you have any of the following conditions?
+Testosterone deficiency
+Heart Disease or Stroke
+High Blood Pressure
+High Cholesterol
+Depression
+Other
+None
+Next
+
+===== 10-s | https://www.noom.com/survey/diabetesDiagnosis?route=_direct | 2026-11-03T01:05:29.050Z
+DEMOGRAPHIC PROFILE
+
+Have you ever been diagnosed with diabetes?
+We ask this question to tailor your program with the right support.
+Yes
+No
+
+===== 11-s | https://www.noom.com/survey/infoMap?route=_direct | 2026-11-03T01:05:35.375Z
+You're in trusted hands
+
+You're not alone, we’ve helped 3,627,436 people lose weight!*
+
+*Noom subscribers who lost at least 2% of their original weight as of October 2021.
+Continue
+*Noom subscribers who lost at least 2% of their original weight as of October 2021.
+
+===== 12-s | https://www.noom.com/survey/infoHealthInsurance?route=_direct | 2026-11-03T01:05:43.070Z
+Furthermore, we are trusted by popular brands
+
+In fact, several leading health insurance plans have partnered with us due to our proven results
+
+Continue
+
+===== 13-s | https://www.noom.com/survey/healthInsuranceProvider?route=_direct | 2026-11-03T01:05:49.475Z
+Who is your health insurance provider?
+We ask this question because you may be eligible to use Noom at no cost to you, sponsored by a health insurance provider.
+Aetna
+Kaiser Permanente
+Anthem Blue Cross Blue Shield
+Humana, Inc.
+Medicare
+I don't have health insurance
+Other
+Next
+Prefer not to answer
+
+===== 14-s | https://www.noom.com/survey/idealWeight?route=_direct | 2026-11-03T01:05:56.954Z
+HEALTH GOALS
+
+What is your ideal weight that you want to reach?
+lb.
+lb.
+Recommended weight range:
+140 lb - 174 lb
+Next
+Using data from real Noom users, we'll predict when you'll hit your target weight if you follow your custom plan and adopt a healthy lifestyle. The results of this survey are not guaranteed and Noom users typically lose 1-2 lb per week.
+
+===== 15-s | https://www.noom.com/survey/highestWeight?route=_direct | 2026-11-03T01:06:05.614Z
+HEALTH GOALS
+
+What was the most you have ever weighed?
+This helps us determine what programs you might be eligible for.
+lb.
+lb.
+Next
+
+===== 16-s | https://www.noom.com/survey/info?route=_direct | 2026-11-03T01:06:14.941Z
+Noom creates long-term results through habit and behavior change, not restrictive dieting
+Scientific Reports - 78% of participants using Noom lost weight over a 6 month study
+Got it!
+
+===== 17-s | https://www.noom.com/survey/focusInPlan?route=_direct | 2026-11-03T01:06:21.674Z
+HEALTH GOALS
+
+What area do you want to focus on in your plan?
+Nutrition
+Physical activity
+Building good habits
+Other
+Next
+
+===== 18-s | https://www.noom.com/survey/importantDateDetails?route=_direct | 2026-11-03T01:06:31.065Z
+HEALTH GOALS
+
+Having something to look forward to can be a big motivator to stick to your plan.
+Do you have an important event coming up?
+Vacation
+Wedding
+Holiday
+Summer
+Reunion
+Birthday
+Other
+No, I don't have an event
+
+===== 19-s | https://www.noom.com/survey/pace?route=_direct | 2026-11-03T01:06:37.622Z
+HEALTH GOALS
+
+This is your plan, designed to work at your pace. So knowing you, as only you can, which pace would you prefer?
+As fast as possible
+Slow and steady wins the race
+Somewhere in between the two
+
+===== 20-s | https://www.noom.com/survey/build?route=_direct | 2026-11-03T01:06:46.558Z
+Sticking to a plan can be hard. Noom makes it easy.
+“Noom changed the way I think about portion control. It changed my relationship with food.”
+–Mike
+
+*Noom users that also adopt a healthy lifestyle typically lose 1-2 lbs per week
+
+
+Got it!
+
+===== 21-s | https://www.noom.com/survey/nw-med-branching/previousMedications?route=_direct | 2026-11-03T01:06:54.158Z
+HEALTH GOALS
+
+Have you taken weight loss medication before?
+Yes
+I am currently taking weight loss medication
+No, I have not
+No, but I’ve been prescribed it
+
+===== 22-s | https://www.noom.com/survey/nw-med-branching/planInterest?route=_direct | 2026-11-03T01:07:00.811Z
+HEALTH GOALS
+
+Are you interested in taking a GLP-1 or weight loss medication?
+Yes
+No
+I’m not sure, but I’d like to learn more
+
+===== 23-s | https://www.noom.com/survey/building?route=_direct | 2026-11-03T01:07:08.441Z
+Lose twice as much weight with Noom vs. trying on your own
+Based on a study over 12 weeks of active Noom users.
+CALCULATING WEIGHT LOSS PACE ...
+36%
+Calculating weight loss pace
+
+===== 24-s | https://www.noom.com/survey/building?route=_direct | 2026-11-03T01:07:15.618Z
+Lose twice as much weight with Noom vs. trying on your own
+Based on a study over 12 weeks of active Noom users.
+PREPARING RESULTS ...
+71%
+Preparing results
+
+===== 25-s | https://www.noom.com/survey/email?route=_direct | 2026-11-03T01:07:22.805Z
+Enter your email to see when Noom can help you reach 170 lb
+Email
+
+We'll email you a copy of your results for convenient access.
+
+See My Result
+
+By clicking "See My Result" above you acknowledge that you have read, understood, and accepted the Terms of Use and Privacy Policy. You may receive emails from Noom and can unsubscribe at any time.
