@@ -1,4 +1,4 @@
-import { Analytics } from "@vercel/analytics/next";
+import { SiteAnalytics } from "@/components/analytics";
 import type { Metadata, Viewport } from "next";
 import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
@@ -69,7 +69,7 @@ export default function RootLayout({
     >
       <body className="antialiased font-sans">
         {children}
-        {process.env.NODE_ENV === "production" && <Analytics />}
+        {process.env.NODE_ENV === "production" && <SiteAnalytics />}
       </body>
     </html>
   );
