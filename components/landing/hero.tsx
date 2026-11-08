@@ -17,6 +17,8 @@ import { GroundPool, Knoll, Moon } from "@/components/hero-scene";
 import { NightScene } from "./night-scene";
 import { SPRING_SNAPPY } from "@/lib/motion";
 import { playPurr } from "@/lib/reward-sound";
+import { withAttribution } from "@/lib/visitor";
+import { DEFAULT_HEADLINE, type EntryHeadline } from "@/content/entry-variants";
 
 /**
  * Первый экран: одна плотная композиция вместо двух зон, разбросанных по
@@ -173,7 +175,8 @@ function TypedLine({ text, onDone, paused = false }: { text: string; onDone?: ()
   );
 }
 
-export function Hero() {
+/** `headline` — заголовок под ролик (content/entry-variants.ts, `/?src=`); по умолчанию — общий */
+export function Hero({ headline = DEFAULT_HEADLINE }: { headline?: EntryHeadline }) {
   const [steps, setSteps] = useState<SceneStep[]>([]);
   const [answered, setAnswered] = useState(false);
   const [expression, setExpression] = useState<MascotExpression>("calm");
@@ -193,12 +196,15 @@ export function Hero() {
   // напрямую — лендинг статический, без загрузки модуля памяти.
   const [entryHref, setEntryHref] = useState("/app/start");
   useEffect(() => {
+    let href = "/app/start";
     try {
       const starts = JSON.parse(window.localStorage.getItem("naparnik:starts") ?? "[]");
-      if (Array.isArray(starts) && starts.length > 0) setEntryHref("/app");
+      if (Array.isArray(starts) && starts.length > 0) href = "/app";
     } catch {
       /* приватный режим — пусть будет знакомство */
     }
+    // метка ролика (utm_*, src) идёт дальше в адресе: переживает переход из Instagram в Safari (lib/visitor.ts)
+    setEntryHref(withAttribution(href, window.location.search));
   }, []);
   // Клиентский переход на /app не мгновенен (первая загрузка бандла) —
   // 200-300мс без визуального отклика читаются мозгом как «не сработало»,
@@ -220,7 +226,7 @@ export function Hero() {
     window.setTimeout(() => setSlow(true), 1000);
     // клик с модификатором (новая вкладка) — обычной ссылкой
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-    if (entryHref !== "/app/start" || !canViewTransition()) return;
+    if (!entryHref.startsWith("/app/start") || !canViewTransition()) return;
     e.preventDefault();
     // сразу: отклик на нажатие — сам полёт кота, без паузы (NN/g: движение в первые 0,1 с)
     navigateWithTransition(() => router.push(entryHref), "onb");
@@ -391,14 +397,14 @@ export function Hero() {
               моменту, когда начинает рисоваться каракуля (0.95s) — взгляд
               сперва ловит проявление света, потом штрих */}
             <span className="chroma-appear">
-              Сдвинем твоё
+              {headline.top}
               <br />
-              дело за{" "}
+              {headline.before}
               <span
                 className="scribble-underline scribble-draw text-primary"
                 style={{ "--scribble-delay": "0.45s" } as CSSProperties}
               >
-                2&nbsp;минуты
+                {headline.accent}
                 <svg
                   viewBox="0 0 100 12"
                   preserveAspectRatio="none"
@@ -424,7 +430,7 @@ export function Hero() {
                   />
                 </svg>
               </span>
-              {"."}
+              {headline.after}
             </span>
           </h1>
 

@@ -6,6 +6,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const hero = fs.readFileSync(path.join(root, "components", "landing", "hero.tsx"), "utf8");
+// заголовки лендинга под ролики рисуются тем же вшитым Manrope 700 (content/entry-variants.ts)
+const variants = fs.readFileSync(path.join(root, "content", "entry-variants.ts"), "utf8");
 const css = fs.readFileSync(path.join(root, "app", "hero-fonts.css"), "utf8");
 const PUNCT = " .,:;!?…—–-«»() 2";
 const covered = (fam, w) => {
@@ -20,7 +22,7 @@ const covered = (fam, w) => {
   return set;
 };
 const need = {
-  "Manrope|500": [...new Set([...hero].filter((c) => c >= "Ѐ" && c <= "ӿ").concat([...PUNCT, ..."0123456789"]))],
+  "Manrope|500": [...new Set([...hero, ...variants].filter((c) => c >= "Ѐ" && c <= "ӿ").concat([...PUNCT, ..."0123456789"]))],
   "Manrope|700": null,
   "Caveat|500": null,
 };

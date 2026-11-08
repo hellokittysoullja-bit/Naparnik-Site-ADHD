@@ -69,6 +69,8 @@ def hero_chars(fam):
         text = "".join("".join(p) if isinstance(p, tuple) else p for p in parts).replace("&nbsp;", " ")
         assert "Напарник" in text and "неделю" in text, "не нашёл строки рукописи в hero.tsx"
         return "".join(sorted(set(text) | set(PUNCT)))
+    # заголовки лендинга под ролики (content/entry-variants.ts) рисуются тем же Manrope 700 первого экрана
+    src += open(os.path.join(ROOT, "content", "entry-variants.ts"), encoding="utf-8").read()
     cyr = {c for c in src if "Ѐ" <= c <= "ӿ"}
     return "".join(sorted(cyr | set(PUNCT) | set("0123456789")))
 

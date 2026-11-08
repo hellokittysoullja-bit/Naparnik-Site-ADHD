@@ -23,6 +23,31 @@ const csp = [
   "frame-ancestors 'none'",
 ].join('; ')
 
+// Свой домен (план «школа 1», фаза 0). Пока CANONICAL_HOST не задан в Vercel — ничего не происходит. Когда задан
+// (например, «naparnik.ru»), старый адрес навсегда (308) уводит на новый тот же путь с теми же параметрами и
+// переносит анонимный ID и метку «свой» разовыми параметрами (_nid, _home — их ставит и убирает proxy.ts):
+// cookie привязаны к домену и сами не переезжают. API на старом адресе не трогаем (вебхуки бота).
+const LEGACY_HOST = 'adhd-naparnik.vercel.app'
+function moveToCanonicalHost() {
+  const target = process.env.CANONICAL_HOST?.trim().toLowerCase()
+  if (!target || target === LEGACY_HOST) return []
+  const legacy = { type: 'host', value: LEGACY_HOST }
+  const nid = { type: 'cookie', key: 'nid', value: '(?<nid>[A-Za-z0-9_-]{22})' }
+  const home = { type: 'cookie', key: 'naparnik_home', value: '1' }
+  const source = '/:path((?!api/).*)'
+  const to = (q) => `https://${target}/:path${q}`
+  return [
+    { source, has: [legacy, nid, home], destination: to('?_nid=:nid&_home=1'), permanent: true },
+    { source, has: [legacy, nid], destination: to('?_nid=:nid'), permanent: true },
+    { source, has: [legacy, home], destination: to('?_home=1'), permanent: true },
+    { source, has: [legacy], destination: to(''), permanent: true },
+  ]
+}
+
+// Экраны, которым не место в поиске (план «школа 1», фаза 1): приложение, воронка, личные страницы.
+// В индексе остаются лендинг и публичные страницы.
+const NOINDEX = ['/app', '/app/:path*', '/start', '/plan/:path*', '/session/:path*', '/save', '/today', '/login', '/v/:path*']
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
@@ -42,8 +67,13 @@ const nextConfig = {
     const home = [{ type: 'cookie', key: 'naparnik_home', value: '1' }]
     const intro = [{ type: 'query', key: 'intro' }]
     return [
+      ...moveToCanonicalHost(),
       { source: '/', has: home, missing: intro, destination: '/app', permanent: false },
       { source: '/app/start', has: home, destination: '/app', permanent: false },
+      // Короткие ссылки для роликов и шапки профиля (план «школа 1», фаза 1). Параметры (utm_*, src) идут дальше.
+      // Пока новых экранов нет, ведут на нынешние: квиз — знакомство, инструмент разбора — Фокус.
+      { source: '/test', destination: '/app/start', permanent: true },
+      { source: '/razbit', destination: '/app/session', permanent: true },
     ]
   },
   async headers() {
@@ -55,6 +85,7 @@ const nextConfig = {
       headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
     })
     return [
+      ...NOINDEX.map((source) => ({ source, headers: [{ key: 'X-Robots-Tag', value: 'noindex' }] })),
       immutable('/fonts/:path*'),
       immutable('/mascot/:path*'),
       immutable('/scene/:path*'),
