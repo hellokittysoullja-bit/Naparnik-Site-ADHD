@@ -267,18 +267,42 @@ export function keepMemory(): void {
 
 /**
  * Метка «уже свой» для сервера — как вход в аккаунт у Duolingo, только без аккаунта: в cookie лишь «1», никаких данных.
- * По ней Vercel уводит с лендинга и знакомства на /app ещё ДО загрузки страницы (next.config.mjs, redirects) —
- * вернувшийся на 3G не ждёт стили лендинга ради встроенного скрипта-перехода (components/returning-redirect.tsx —
- * он остаётся запасным путём: Safari живёт с такими cookie 7 дней). Нет стартов — метку снимаем.
+ * По ней Vercel уводит с лендинга и знакомства на /app ещё ДО загрузки страницы (next.config.mjs, redirects).
+ * Метку ставит СЕРВЕР (POST /api/home): cookie, записанные скриптом, Safari держит ~7 дней, серверные — 400 дней.
+ * Скрипт пишет её сам только как мгновенную запасную, пока ответ сервера в пути; продлеваем раз в 30 дней.
+ * Встроенный скрипт (components/returning-redirect.tsx) — последний запасной путь. Нет стартов — метку снимаем.
  */
 const HOME_COOKIE = 'naparnik_home'
+const HOME_REFRESH_KEY = 'naparnik:homeAt'
+const HOME_REFRESH_MS = 30 * 86_400_000
 export function markHome(hasStarts: boolean): void {
   try {
     if (typeof document === 'undefined') return
     const has = document.cookie.split('; ').includes(`${HOME_COOKIE}=1`)
-    // продлеваем на каждом визите: 400 дней — предел, который браузеры дают cookie
-    if (hasStarts) document.cookie = `${HOME_COOKIE}=1; Max-Age=34560000; Path=/; SameSite=Lax; Secure`
-    else if (has) document.cookie = `${HOME_COOKIE}=; Max-Age=0; Path=/; SameSite=Lax; Secure`
+    if (!hasStarts) {
+      if (has) document.cookie = `${HOME_COOKIE}=; Max-Age=0; Path=/; SameSite=Lax; Secure`
+      return
+    }
+    let last = 0
+    try {
+      last = Number(window.localStorage.getItem(HOME_REFRESH_KEY)) || 0
+    } catch {
+      /* хранилище недоступно — просто попросим сервер ещё раз */
+    }
+    if (has && Date.now() - last < HOME_REFRESH_MS) return
+    if (!has) document.cookie = `${HOME_COOKIE}=1; Max-Age=34560000; Path=/; SameSite=Lax; Secure`
+    void fetch('/api/home', { method: 'POST', keepalive: true, credentials: 'same-origin' })
+      .then((r) => {
+        if (!r.ok) return
+        try {
+          window.localStorage.setItem(HOME_REFRESH_KEY, String(Date.now()))
+        } catch {
+          /* не запомнили — продлим при следующем визите */
+        }
+      })
+      .catch(() => {
+        /* нет сети — сработает скриптовая метка и встроенный скрипт */
+      })
   } catch {
     /* cookie запрещены — сработает встроенный скрипт */
   }

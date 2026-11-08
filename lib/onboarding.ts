@@ -111,3 +111,56 @@ export function writeOnboarding(state: OnboardingState) {
     /* приватный режим — онбординг просто не запомнит шаг */
   }
 }
+
+/**
+ * Шаг и ответы знакомства — в адресе (`/app/start?step=3&s=study&h=week&b=phone&f=0`), как у Noom: «Назад» браузера
+ * открывает предыдущий вопрос, перезагрузка и ссылка в новой вкладке или в Safari (из встроенного браузера Instagram
+ * переносится только адрес) — тот же вопрос с теми же ответами. В адресе только ключи вариантов и номер шаблонного
+ * шага; свой текст человека («Своё дело…») в адрес не попадает — `f=own`, сам текст остаётся на устройстве.
+ */
+const SPHERE_KEYS = new Set<string>(SPHERES.map((s) => s.key))
+const HANGING_KEYS = new Set<string>(HANGING.map((h) => h.key))
+const BLOCKER_KEYS = new Set<string>(BLOCKERS.map((b) => b.key))
+const ONB_LAST_STEP = 5
+
+export const ONBOARDING_QUERY_KEYS = ['step', 's', 'h', 'b', 'f'] as const
+
+export function onboardingToQuery(state: OnboardingState): Record<string, string> {
+  const q: Record<string, string> = { step: String(state.step) }
+  if (state.sphere) q.s = state.sphere
+  if (state.hanging) q.h = state.hanging
+  if (state.blocker) q.b = state.blocker
+  if (state.firstStep) {
+    const i = (state.sphere ? STEPS[state.sphere] : STEPS.unsure).indexOf(state.firstStep)
+    q.f = i >= 0 ? String(i) : 'own'
+  }
+  return q
+}
+
+/**
+ * Состояние из адреса. `saved` — запись с устройства: из неё берётся только свой текст шага (`f=own`).
+ * Шаг не может быть дальше первого вопроса без ответа — по ссылке нельзя «перепрыгнуть» к договору без дела.
+ * Нет `step` в адресе — null (берём запись с устройства).
+ */
+export function onboardingFromQuery(params: URLSearchParams, saved: OnboardingState): OnboardingState | null {
+  const rawStep = Number(params.get('step'))
+  if (!params.has('step') || !Number.isInteger(rawStep)) return null
+  const s = params.get('s')
+  const h = params.get('h')
+  const b = params.get('b')
+  const sphere = s && SPHERE_KEYS.has(s) ? (s as Sphere) : null
+  const hanging = h && HANGING_KEYS.has(h) ? (h as Hanging) : null
+  const blocker = b && BLOCKER_KEYS.has(b) ? (b as Blocker) : null
+  const f = params.get('f')
+  let firstStep: string | null = null
+  if (f === 'own') {
+    const templates = sphere ? STEPS[sphere] : STEPS.unsure
+    firstStep = saved.firstStep && !templates.includes(saved.firstStep) ? saved.firstStep : null
+  } else if (f !== null && /^\d$/.test(f)) {
+    firstStep = (sphere ? STEPS[sphere] : STEPS.unsure)[Number(f)] ?? null
+  }
+  // дальше первого вопроса без ответа не пускаем
+  const reachable = !sphere ? 1 : !hanging ? 2 : !blocker ? 3 : !firstStep ? 4 : ONB_LAST_STEP
+  const step = Math.min(Math.max(1, rawStep), reachable)
+  return { step, sphere, hanging, blocker, firstStep }
+}

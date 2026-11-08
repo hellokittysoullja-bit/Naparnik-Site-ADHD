@@ -29,6 +29,7 @@ import { EmphasisText } from '@/components/emphasis-text'
 import { HoldToStart } from '@/components/onboarding/hold-to-start'
 import { NightScene } from '@/components/landing/night-scene'
 import { navigateWithTransition } from '@/lib/view-transition'
+import { withAttribution } from '@/lib/visitor'
 import { getPatterns, peekStarts } from '@/lib/memory'
 import { useClientMount } from '@/hooks/use-client-mount'
 import { hapticThreshold } from '@/lib/haptics'
@@ -39,6 +40,9 @@ import {
   FIRST_MINUTES,
   SPHERES,
   STEPS,
+  ONBOARDING_QUERY_KEYS,
+  onboardingFromQuery,
+  onboardingToQuery,
   readOnboarding,
   writeOnboarding,
   type Blocker,
@@ -101,6 +105,15 @@ const STEP_BLOCKER = 3
 const STEP_FIRST = 4
 const LAST_STEP = 5
 
+/** Адрес знакомства для состояния: наш шаг и ответы плюс всё, что уже было в адресе (метка ролика и т. п.) */
+function onboardingUrl(state: OnboardingState): string {
+  const current = new URLSearchParams(window.location.search)
+  for (const k of ONBOARDING_QUERY_KEYS) current.delete(k)
+  const out = new URLSearchParams(onboardingToQuery(state))
+  current.forEach((v, k) => out.append(k, v))
+  return `${window.location.pathname}?${out.toString()}`
+}
+
 export function FirstRun() {
   const router = useRouter()
   const reduceMotion = useReducedMotion()
@@ -137,6 +150,12 @@ export function FirstRun() {
   // Направление перехода: вперёд экран уезжает влево, назад — вправо
   const dirRef = useRef(1)
 
+  // Шаг и ответы в адресе (ниже): шаг, который сейчас в адресе (null — адрес ещё не прочитан), сколько записей
+  // истории добавили мы сами и пришло ли изменение от «Назад»/«Вперёд» браузера
+  const urlStepRef = useRef<number | null>(null)
+  const pushedRef = useRef(0)
+  const fromPopRef = useRef(false)
+
   // Уже есть старты — онбординг не нужен: человек вернулся, ведём домой.
   useEffect(() => {
     let alive = true
@@ -146,7 +165,13 @@ export function FirstRun() {
         router.replace('/app')
         return
       }
-      setState(readOnboarding())
+      // адрес главнее записи на устройстве: ссылка, открытая в Safari из Instagram, ведёт на тот же вопрос
+      const saved = readOnboarding()
+      const initial = onboardingFromQuery(new URLSearchParams(window.location.search), saved) ?? saved
+      writeOnboarding(initial)
+      urlStepRef.current = initial.step
+      window.history.replaceState(null, '', onboardingUrl(initial))
+      setState(initial)
     })
     return () => {
       alive = false
@@ -154,6 +179,40 @@ export function FirstRun() {
   }, [router])
 
   // Нижнего меню на знакомстве нет: AppNav не рисует его на /app/start (components/app-nav.tsx).
+
+  // Шаг и ответы — в адресе (lib/onboarding.ts, onboardingToQuery). Новый вопрос — новая запись истории: «Назад»
+  // браузера (и свайп на iPhone) открывает предыдущий вопрос. Ответ на том же вопросе — замена записи.
+  // urlStepRef — шаг, который сейчас в адресе (объявлен выше, у чтения адреса при открытии).
+  useEffect(() => {
+    if (urlStepRef.current === null) return
+    const url = onboardingUrl(state)
+    if (state.step !== urlStepRef.current && !fromPopRef.current) {
+      window.history.pushState(null, '', url)
+      pushedRef.current += 1
+    } else {
+      window.history.replaceState(null, '', url)
+    }
+    fromPopRef.current = false
+    urlStepRef.current = state.step
+  }, [state])
+  useEffect(() => {
+    function onPop() {
+      const next = onboardingFromQuery(new URLSearchParams(window.location.search), readOnboarding())
+      if (!next) return
+      fromPopRef.current = true
+      pushedRef.current = Math.max(0, pushedRef.current - 1)
+      window.clearTimeout(buildTimer.current)
+      setBuilding(false)
+      setNudge(false)
+      setState((prev) => {
+        dirRef.current = next.step >= prev.step ? 1 : -1
+        writeOnboarding(next)
+        return next
+      })
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
 
   function update(patch: Partial<OnboardingState>) {
     setState((s) => {
@@ -265,7 +324,10 @@ export function FirstRun() {
       /* хранилище недоступно — человек нажмёт «старт» сам */
     }
     // кот из карточки договора перелетает в центр старта (lib/view-transition.ts)
-    navigateWithTransition(() => router.push(`/app/session?${params.toString()}`), 'session')
+    navigateWithTransition(
+      () => router.push(withAttribution(`/app/session?${params.toString()}`, window.location.search)),
+      'session',
+    )
   }
 
   // Что говорит кот и с каким лицом — реакция на выбор, а не статичный текст
@@ -345,7 +407,12 @@ export function FirstRun() {
         {step > 0 ? (
           <button
             type="button"
-            onClick={() => (step === 1 ? router.push('/') : go(step - 1))}
+            onClick={() => {
+              if (step === 1) router.push(withAttribution('/', window.location.search))
+              // предыдущий вопрос уже есть в истории — уходим на него, а не плодим новую запись
+              else if (pushedRef.current > 0) window.history.back()
+              else go(step - 1)
+            }}
             aria-label="Назад"
             className="press -ml-2 inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
           >
