@@ -67,7 +67,13 @@
   ],
   "sphere": {
     "question": "Где это мешает больше всего?",
-    "options": { "work": "Работа", "study": "Учёба", "home": "Дом", "project": "Свой проект", "all": "Везде" }
+    "options": {
+      "work": "Работа",
+      "study": "Учёба",
+      "home": "Дом",
+      "project": "Свой проект",
+      "all": "Везде"
+    }
   },
   "name": {
     "question": "Как тебя зовут?",
@@ -166,7 +172,12 @@
   "after": {
     "done": "Готово. 2 минуты — сделано. Это и есть старт.",
     "question": "Когда повторим завтра?",
-    "options": ["утром с кофе", "после обеда", "вечером", "своё"],
+    "options": [
+      "утром с кофе",
+      "после обеда",
+      "вечером",
+      "своё"
+    ],
     "plan": "Когда {when}, я открываю Напарника на 2 минуты.",
     "customPlaceholder": "Например: после пар",
     "progress": "1 из 7 дней",
@@ -179,8 +190,9 @@
     "home": "В мой дом"
   },
   "footer": {
-    "copyright": "© New York University and the President and Fellows of Harvard College",
+    "copyright": "The 6-question Adult Self-Report Scale-Version1.1 (ASRS-V1.1) Screener is a subset of the 18-question Adult ADHD Self-Report Scale-Version1.1 (Adult ASRSV1.1) Symptom Checklist. © New York University and the President and Fellows of Harvard College. The ASRS v1.1 Screener was created by Dr. Lenard Adler of NYU and Dr. Ronald Kessler of Harvard.",
     "citation": "Опросник: Adult ADHD Self-Report Scale (ASRS v1.1), 6 вопросов, Всемирная организация здравоохранения. Kessler RC, Adler L, Ames M, et al. The World Health Organization Adult ADHD Self-Report Scale (ASRS): a short screening scale for use in the general population. Psychol Med. 2005;35(2):245–256. Подсчёт — Harvard Medical School, обновление от 28.02.2024 (0–24, порог 14).",
-    "method": "Как устроен тест"
+    "method": "Как устроен тест",
+    "_citationNote": "copyright — обязательная ссылка на авторов ДОСЛОВНО со страницы лицензии NYU (license.tov.med.nyu.edu/product/asrs6Qscreener, «The appropriate citation for the screener is»); не переводить и не сокращать"
   }
 }

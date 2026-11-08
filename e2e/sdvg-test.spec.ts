@@ -119,3 +119,11 @@ test('страница метода и «Где пройти очную диаг
   await page.goto('/sdvg-test/metod#vrach')
   await expect(page.getByRole('heading', { name: 'Где пройти очную диагностику' })).toBeVisible()
 })
+
+test('обязательная ссылка на авторов из лицензии NYU — на тесте и на странице метода', async ({ page }) => {
+  const required = 'The ASRS v1.1 Screener was created by Dr. Lenard Adler of NYU and Dr. Ronald Kessler of Harvard.'
+  await page.goto('/sdvg-test')
+  await expect(page.getByText(required)).toBeVisible()
+  await page.goto('/sdvg-test/metod')
+  await expect(page.getByText(required)).toBeVisible()
+})
