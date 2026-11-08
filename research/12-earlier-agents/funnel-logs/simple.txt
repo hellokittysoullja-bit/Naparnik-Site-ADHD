@@ -1,0 +1,264 @@
+
+===== 01-s | https://simple.life/survey/main/ob/age | 2026-11-03T01:13:09.625Z
+EN
+HIT YOUR WEIGHT
+LOSS GOALS
+BASED ON YOUR AGE
+Age: 40–49
+Age: 50-59
+Age: 60-69
+Age: 70-80
+I'm 18-39
+
+===== 02-s | https://simple.life/survey/main/ob/g-input | 2026-11-03T01:13:16.468Z
+EN
+What sex best describes you?
+We use this to personalize your plan.
+Female
+Male
+Prefer not to say
+
+===== 03-s | https://simple.life/survey/main/ob/intermittent-fasting | 2026-11-03T01:13:24.979Z
+Have you heard about intermittent fasting?
+Just the name
+I know a few things
+Yes, I know everything about it!
+Back
+Next
+
+===== 04-s | https://simple.life/survey/main/ob/intermittent-fasting | 2026-11-03T01:13:27.547Z
+Have you heard about intermittent fasting?
+Just the name
+I know a few things
+Yes, I know everything about it!
+Back
+Next
+
+===== 05-s | https://simple.life/survey/main/ob/make-it-stick | 2026-11-03T01:13:31.179Z
+Intermittent Fasting is simpler than it sounds
+It’s not about eating less all day — it’s about giving your body a clear rhythm. We’ll help you start in a way that feels natural and sustainable.
+Flexible to fit your goals and lifestyle
+Supports hunger and energy balance
+Easy to follow in real life
+Continue
+
+===== 06-s | https://simple.life/survey/main/ob/w-loss-goals | 2026-11-03T01:13:34.986Z
+To start, tell us what your focus is right now:
+Lose 1-20 lbs sustainably
+Lose 21-50 lbs sustainably
+Lose over 50 lbs sustainably
+Maintain weight & feel healthier
+I'm not sure!
+
+===== 07-s | https://simple.life/survey/m/ob/do-you-eat-carbs | 2026-11-03T01:13:37.865Z
+MY PROFILE
+Let’s talk nutrition. How often do you eat carb-dense foods like bread, dairy, pasta, etc?
+No judgment: This will help us personalize your plan
+Very often
+Sometimes
+Rarely
+Not at all
+Next
+
+===== 08-s | https://simple.life/survey/m/ob/do-you-eat-carbs | 2026-11-03T01:13:40.347Z
+MY PROFILE
+Let’s talk nutrition. How often do you eat carb-dense foods like bread, dairy, pasta, etc?
+No judgment: This will help us personalize your plan
+Very often
+Sometimes
+Rarely
+Not at all
+Next
+
+===== 09-s | https://simple.life/survey/m/ob/any-specific-diet | 2026-11-03T01:13:43.871Z
+MY PROFILE
+Are you currently following a specific dietary pattern?
+No
+Low-carb
+Vegetarian
+Fully plant-based
+Pescatarian
+Lactose-free
+Gluten-free
+Keto
+Other
+Next
+
+===== 10-s | https://simple.life/survey/m/ob/any-specific-diet | 2026-11-03T01:13:46.380Z
+MY PROFILE
+Are you currently following a specific dietary pattern?
+No
+Low-carb
+Vegetarian
+Fully plant-based
+Pescatarian
+Lactose-free
+Gluten-free
+Keto
+Other
+Next
+
+===== 11-s | https://simple.life/survey/m/ob/regular-diet-vs-simple | 2026-11-03T01:13:49.902Z
+MY PROFILE
+You don’t need a special diet to reach your happy weight!
+Simple’s science-backed approach doesn’t require you to ditch foods you love or follow a bunch of complicated “rules.” 🙌
+Instead, we help men like you achieve and maintain weight loss in a way that fits your lifestyle.
+Got it
+
+===== 12-s | https://simple.life/survey/m/ob/belly-type | 2026-11-03T01:13:53.724Z
+MY PROFILE
+What is your belly type?
+Stressed belly
+Gluten belly
+Alcohol belly
+Hormonal belly
+Normal belly
+Next
+
+===== 13-s | https://simple.life/survey/m/ob/belly-type | 2026-11-03T01:13:56.306Z
+MY PROFILE
+What is your belly type?
+Stressed belly
+Gluten belly
+Alcohol belly
+Hormonal belly
+Normal belly
+Next
+
+===== 14-s | https://simple.life/survey/m/ob/struggling | 2026-11-03T01:13:59.806Z
+MY PROFILE
+Do you struggle with any of the following?
+Sensitive back
+Tight hips
+Achy knees
+None of the above
+Next
+
+===== 15-s | https://simple.life/survey/m/ob/struggling | 2026-11-03T01:14:02.301Z
+MY PROFILE
+Do you struggle with any of the following?
+Sensitive back
+Tight hips
+Achy knees
+None of the above
+Next
+
+===== 16-s | https://simple.life/survey/m/ob/how-do-you-sleep | 2026-11-03T01:14:05.796Z
+MY PROFILE
+How much sleep do you usually get?
+Minimal rest (less than 5 hours)
+I get some shut-eye (5-6 hours)
+I sleep long and well (7-8 hours)
+I’m a sleep superhero (more than 8 hours)
+Next
+
+===== 17-s | https://simple.life/survey/m/ob/how-do-you-sleep | 2026-11-03T01:14:08.263Z
+MY PROFILE
+How much sleep do you usually get?
+Minimal rest (less than 5 hours)
+I get some shut-eye (5-6 hours)
+I sleep long and well (7-8 hours)
+I’m a sleep superhero (more than 8 hours)
+Next
+
+===== 18-s | https://simple.life/survey/m/ob/how-much-water-you-take | 2026-11-03T01:14:11.782Z
+MY PROFILE
+What is your daily water intake?
+I only have coffee or tea
+About 2 glasses
+2 to 6 glasses
+More than 6 glasses
+Next
+
+===== 19-s | https://simple.life/survey/m/ob/how-much-water-you-take | 2026-11-03T01:14:14.362Z
+MY PROFILE
+What is your daily water intake?
+I only have coffee or tea
+About 2 glasses
+2 to 6 glasses
+More than 6 glasses
+Next
+
+===== 20-s | https://simple.life/survey/m/ob/lifestyle | 2026-11-03T01:14:17.863Z
+MY PROFILE
+What’s your lifestyle like?
+I spend my days sitting
+I try to move when I can
+I’m on my feet all day long
+Next
+
+===== 21-s | https://simple.life/survey/m/ob/lifestyle | 2026-11-03T01:14:20.465Z
+MY PROFILE
+What’s your lifestyle like?
+I spend my days sitting
+I try to move when I can
+I’m on my feet all day long
+Next
+
+===== 22-s | https://simple.life/survey/m/ob/time-for-yourself | 2026-11-03T01:14:24.045Z
+MY PROFILE
+How much time do you have for yourself every day?
+I hardly have any time for myself
+I’m busy but try to find time to recharge
+My schedule is open and flexible
+Next
+
+===== 23-s | https://simple.life/survey/m/ob/time-for-yourself | 2026-11-03T01:14:26.628Z
+MY PROFILE
+How much time do you have for yourself every day?
+I hardly have any time for myself
+I’m busy but try to find time to recharge
+My schedule is open and flexible
+Next
+
+===== 24-s | https://simple.life/survey/m/ob/time-for-yourself-banner | 2026-11-03T01:14:30.289Z
+Just 5 minutes a day
+That’s all you need to develop a routine that works for you.
+You’ve got this!
+Got it!
+
+===== 25-s | https://simple.life/survey/m/ob/current-priorities | 2026-11-03T01:14:33.978Z
+MY PROFILE
+Which of the below best describes your current priorities?
+I’d like to focus on weight loss only
+I’d like to gain some muscle while I lose fat
+Gaining muscle is more important to me than losing fat
+Next
+
+===== 26-s | https://simple.life/survey/m/ob/current-priorities | 2026-11-03T01:14:36.569Z
+MY PROFILE
+Which of the below best describes your current priorities?
+I’d like to focus on weight loss only
+I’d like to gain some muscle while I lose fat
+Gaining muscle is more important to me than losing fat
+Next
+
+===== 27-s | https://simple.life/survey/m/ob/sticking-to-plan | 2026-11-03T01:14:40.128Z
+MY PROFILE
+I’m literally a different person now
+I honestly can’t even believe what I see every time I pass by a mirror... Not only did I lose 50 pounds and feel great, but I also have more energy and mental sharpness at work!
+Brett
+Sounds good
+
+===== 28-s | https://simple.life/survey/m/ob/h-input | 2026-11-03T01:14:43.046Z
+MY PROFILE
+What’s your height?
+We’ll use this information to determine your ideal weight loss pace
+cm
+ft
+ft
+in
+I consent to Simple processing my health data (such as height and weight) to provide services, in accordance with the Privacy Policy
+Next
+
+===== 29-consent-gate | https://simple.life/survey/m/ob/h-input | 2026-11-03T01:14:57.196Z
+MY PROFILE
+What’s your height?
+We’ll use this information to determine your ideal weight loss pace
+cm
+ft
+ft
+in
+I consent to Simple processing my health data (such as height and weight) to provide services, in accordance with the Privacy Policy
+Please accept our Privacy Policy to continue
+Next
