@@ -79,7 +79,7 @@ test('приложение и воронка — noindex, лендинг — в 
 test('короткие ссылки /test и /razbit — 308 с сохранением метки', async ({ page }) => {
   const t = await page.request.get('/test?src=reel-12', { maxRedirects: 0 })
   expect(t.status()).toBe(308)
-  expect(t.headers().location).toBe('/app/start?src=reel-12')
+  expect(t.headers().location).toBe('/sdvg-test?src=reel-12')
   const r = await page.request.get('/razbit', { maxRedirects: 0 })
   expect(r.status()).toBe(308)
   expect(r.headers().location).toBe('/app/session')

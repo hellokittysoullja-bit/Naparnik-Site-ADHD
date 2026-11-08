@@ -42,6 +42,8 @@ import { startCampfire, stopCampfire } from '@/lib/ambient'
 import { hapticDone, hapticStart, hapticThreshold } from '@/lib/haptics'
 import { trimLabel } from '@/lib/utils'
 import { FIRST_MINUTES } from '@/lib/onboarding'
+import { trackEvent } from '@/lib/events'
+import { withAttribution } from '@/lib/visitor'
 
 const durations = [15, 25, 45]
 
@@ -119,6 +121,9 @@ export function FocusSession() {
   // шаг из адреса — с потолком: ссылка не должна приносить простыню на экран сессии и в память
   const prefilledStep = (searchParams.get('step') ?? '').trim().slice(0, STEP_MAX)
   const fromPlan = searchParams.get('plan') === '1'
+  // пришли из теста /sdvg-test: после первой победы — экран «если — то» и сохранения (research/14), а не сразу домой
+  const fromTest = searchParams.get('from') === 'sdvg'
+  const testNext = `/sdvg-test/dalshe?${new URLSearchParams({ t: searchParams.get('t') ?? '', s: searchParams.get('s') ?? '' }).toString()}`
   const prefilledDuration = Number(searchParams.get('d'))
   // auto=1 приходит из знакомства (/app/start): человек уже выбрал шаг и
   // удержал кнопку — повторный сетап был бы вторым «точно?» подряд.
@@ -463,6 +468,7 @@ export function FocusSession() {
 
     // Старт записывается в момент старта: инициация — и есть валюта
     const entry = await recordStart({ label: task, fromPlan })
+    trackEvent('session_started')
     startIdRef.current = entry.id
 
     // Если шаг взят из очереди дробления — он исполнен, очередь короче
@@ -581,6 +587,7 @@ export function FocusSession() {
     })
 
     setPhase('done')
+    trackEvent('session_completed')
     fetchVoice(early ? 'early-exit' : 'done', task, minutes).then(setDoneVoice)
   }
 
@@ -1071,12 +1078,12 @@ export function FocusSession() {
         // План на завтра и остальное — уже с Дома, после пика, не вместо него
         <div className="flex w-full flex-col gap-2">
           <Link
-            href="/app"
+            href={fromTest ? withAttribution(testNext, typeof window === 'undefined' ? '' : window.location.search) : '/app'}
             onTouchStart={() => {}}
             className="btn-chunky block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <span className="btn-face flex h-[52px] items-center justify-center rounded-[16px] bg-primary px-6 text-[17px] font-bold tracking-[-0.01em] text-primary-foreground">
-              Дальше — в мой дом
+              {fromTest ? 'Дальше' : 'Дальше — в мой дом'}
             </span>
           </Link>
           <Button

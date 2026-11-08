@@ -71,8 +71,8 @@ const nextConfig = {
       { source: '/', has: home, missing: intro, destination: '/app', permanent: false },
       { source: '/app/start', has: home, destination: '/app', permanent: false },
       // Короткие ссылки для роликов и шапки профиля (план «школа 1», фаза 1). Параметры (utm_*, src) идут дальше.
-      // Пока новых экранов нет, ведут на нынешние: квиз — знакомство, инструмент разбора — Фокус.
-      { source: '/test', destination: '/app/start', permanent: true },
+      // /test — тест «Что мешает тебе начинать дела?» (/sdvg-test, research/14); /razbit пока ведёт в Фокус.
+      { source: '/test', destination: '/sdvg-test', permanent: true },
       { source: '/razbit', destination: '/app/session', permanent: true },
     ]
   },
