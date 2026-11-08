@@ -122,8 +122,11 @@ export function FocusSession() {
   const prefilledStep = (searchParams.get('step') ?? '').trim().slice(0, STEP_MAX)
   const fromPlan = searchParams.get('plan') === '1'
   // пришли из теста /sdvg-test: после первой победы — экран «если — то» и сохранения (research/14), а не сразу домой
-  const fromTest = searchParams.get('from') === 'sdvg'
-  const testNext = `/sdvg-test/dalshe?${new URLSearchParams({ t: searchParams.get('t') ?? '', s: searchParams.get('s') ?? '' }).toString()}`
+  // Запоминаем при открытии: после автостарта адрес чистится от шага, а финал должен знать, откуда пришли
+  const [fromTest] = useState(() => searchParams.get('from') === 'sdvg')
+  const [testNext] = useState(
+    () => `/sdvg-test/dalshe?${new URLSearchParams({ t: searchParams.get('t') ?? '', s: searchParams.get('s') ?? '' }).toString()}`,
+  )
   const prefilledDuration = Number(searchParams.get('d'))
   // auto=1 приходит из знакомства (/app/start): человек уже выбрал шаг и
   // удержал кнопку — повторный сетап был бы вторым «точно?» подряд.
@@ -394,7 +397,11 @@ export function FocusSession() {
         if (autoStart) {
           // Параметры убираем сразу: перезагрузка после финиша не должна
           // запустить вторую сессию (активная восстановится и без них)
-          window.history.replaceState(null, '', '/app/session')
+          // источник (from, t, s, метки ролика) оставляем — перезагрузка после финиша ведёт туда же
+          const keep = new URLSearchParams(window.location.search)
+          for (const k of ['step', 'auto', 'd', 'plan']) keep.delete(k)
+          const q = keep.toString()
+          window.history.replaceState(null, '', q ? `/app/session?${q}` : '/app/session')
           void start()
         }
         return

@@ -90,7 +90,13 @@ test('незаконченный тест: «Продолжить с вопро�
 test('кнопка ведёт в 2-минутную сессию, после неё — «Когда повторим завтра?»', async ({ page }) => {
   await passToResult(page)
   await page.getByRole('button', { name: 'Сделать первый шаг вместе с Напарником' }).click({ timeout: 6000 })
-  await expect(page).toHaveURL(/\/app\/session\?.*d=2.*from=sdvg/)
+  // сессия на 2 минуты с шагом под тип и сферу; после автостарта шаг из адреса убирается, источник остаётся
+  await expect(page.getByText('первая задача из домашки')).toBeVisible()
+  await expect(page.getByRole('timer')).toContainText(/0[12]:\d\d/)
+  await expect(page).toHaveURL(/\/app\/session\?.*from=sdvg/)
+  // финал первой сессии ведёт на «Когда повторим завтра?», а не сразу домой
+  await page.getByRole('button', { name: 'Закончить раньше' }).click()
+  await expect(page.getByRole('link', { name: 'Дальше', exact: true })).toHaveAttribute('href', /\/sdvg-test\/dalshe\?t=M&s=study/, { timeout: 15000 })
   const next = await page.request.get('/sdvg-test/dalshe?t=M&s=study')
   expect(next.status()).toBe(200)
   await page.goto('/sdvg-test/dalshe?t=M&s=study')

@@ -340,14 +340,15 @@ squash) хвоста ветки, и следующий PR из-за этого �
   Тесты — `e2e/school1-foundation.spec.ts`, `tests/unit/visitor.test.ts`. Не сделано: текст задачи ещё уходит в адрес
   сессии (`/app/session?step=…`) — уйдёт с планом на сервере (фаза 5, нужна база).
 - **Тест `/sdvg-test` (08.11, 1:1 по `research/14-lead-magnets/owner-asrs-bridge.md`; `/test` → сюда).** Возраст 18+ → 6
-  пунктов ASRS v1.1 (тексты ТОЛЬКО дословно из `6Q_Russian_final.pdf` NYU в `content/asrs-ru.json`; пока `verbatim:false` —
-  заглушки, в main не вливать) → разделитель → 4 вопроса типа + сфера + имя (по желанию, только на устройстве) → «Напарник
+  пунктов ASRS v1.1 (тексты дословно из `6Q_Russian_final.pdf` NYU — копия `research/14-lead-magnets/ASRS-v1.1-6Q-Russian-NYU.pdf`,
+  в `content/asrs-ru.json`; НЕ ПРАВИТЬ — лицензия запрещает изменения) → разделитель → 4 вопроса типа + сфера + имя (по желанию, только на устройстве) → «Напарник
   считает» 3 с → диапазон Harvard 0–24 (порог 14) + тип + шаг на 2 минуты → сессия (`from=sdvg`) → `/sdvg-test/dalshe`
   («если — то», «1 из 7», сохранение с неотмеченным согласием; Telegram — по `NEXT_PUBLIC_TG_BOT`, почта и VK/MAX — после
   хранилища в РФ). Приватность: ответы ASRS — только во фрагменте `#a=`, подсчёт в браузере, аналитике — только путь
   (`components/analytics.tsx`, beforeSend), события без параметров (`lib/events.ts`); шеринг — `/sdvg-test/tip/<тип>`
   только с типом (карточки `public/og/sdvg-*.png`, `design/brand/sdvg-og.mjs`). Тексты — `content/sdvg-copy.ru.json`,
-  логика — `lib/sdvg.ts`. Тесты — `e2e/sdvg-test.spec.ts`, `tests/unit/sdvg.test.ts`.
+  логика — `lib/sdvg.ts`. Фокус после автостарта чистит шаг из адреса, но `from`/`t`/`s` и метки оставляет, а `fromTest`
+  запоминает при открытии — иначе финал терял «пришёл из теста» (поймано e2e). Тесты — `e2e/sdvg-test.spec.ts`, `tests/unit/sdvg.test.ts`.
 - **Проверки:** `pnpm check` (tsc + eslint + vitest), `pnpm test:e2e` (Playwright против прод-сборки, `e2e/`),
   CI — `.github/workflows/ci.yml`. Сборка больше не игнорирует ошибки типов. Каждый найденный баг — тест в `e2e/`
   или `tests/unit/`, который на старой сборке падает (проверено для всех текущих).
