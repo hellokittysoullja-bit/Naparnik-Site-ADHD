@@ -26,8 +26,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     alternates: { canonical: '/sdvg-test' },
     robots: { index: false, follow: true },
     openGraph: {
-      title: `Мой тип прокрастинации — ${title}`,
-      description: 'А какой у тебя? Тест на 1–2 минуты.',
+      title: `Я — ${title}: ${copy.types[type].share}`,
+      description: 'А ты? Тест на 1–2 минуты.',
       images: [{ url: `/og/sdvg-${slug}.png`, width: 1200, height: 630 }],
     },
   }
@@ -41,6 +41,7 @@ export default async function FriendTypePage({ params }: { params: Promise<{ slu
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-5 px-4 py-10 text-center text-foreground">
       <MascotDoll expression="happy" action="wave" size={140} label="Напарник" />
       <h1 className="text-[26px] font-bold leading-tight">{copy.friend.title.replace('{type}', copy.types[type].title)}</h1>
+      <p className="font-hand text-[24px] leading-snug">{copy.friend.quote.replace('{line}', copy.types[type].share)}</p>
       <p className="text-[15px] leading-relaxed text-muted-foreground">{copy.friend.text}</p>
       <Link href="/sdvg-test?src=share" className="btn-chunky mt-2 block w-full select-none rounded-[16px]">
         <span className="btn-face flex h-[52px] items-center justify-center rounded-[16px] bg-primary px-6 text-[17px] font-bold text-primary-foreground">
