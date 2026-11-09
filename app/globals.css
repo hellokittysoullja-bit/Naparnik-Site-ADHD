@@ -168,6 +168,32 @@
   }
 }
 
+/* Тест /sdvg-test: страницу ВОЗ кот «вырывает» и отдаёт — один раз, на событие (конец 6 вопросов) */
+@keyframes notebook-tear {
+  0% {
+    transform: none;
+    opacity: 1;
+  }
+  30% {
+    transform: rotate(-1deg);
+  }
+  100% {
+    transform: translate(-6px, -10px) rotate(-3deg);
+    opacity: 0.35;
+  }
+}
+.notebook-tear {
+  border-top-style: dashed;
+  transform-origin: 0 0;
+  animation: notebook-tear 700ms cubic-bezier(0.65, 0, 0.35, 1) 250ms forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .notebook-tear {
+    animation: none;
+    opacity: 0.35;
+  }
+}
+
 /* Новый элемент острова: мягкая пульсация, 3 цикла, затем покой */
 @keyframes island-new-pulse {
   0%,

@@ -6,6 +6,9 @@ import Link from 'next/link'
 import { MascotDoll, type MascotAction, type MascotExpression } from '@/components/mascot-doll'
 import copy from '@/content/sdvg-copy.ru.json'
 import asrs from '@/content/asrs-ru.json'
+import catLines from '@/content/cat-lines.ru.json'
+import { CatNotebook } from '@/components/sdvg/cat-notebook'
+import { notebookPage, notesOf } from '@/lib/sdvg-notebook'
 import { withAttribution } from '@/lib/visitor'
 import { trackEvent } from '@/lib/events'
 import {
@@ -16,10 +19,11 @@ import {
   TYPE_SLUG,
   asrsBand,
   asrsScore,
+  effectiveType,
   firstMissing,
-  procType,
   questionNumber,
   readState,
+  secondType,
   shadedFrom,
   stateHash,
   stateQuery,
@@ -38,6 +42,8 @@ const PROGRESS_KEY = 'naparnik:sdvg'
 const NAME_KEY = 'naparnik:sdvgName'
 const AUTO_START_KEY = 'naparnik:autoStart'
 const CALC_MS = 3000
+/** Ответ виден отмеченным и кот успевает черкнуть в блокноте, потом — следующий вопрос (ТЗ: 250–400 мс) */
+const ADVANCE_MS = 320
 
 function fill(text: string, vars: Record<string, string>) {
   return text.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? '')
@@ -61,6 +67,7 @@ export function SdvgTest() {
   const readyRef = useRef(false)
   const urlStepRef = useRef<SdvgStep | null>(null)
   const fromPopRef = useRef(false)
+  const advanceRef = useRef<number | null>(null)
 
   // Открытие: состояние из адреса (переживает «Открыть в Safari» и перезагрузку). Без шага в адресе — экран входа,
   // а если на устройстве есть незаконченный тест — предложение продолжить.
@@ -89,7 +96,9 @@ export function SdvgTest() {
   // Новый экран — новая запись истории; ответы на том же экране — замена записи. Расчёт сменяется результатом без
   // записи: «Назад» с результата не попадает снова в расчёт.
   useEffect(() => {
-    if (!readyRef.current) return
+    // первый проход (ещё пустое состояние до чтения адреса) адрес не трогает: иначе в историю попадал лишний «вход»,
+    // а в StrictMode повторный запуск открытия читал уже испорченный адрес и после перезагрузки сбрасывал на вход
+    if (!readyRef.current || state === EMPTY) return
     const url = `${window.location.pathname}?${stateQuery(state, window.location.search)}${stateHash(state)}`
     const push = state.step !== urlStepRef.current && !fromPopRef.current && urlStepRef.current !== 'calc'
     if (push) window.history.pushState(null, '', url)
@@ -122,6 +131,14 @@ export function SdvgTest() {
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
+  // Ушли с экрана (в т.ч. «Назад») — отложенный переход отменяется
+  useEffect(() => {
+    return () => {
+      if (advanceRef.current) window.clearTimeout(advanceRef.current)
+      advanceRef.current = null
+    }
+  }, [state.step])
+
   // «Напарник считает» — три настоящих шага, ~3 с, затем результат
   useEffect(() => {
     if (state.step !== 'calc') return
@@ -138,13 +155,24 @@ export function SdvgTest() {
   function go(patch: Partial<SdvgState>) {
     setState((s) => {
       const merged = { ...s, ...patch }
+      if (patch.l2) merged.chosen = null
       return { ...merged, step: nextStep(merged) }
     })
   }
 
+  /** Ответ записывается сразу (отметка + черта в блокноте), экран сменяется через ADVANCE_MS; повторный тап — перезапуск */
+  function answer(patch: Partial<SdvgState>) {
+    if (advanceRef.current) window.clearTimeout(advanceRef.current)
+    setState((s) => ({ ...s, ...patch, ...(patch.l2 ? { chosen: null } : {}) }))
+    advanceRef.current = window.setTimeout(() => {
+      advanceRef.current = null
+      go({})
+    }, ADVANCE_MS)
+  }
+
   const step = state.step
   const n = questionNumber(step)
-  const type = procType(state.l2)
+  const type = effectiveType(state)
   const sphere = state.sphere ?? 'all'
 
   function startSession() {
@@ -181,19 +209,46 @@ export function SdvgTest() {
   let action: MascotAction = 'idle'
   if (step === 'intro') action = 'wave'
   if (step === 'calc') action = 'think'
-  if (step === 'result') face = state.adult && state.asrs.length === 6 && asrsScore(state.asrs) >= 14 ? 'calm' : 'happy'
+  // На результате кот одинаково тёплый при любом балле: разная реакция сама подсказала бы, какой балл «хороший»
+  if (step === 'result') face = 'happy'
+  const asrsPhase = /^a\d$/.test(step)
+  const notesPhase = /^q\d$/.test(step) || step === 'sphere' || step === 'name' || step === 'calc'
+  const answeredBefore = n !== null && n > 6 ? n - 7 : state.l2.length
+  const lastL2 = step === 'sphere' ? state.l2[3] : n !== null && n > 7 ? state.l2[n - 8] : undefined
+  const reaction = lastL2 ? catLines[lastL2][step === 'sphere' ? 3 : (n as number) - 8] : null
+  const canGoBack = asrsPhase || notesPhase && step !== 'calc'
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-8 pt-6 text-foreground">
       <div className="flex items-center justify-between">
-        {n ? <span className="font-mono text-xs text-muted-foreground">{n <= 6 ? `${n}/6` : `${n - 6}/4`}</span> : <span />}
+        <div className="flex items-center gap-3">
+          {canGoBack && (
+            <button
+              type="button"
+              className="h-11 pr-1 text-[15px] text-muted-foreground"
+              onClick={() => window.history.back()}
+            >
+              ← {copy.cat.back}
+            </button>
+          )}
+          {n ? <span className="font-mono text-xs text-muted-foreground">{n <= 6 ? `${n}/6` : `${n - 6}/4`}</span> : null}
+        </div>
         <MascotDoll expression={face} action={action} size={72} label="Напарник" />
       </div>
+
+      {asrsPhase && <CatNotebook mode="asrs" scribbles={state.asrs.length} />}
+      {notesPhase && <CatNotebook mode="notes" notes={notesOf(state.l2.slice(0, step === 'sphere' || step === 'name' || step === 'calc' ? 4 : answeredBefore))} />}
+      {reaction && (
+        <p className="mt-3 rounded-2xl bg-card px-3 py-2 text-[15px] leading-snug" aria-live="polite">
+          {reaction}
+        </p>
+      )}
 
       {step === 'intro' && (
         <Screen>
           <h1 className="text-[28px] font-bold leading-tight">{copy.entry.title}</h1>
           <p className="text-[15px] leading-relaxed text-muted-foreground">{copy.entry.subtitle}</p>
+          <p className="font-hand text-[20px] leading-snug">{copy.cat.intro}</p>
           <ul className="flex flex-col gap-1.5 text-[15px]">
             {copy.entry.points.map((p) => (
               <li key={p}>· {p}</li>
@@ -239,6 +294,7 @@ export function SdvgTest() {
 
       {step === 'pre' && (
         <Screen>
+          <p className="rounded-2xl bg-card px-3 py-2 font-hand text-[20px] leading-snug">{copy.cat.pre}</p>
           <p className="text-[17px] leading-relaxed">{copy.preAsrs.text}</p>
           <p className="text-[15px] leading-relaxed text-muted-foreground">{asrs.instruction}</p>
           <Primary onClick={() => go({})}>{copy.preAsrs.button}</Primary>
@@ -254,7 +310,7 @@ export function SdvgTest() {
                 key={label}
                 shaded={value >= shadedFrom(n - 1)}
                 checked={state.asrs[n - 1] === value}
-                onClick={() => go({ asrs: [...state.asrs.slice(0, n - 1), value] })}
+                onClick={() => answer({ asrs: [...state.asrs.slice(0, n - 1), value] })}
               >
                 {label}
               </Choice>
@@ -265,6 +321,10 @@ export function SdvgTest() {
 
       {step === 'sep' && (
         <Screen>
+          <CatNotebook mode="tear" scribbles={state.asrs.length} />
+          <p className="font-hand text-[20px] leading-snug">
+            {copy.cat.sep} {copy.cat.sepSelf}
+          </p>
           <p className="text-[17px] leading-relaxed">{copy.separator.text}</p>
           <Primary onClick={() => go({})}>{copy.separator.button}</Primary>
         </Screen>
@@ -278,7 +338,7 @@ export function SdvgTest() {
               <Choice
                 key={t}
                 checked={state.l2[n - 7] === t}
-                onClick={() => go({ l2: [...state.l2.slice(0, n - 7), t] })}
+                onClick={() => answer({ l2: [...state.l2.slice(0, n - 7), t] })}
               >
                 {copy.layer2[n - 7].options[t]}
               </Choice>
@@ -332,6 +392,7 @@ export function SdvgTest() {
 
       {step === 'calc' && (
         <Screen>
+          <p className="font-hand text-[22px]">{copy.cat.calcTitle}</p>
           <ul className="flex flex-col gap-3 text-[17px]" aria-live="polite">
             {copy.calc.map((line, i) => (
               <li key={line} className={i <= calcLine ? 'opacity-100' : 'opacity-30'}>
@@ -351,6 +412,8 @@ export function SdvgTest() {
           copied={copied}
           onStart={startSession}
           onShare={share}
+          onChoose={(t) => setState((s) => ({ ...s, chosen: t }))}
+          onChange={() => setState((s) => ({ ...s, step: 'q1' }))}
         />
       )}
 
@@ -386,6 +449,8 @@ function Result({
   copied,
   onStart,
   onShare,
+  onChoose,
+  onChange,
 }: {
   state: SdvgState
   type: ProcType
@@ -393,39 +458,105 @@ function Result({
   copied: boolean
   onStart: () => void
   onShare: () => void
+  onChoose: (t: ProcType) => void
+  onChange: () => void
 }) {
+  const [verdict, setVerdict] = useState<'open' | 'yes' | 'no'>('open')
   const screened = state.adult === true && state.asrs.length === 6
   const score = screened ? asrsScore(state.asrs) : null
   const band = score !== null ? asrsBand(score) : null
   const sphere = state.sphere ?? 'all'
   const t = copy.types[type]
-  const quoteIndex = state.l2.indexOf(type)
-  const quote = copy.layer2[Math.max(0, quoteIndex)].options[type]
-  const text = fill(t.text, { name: name ? `${name}, ` : '', quote })
+  const page = notebookPage(state)
+  const quoteOf = (x: ProcType) => copy.layer2[Math.max(0, state.l2.indexOf(x))].options[x]
+  const text = fill(t.text, { name: name ? `${name}, ` : '', quote: quoteOf(type) })
+  const second = secondType(state.l2, type)
+  const others = TYPES.filter((x) => x !== type)
   return (
     <div className="mt-6 flex flex-col gap-6">
+      {/* (а) «Что я записал» — первым: каждая строка из конкретного ответа; ответы ВОЗ сюда не попадают */}
+      {page && (
+        <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4" aria-labelledby="nb-title">
+          <h2 id="nb-title" className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+            {copy.notebook.title}
+          </h2>
+          <ul className="flex flex-col gap-1 font-hand text-[20px] leading-snug">
+            {page.notes.map((note, i) => (
+              <li key={`${i}-${note}`}>«{note}»</li>
+            ))}
+          </ul>
+          <ul className="flex flex-col gap-1 text-[15px] leading-snug">
+            {page.sphere && <li>{page.sphere}</li>}
+            <li>{page.mechanism}</li>
+            <li className="text-muted-foreground">{page.count}</li>
+          </ul>
+          <div className="flex flex-col gap-2 pt-1">
+            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">{copy.types.yourType}</p>
+            <h2 className="text-[26px] font-bold leading-tight">{t.title}</h2>
+            <p className="text-[16px] leading-relaxed">{text.charAt(0).toUpperCase() + text.slice(1)}</p>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {copy.notebook.own}{' '}
+            <button type="button" className="text-primary underline" onClick={onChange}>
+              {copy.notebook.change}
+            </button>
+          </p>
+          {verdict === 'open' && (
+            <div className="grid grid-cols-2 gap-2">
+              <Choice plain onClick={() => setVerdict('yes')}>{copy.notebook.yes}</Choice>
+              <Choice plain onClick={() => setVerdict('no')}>{copy.notebook.no}</Choice>
+            </div>
+          )}
+          {verdict === 'yes' && (
+            <p className="font-hand text-[20px]" role="status">
+              {copy.notebook.yesDone}
+            </p>
+          )}
+          {verdict === 'no' && (
+            <div className="flex flex-col gap-2 rounded-xl border border-border p-3">
+              <p className="text-[15px] font-semibold">{copy.notebook.alt}</p>
+              {(second ? [second] : others).map((x) => (
+                <Choice
+                  key={x}
+                  plain
+                  onClick={() => {
+                    onChoose(x)
+                    setVerdict('yes')
+                  }}
+                >
+                  <span className="block font-semibold">{copy.types[x].title}</span>
+                  {second && <span className="block font-hand text-[18px]">«{quoteOf(x)}»</span>}
+                  <span className="block text-sm text-muted-foreground">{copy.types[x].mechanism}</span>
+                </Choice>
+              ))}
+              <button type="button" className="h-11 text-[15px] text-muted-foreground" onClick={() => setVerdict('yes')}>
+                {fill(copy.notebook.keep, { type: t.title })}
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* (б) отрывной листок ВОЗ — отдельно от записей кота: балл живёт только в браузере */}
       {band && score !== null && (
-        <section className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-4">
+        <section className="flex flex-col gap-2 rounded-2xl border border-t-2 border-dashed border-border bg-card p-4">
+          <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">{copy.sheet.title}</p>
           <h2 className="text-[24px] font-bold leading-tight">{copy.bands[band].title}</h2>
           <p className="font-mono text-sm text-muted-foreground">{fill(copy.bands.score, { n: String(score) })}</p>
           <p className="text-[15px] leading-relaxed">{copy.bands[band].text.replace('N из 24', `${score} из 24`)}</p>
           <p className="text-sm font-semibold">{copy.bands.common}</p>
+          <p className="text-sm text-muted-foreground">{copy.sheet.private}</p>
           <Link href="/sdvg-test/metod#vrach" className="text-sm text-primary underline">
             {copy.cta.doctor}
           </Link>
         </section>
       )}
 
-      <section className="flex flex-col gap-2">
-        <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">{copy.types.yourType}</p>
-        <h2 className="text-[26px] font-bold leading-tight">{t.title}</h2>
-        <p className="text-[16px] leading-relaxed">{text.charAt(0).toUpperCase() + text.slice(1)}</p>
-        <p className="text-sm text-muted-foreground">{copy.types.evidence}</p>
-      </section>
-
+      {/* (в) первый шаг и кнопка */}
       <section className="flex flex-col gap-2 rounded-2xl border border-primary/40 p-4">
         <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">{copy.types.yourStep}</p>
         <p className="text-[19px] font-semibold leading-snug">{t.steps[sphere]}</p>
+        <p className="text-sm text-muted-foreground">{copy.types.evidence}</p>
       </section>
 
       <div className="flex flex-col gap-2">
@@ -468,17 +599,20 @@ function Choice({
   onClick,
   checked,
   shaded,
+  plain,
 }: {
   children: ReactNode
   onClick: () => void
   checked?: boolean
   shaded?: boolean
+  /** Обычная кнопка (не вариант ответа) — без роли radio */
+  plain?: boolean
 }) {
   return (
     <button
       type="button"
-      role="radio"
-      aria-checked={!!checked}
+      role={plain ? undefined : 'radio'}
+      aria-checked={plain ? undefined : !!checked}
       onClick={onClick}
       className={`min-h-[52px] w-full rounded-xl border px-4 py-3 text-left text-[17px] transition-colors ${
         checked ? 'border-primary bg-primary/15' : 'border-border bg-card'
