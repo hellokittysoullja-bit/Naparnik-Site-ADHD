@@ -2,8 +2,11 @@ import { expect, test, type Page } from '@playwright/test'
 
 // Тест «Что мешает тебе начинать дела?» (/sdvg-test, research/14-lead-magnets/owner-asrs-bridge.md)
 
+// Ответ отмечается сразу, экран сменяется через ~320 мс (кот черкает в блокноте) — ждём новый шаг в адресе
 async function answer(page: Page, nth: number) {
+  const before = new URL(page.url()).searchParams.get('step')
   await page.getByRole('radio').nth(nth).click()
+  await page.waitForFunction((b) => new URLSearchParams(location.search).get('step') !== b, before)
 }
 
 async function passToResult(page: Page) {
@@ -88,6 +91,7 @@ test('незаконченный тест: «Продолжить с вопро�
 })
 
 test('кнопка ведёт в 2-минутную сессию, после неё — «Когда повторим завтра?»', async ({ page }) => {
+  test.slow() // весь тест + сессия + финал острова; ответы теперь сменяются с паузой ~320 мс
   await passToResult(page)
   await page.getByRole('button', { name: 'Сделать первый шаг вместе с Напарником' }).click({ timeout: 6000 })
   // сессия на 2 минуты с шагом под тип и сферу; после автостарта шаг из адреса убирается, источник остаётся
@@ -126,4 +130,52 @@ test('обязательная ссылка на авторов из лицен�
   await expect(page.getByText(required)).toBeVisible()
   await page.goto('/sdvg-test/metod')
   await expect(page.getByText(required)).toBeVisible()
+})
+
+test('блокнот на вопросах ВОЗ одинаковый при любом ответе — кот не подсказывает «хороший» ответ', async ({ page }) => {
+  async function notebookAfterFirst(nth: number) {
+    await page.goto('/sdvg-test')
+    await page.evaluate(() => window.localStorage.clear())
+    await page.goto('/sdvg-test')
+    await page.getByRole('button', { name: 'Начать' }).click()
+    await page.getByRole('radio', { name: 'Да' }).click()
+    await page.getByRole('button', { name: 'Дальше' }).click()
+    await answer(page, nth)
+    return page.getByRole('img', { name: 'Блокнот Напарника' }).innerHTML()
+  }
+  const never = await notebookAfterFirst(0)
+  const veryOften = await notebookAfterFirst(4)
+  expect(never).toBe(veryOften)
+  expect(never).not.toMatch(/Никогда|Очень часто|[0-4] из/)
+})
+
+test('результат: сначала «Что я записал» словами человека, потом листок ВОЗ; «Не совсем про меня» даёт выбрать', async ({ page }) => {
+  await page.goto('/sdvg-test')
+  await page.getByRole('button', { name: 'Начать' }).click()
+  await page.getByRole('radio', { name: 'Да' }).click()
+  await page.getByRole('button', { name: 'Дальше' }).click()
+  for (let i = 0; i < 6; i++) await answer(page, 1)
+  await page.getByRole('button', { name: 'Дальше' }).click()
+  await answer(page, 3) // M
+  await expect(page.getByText('Тяну, пока не загорится')).toBeVisible() // записано в блокноте
+  await answer(page, 3) // M
+  await answer(page, 1) // H
+  await answer(page, 1) // H
+  await page.getByRole('radio', { name: 'Работа' }).click()
+  await page.getByRole('button', { name: 'Пропустить' }).click()
+  const notebook = page.getByRole('region', { name: 'Что я записал' })
+  await expect(notebook).toBeVisible({ timeout: 6000 })
+  await expect(notebook.getByText('«Тяну, пока не загорится»', { exact: true })).toBeVisible()
+  await expect(notebook.getByText('Сильнее всего мешает: работа')).toBeVisible()
+  await expect(notebook.getByText('2 из 4 ответов — про это')).toBeVisible()
+  // «Что я записал» — выше листка ВОЗ
+  const nbBox = await notebook.boundingBox()
+  const sheetBox = await page.getByText('Листок ВОЗ').boundingBox()
+  expect(nbBox!.y).toBeLessThan(sheetBox!.y)
+  await expect(page.getByRole('heading', { name: 'Мастер последней ночи' })).toBeVisible()
+  await page.getByRole('button', { name: 'Не совсем про меня' }).click()
+  await page.getByRole('button', { name: /Охотник за интересным/ }).click()
+  await expect(page.getByRole('heading', { name: 'Охотник за интересным' })).toBeVisible()
+  await expect(page).toHaveURL(/[?&]o=H/)
+  await expect(page.getByText('успей за 2 минуты разобрать 5 писем')).toBeVisible()
 })
