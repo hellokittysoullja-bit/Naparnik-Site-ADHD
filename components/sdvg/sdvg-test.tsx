@@ -64,6 +64,8 @@ export function SdvgTest() {
   const [name, setName] = useState('')
   const [calcLine, setCalcLine] = useState(0)
   const [copied, setCopied] = useState(false)
+  /** Свой шаг вместо подобранного (эффект IKEA): живёт только в этом экране */
+  const [ownStep, setOwnStep] = useState('')
   const readyRef = useRef(false)
   const urlStepRef = useRef<SdvgStep | null>(null)
   const fromPopRef = useRef(false)
@@ -177,7 +179,7 @@ export function SdvgTest() {
 
   function startSession() {
     if (!type) return
-    const label = copy.types[type].steps[sphere]
+    const label = ownStep.trim() || copy.types[type].steps[sphere]
     trackEvent('cta_clicked')
     try {
       window.sessionStorage.setItem(AUTO_START_KEY, label)
@@ -192,7 +194,7 @@ export function SdvgTest() {
     if (!type) return
     trackEvent('share_clicked')
     const url = `${window.location.origin}/sdvg-test/tip/${TYPE_SLUG[type]}?src=share`
-    const text = fill(copy.cta.shareText, { type: copy.types[type].title })
+    const text = fill(copy.cta.shareText, { type: copy.types[type].title, line: copy.types[type].share })
     try {
       if (navigator.share) {
         await navigator.share({ text, url })
@@ -216,6 +218,7 @@ export function SdvgTest() {
   const answeredBefore = n !== null && n > 6 ? n - 7 : state.l2.length
   const lastL2 = step === 'sphere' ? state.l2[3] : n !== null && n > 7 ? state.l2[n - 8] : undefined
   const reaction = lastL2 ? catLines[lastL2][step === 'sphere' ? 3 : (n as number) - 8] : null
+  const barAt = n ?? (step === 'sphere' ? 11 : step === 'name' ? 12 : null)
   const canGoBack = asrsPhase || notesPhase && step !== 'calc'
 
   return (
@@ -231,10 +234,12 @@ export function SdvgTest() {
               ← {copy.cat.back}
             </button>
           )}
-          {n ? <span className="font-mono text-xs text-muted-foreground">{n <= 6 ? `${n}/6` : `${n - 6}/4`}</span> : null}
         </div>
         <MascotDoll expression={face} action={action} size={72} label="Напарник" />
       </div>
+
+      {/* полоса идёт до самого результата: 10 вопросов + сфера + имя (иначе после «осталось 1» шли бы ещё экраны) */}
+      {barAt !== null && <Progress at={state.adult === false ? barAt - 6 : barAt} total={state.adult === false ? 6 : 12} />}
 
       {asrsPhase && <CatNotebook mode="asrs" scribbles={state.asrs.length} />}
       {notesPhase && <CatNotebook mode="notes" notes={notesOf(state.l2.slice(0, step === 'sphere' || step === 'name' || step === 'calc' ? 4 : answeredBefore))} />}
@@ -350,6 +355,7 @@ export function SdvgTest() {
       {step === 'sphere' && (
         <Screen>
           <h2 className="text-[22px] font-semibold">{copy.sphere.question}</h2>
+          <p className="text-sm text-muted-foreground">{copy.sphere.why}</p>
           <div className="flex flex-col gap-2" role="radiogroup" aria-label={copy.sphere.question}>
             {SPHERES.map((s) => (
               <Choice key={s} checked={state.sphere === s} onClick={() => go({ sphere: s })}>
@@ -410,6 +416,8 @@ export function SdvgTest() {
           type={type}
           name={name.trim()}
           copied={copied}
+          ownStep={ownStep}
+          onOwnStep={setOwnStep}
           onStart={startSession}
           onShare={share}
           onChoose={(t) => setState((s) => ({ ...s, chosen: t }))}
@@ -447,6 +455,8 @@ function Result({
   type,
   name,
   copied,
+  ownStep,
+  onOwnStep,
   onStart,
   onShare,
   onChoose,
@@ -456,12 +466,16 @@ function Result({
   type: ProcType
   name: string
   copied: boolean
+  ownStep: string
+  onOwnStep: (v: string) => void
   onStart: () => void
   onShare: () => void
   onChoose: (t: ProcType) => void
   onChange: () => void
 }) {
   const [verdict, setVerdict] = useState<'open' | 'yes' | 'no'>('open')
+  const [ownOpen, setOwnOpen] = useState(false)
+  const [askPick, setAskPick] = useState<number | null>(null)
   const screened = state.adult === true && state.asrs.length === 6
   const score = screened ? asrsScore(state.asrs) : null
   const band = score !== null ? asrsBand(score) : null
@@ -472,6 +486,8 @@ function Result({
   const text = fill(t.text, { name: name ? `${name}, ` : '', quote: quoteOf(type) })
   const second = secondType(state.l2, type)
   const others = TYPES.filter((x) => x !== type)
+  const shareUrl = `https://adhd-naparnik.vercel.app/sdvg-test/tip/${TYPE_SLUG[type]}?src=share`
+  const shareText = fill(copy.cta.shareText, { type: t.title, line: t.share })
   return (
     <div className="mt-6 flex flex-col gap-6">
       {/* (а) «Что я записал» — первым: каждая строка из конкретного ответа; ответы ВОЗ сюда не попадают */}
@@ -480,6 +496,14 @@ function Result({
           <h2 id="nb-title" className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
             {copy.notebook.title}
           </h2>
+          {/* бирки из ответов человека (эффект самоотнесения); балла ВОЗ здесь нет и быть не должно */}
+          <ul className="flex flex-wrap gap-1.5" aria-label="Коротко">
+            {[t.title, ...(sphere === 'all' ? [] : [copy.sphere.options[sphere]]), copy.types.tagStep].map((tag) => (
+              <li key={tag} className="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[13px] font-semibold">
+                {tag}
+              </li>
+            ))}
+          </ul>
           <ul className="flex flex-col gap-1 font-hand text-[20px] leading-snug">
             {page.notes.map((note, i) => (
               <li key={`${i}-${note}`}>«{note}»</li>
@@ -494,6 +518,11 @@ function Result({
             <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">{copy.types.yourType}</p>
             <h2 className="text-[26px] font-bold leading-tight">{t.title}</h2>
             <p className="text-[16px] leading-relaxed">{text.charAt(0).toUpperCase() + text.slice(1)}</p>
+            <p className="text-[16px] leading-relaxed">{copy.types.why}</p>
+            <p className="text-[16px] leading-relaxed">
+              <span className="font-semibold">{copy.types.strengthLabel}. </span>
+              {t.strength}
+            </p>
           </div>
           <p className="text-sm text-muted-foreground">
             {copy.notebook.own}{' '}
@@ -555,11 +584,56 @@ function Result({
       {/* (в) первый шаг и кнопка */}
       <section className="flex flex-col gap-2 rounded-2xl border border-primary/40 p-4">
         <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">{copy.types.yourStep}</p>
-        <p className="text-[19px] font-semibold leading-snug">{t.steps[sphere]}</p>
+        {ownOpen ? (
+          <input
+            className="h-12 rounded-xl border border-border bg-card px-4 text-[17px] outline-none focus:ring-2 focus:ring-ring"
+            placeholder={copy.types.ownPlaceholder}
+            aria-label={copy.types.ownLink}
+            maxLength={80}
+            value={ownStep}
+            autoFocus
+            onChange={(e) => onOwnStep(e.target.value)}
+          />
+        ) : (
+          <p className="text-[19px] font-semibold leading-snug">{t.steps[sphere]}</p>
+        )}
+        {!ownOpen && <p className="text-sm text-muted-foreground">{sphere === 'all' ? copy.types.fitAll : copy.types.fit}</p>}
+        <button
+          type="button"
+          className="h-11 self-start text-[15px] text-primary underline"
+          onClick={() => {
+            if (ownOpen) onOwnStep('')
+            setOwnOpen(!ownOpen)
+          }}
+        >
+          {ownOpen ? copy.types.ownBack : copy.types.ownLink}
+        </button>
         <p className="text-sm text-muted-foreground">{copy.types.evidence}</p>
       </section>
 
       <div className="flex flex-col gap-2">
+        {/* самоубеждение: довод должен назвать сам человек, поэтому вопрос — с ответом, а не риторический */}
+        <p className="text-center font-hand text-[20px] leading-snug">{copy.cta.ask}</p>
+        {askPick === null ? (
+          <div className="flex flex-wrap justify-center gap-2" role="radiogroup" aria-label={copy.cta.ask}>
+            {copy.cta.askOptions.map((o, i) => (
+              <button
+                key={o}
+                type="button"
+                role="radio"
+                aria-checked={false}
+                onClick={() => setAskPick(i)}
+                className="min-h-11 rounded-full border border-border bg-card px-4 text-[15px]"
+              >
+                {o}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-center text-[15px]" role="status">
+            «{copy.cta.askOptions[askPick]}». {copy.cta.askDone}
+          </p>
+        )}
         <Primary onClick={onStart}>{copy.cta.button}</Primary>
         <p className="text-center text-sm text-muted-foreground">{copy.cta.under}</p>
         {!band && (
@@ -567,6 +641,16 @@ function Result({
             {copy.cta.doctor}
           </Link>
         )}
+        {/* другу в личку шлют охотнее, чем в ленту — мессенджер первым */}
+        <a
+          href={`https://t.me/share/url?${new URLSearchParams({ url: shareUrl, text: shareText }).toString()}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => trackEvent('share_clicked')}
+          className="flex h-11 items-center justify-center text-[15px] font-semibold text-primary"
+        >
+          {copy.cta.telegram}
+        </a>
         <button type="button" className="h-11 text-[15px] font-semibold text-primary" onClick={onShare}>
           {copy.cta.share}
         </button>
@@ -576,6 +660,42 @@ function Result({
           </p>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Полоса прогресса: на первом вопросе она уже не пустая (подаренный прогресс, Nunes и
+ * Drèze 2006). Подпись: в первой половине — сколько сделано, во второй — сколько осталось (градиент цели).
+ */
+function Progress({ at, total }: { at: number; total: number }) {
+  const done = at - 1
+  const label =
+    done === 0
+      ? copy.progress.start
+      : at <= total / 2
+        ? fill(copy.progress.done, { k: String(done), total: String(total) })
+        : fill(copy.progress.left, { k: String(total - done) })
+  return (
+    <div className="mt-3 flex flex-col gap-1.5">
+      {/* Сплошная полоса, как у Duolingo: толстая дорожка, заливка с бликом, растёт плавно. На первом вопросе уже
+          есть короткий «язычок» — полоса не начинается с пустой. */}
+      <div
+        className="h-4 w-full overflow-hidden rounded-full bg-foreground/10"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={at}
+        aria-label={fill(copy.progress.aria, { n: String(at), total: String(total) })}
+      >
+        <div
+          className="relative h-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:transition-none"
+          style={{ width: `${8 + (92 * done) / total}%` }}
+        >
+          <span className="absolute inset-x-2 top-1 h-1 rounded-full bg-white/35" />
+        </div>
+      </div>
+      <p className="font-mono text-xs text-muted-foreground">{label}</p>
     </div>
   )
 }

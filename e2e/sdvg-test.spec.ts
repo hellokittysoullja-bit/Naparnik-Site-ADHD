@@ -35,7 +35,7 @@ test('весь путь: возраст → 6 вопросов ВОЗ → 4 во
   await expect(page.getByText('Это скрининг, а не диагноз.')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Мастер последней ночи' })).toBeVisible()
   await expect(page.getByText('первая задача из домашки')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Сделать первый шаг вместе с Напарником' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Сдвинуть дело за 2 минуты' })).toBeVisible()
 })
 
 test('ответы ВОЗ только во фрагменте адреса — на сервер не уходят', async ({ page }) => {
@@ -93,7 +93,7 @@ test('незаконченный тест: «Продолжить с вопро�
 test('кнопка ведёт в 2-минутную сессию, после неё — «Когда повторим завтра?»', async ({ page }) => {
   test.slow() // весь тест + сессия + финал острова; ответы теперь сменяются с паузой ~320 мс
   await passToResult(page)
-  await page.getByRole('button', { name: 'Сделать первый шаг вместе с Напарником' }).click({ timeout: 6000 })
+  await page.getByRole('button', { name: 'Сдвинуть дело за 2 минуты' }).click({ timeout: 6000 })
   // сессия на 2 минуты с шагом под тип и сферу; после автостарта шаг из адреса убирается, источник остаётся
   await expect(page.getByText('первая задача из домашки')).toBeVisible()
   await expect(page.getByRole('timer')).toContainText(/0[12]:\d\d/)
@@ -106,8 +106,23 @@ test('кнопка ведёт в 2-минутную сессию, после н�
   await page.goto('/sdvg-test/dalshe?t=M&s=study')
   await expect(page.getByText('Когда повторим завтра?')).toBeVisible()
   await page.getByRole('radio', { name: 'вечером' }).click()
-  await expect(page.getByText('Когда вечером, я открываю Напарника на 2 минуты.')).toBeVisible()
-  await expect(page.getByRole('checkbox')).not.toBeChecked()
+  // тип повторяется после сессии; условие человек может дописать своими словами; затем — время
+  await expect(page.getByText('Для Мастера последней ночи это и есть свой маленький срок.')).toBeVisible()
+  const cue = page.getByRole('textbox', { name: 'Когда именно — своими словами' })
+  await expect(cue).toHaveValue('вечером')
+  await cue.fill('вечером после ужина')
+  await page.getByRole('radio', { name: '19:00' }).click()
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('naparnik:ifThen') ?? '{}'))).toMatchObject({ when: 'вечером после ужина', time: '19:00' })
+  // кнопка-обещание, бронь в календарь
+  await page.getByRole('button', { name: 'Договорились' }).click()
+  const [file] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Добавить в календарь' }).click()])
+  const ics = (await (await import('node:fs/promises')).readFile(await file.path(), 'utf8'))
+  expect(ics).toMatch(/DTSTART:\d{8}T190000/)
+  expect(ics).toContain('SUMMARY:2 минуты с Напарником')
+  // контакт в два шага: сначала «куда», согласие не показано и не отмечено заранее
+  await expect(page.getByRole('checkbox')).toHaveCount(0)
+  await page.getByRole('radio', { name: 'Почта' }).click()
+  await expect(page.getByText('Сохранение на почту скоро появится')).toBeVisible()
 })
 
 test('пересланный тип: только тип, карточка ссылки — картинка типа', async ({ page }) => {
@@ -178,4 +193,49 @@ test('результат: сначала «Что я записал» слова
   await expect(page.getByRole('heading', { name: 'Охотник за интересным' })).toBeVisible()
   await expect(page).toHaveURL(/[?&]o=H/)
   await expect(page.getByText('успей за 2 минуты разобрать 5 писем')).toBeVisible()
+})
+
+test('полоса теста не пустая на первом вопросе; сначала «сделано», к концу «осталось»', async ({ page }) => {
+  await page.goto('/sdvg-test')
+  await page.getByRole('button', { name: 'Начать' }).click()
+  await page.getByRole('radio', { name: 'Да' }).click()
+  await page.getByRole('button', { name: 'Дальше' }).click()
+  const bar = page.getByRole('progressbar')
+  await expect(bar).toHaveAttribute('aria-valuenow', '1')
+  await expect(page.getByText('уже начато: тест открыт')).toBeVisible()
+  for (let i = 0; i < 3; i++) {
+    await answer(page, 2)
+    await expect(page).toHaveURL(new RegExp(`step=a${i + 2}`))
+  }
+  await expect(page.getByText('сделано 3 из 12')).toBeVisible()
+  for (let i = 3; i < 6; i++) await answer(page, 2)
+  await page.getByRole('button', { name: 'Дальше' }).click()
+  await expect(page).toHaveURL(/step=q1/)
+  await expect(page.getByText('осталось 6 — и результат')).toBeVisible()
+  // полоса не обрывается перед последними экранами: сфера и имя тоже в счёте
+  for (let i = 0; i < 4; i++) await answer(page, 0)
+  await expect(page).toHaveURL(/step=sphere/)
+  await expect(page.getByText('осталось 2 — и результат')).toBeVisible()
+})
+
+test('результат: бирки без балла, сильная сторона, свой шаг уходит в сессию', async ({ page }) => {
+  await passToResult(page)
+  const tags = page.getByRole('list', { name: 'Коротко' })
+  await expect(tags).toHaveText(/Мастер последней ночи.*Учёба.*Шаг на 2 минуты/, { timeout: 6000 })
+  await expect(tags).not.toContainText('24')
+  await expect(page.getByText('Значит, срок можно поставить самому.')).toBeVisible()
+  await expect(page.getByText('Подобран по твоему типу и сфере.')).toBeVisible()
+  await page.getByRole('radio', { name: 'Станет спокойнее' }).click()
+  await expect(page.getByText('«Станет спокойнее». Записал. С этого и начнём.')).toBeVisible()
+  await expect(page.getByText('Откладывать — не лень.')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Отправить другу в Telegram' })).toHaveAttribute('href', /t\.me\/share\/url\?url=.*poslednyaya-noch/)
+  await page.getByRole('button', { name: 'Написать свой шаг' }).click()
+  await page.getByRole('textbox', { name: 'Написать свой шаг' }).fill('Открыть лекцию 5')
+  await page.getByRole('button', { name: 'Сдвинуть дело за 2 минуты' }).click()
+  await expect(page.getByText('Открыть лекцию 5')).toBeVisible()
+})
+
+test('пересланный тип говорит о человеке, а не о тесте', async ({ page }) => {
+  await page.goto('/sdvg-test/tip/poslednyaya-noch')
+  await expect(page.getByText('«включаюсь, когда уже горит»')).toBeVisible()
 })
