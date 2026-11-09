@@ -52,12 +52,14 @@ export type SdvgState = {
   /** Ответы слоя 2 по порядку */
   l2: ProcType[]
   sphere: SdvgSphere | null
+  /** Тип, который человек выбрал сам на «Не совсем про меня» (иначе — по ответам) */
+  chosen?: ProcType | null
 }
 
-export const EMPTY: SdvgState = { step: 'intro', adult: null, asrs: [], l2: [], sphere: null }
+export const EMPTY: SdvgState = { step: 'intro', adult: null, asrs: [], l2: [], sphere: null, chosen: null }
 
 /** Ключи состояния в обычной части адреса (метки источника и прочее не трогаем) */
-export const QUERY_KEYS = ['step', 'adult', 'l', 's'] as const
+export const QUERY_KEYS = ['step', 'adult', 'l', 's', 'o'] as const
 
 export function readState(search: string, hash: string): SdvgState {
   const q = new URLSearchParams(search)
@@ -76,7 +78,9 @@ export function readState(search: string, hash: string): SdvgState {
     .slice(0, 4)
   const s = q.get('s')
   const sphere = s && (SPHERES as readonly string[]).includes(s) ? (s as SdvgSphere) : null
-  const state: SdvgState = { step: 'intro', adult, asrs, l2, sphere }
+  const o = (q.get('o') ?? '').toUpperCase()
+  const chosen = (TYPES as readonly string[]).includes(o) ? (o as ProcType) : null
+  const state: SdvgState = { step: 'intro', adult, asrs, l2, sphere, chosen }
   // по ссылке нельзя «перепрыгнуть» дальше первого шага без ответа
   state.step = rawStep && (STEPS as readonly string[]).includes(rawStep) ? clampStep(rawStep, state) : 'intro'
   return state
@@ -106,6 +110,7 @@ export function stateQuery(state: SdvgState, current: string): string {
   if (state.adult !== null) out.set('adult', state.adult ? '1' : '0')
   if (state.l2.length) out.set('l', state.l2.join(''))
   if (state.sphere) out.set('s', state.sphere)
+  if (state.chosen) out.set('o', state.chosen)
   keep.forEach((v, k) => out.append(k, v))
   return out.toString()
 }
@@ -128,4 +133,15 @@ export function questionNumber(step: SdvgStep): number | null {
 export const TYPE_SLUG: Record<ProcType, string> = { P: 'perfekcionist', H: 'ohotnik', U: 'utopayushchij', M: 'poslednyaya-noch' }
 export function typeFromSlug(slug: string): ProcType | null {
   return (Object.entries(TYPE_SLUG).find(([, s]) => s === slug)?.[0] as ProcType | undefined) ?? null
+}
+
+/** Тип на результате: выбранный человеком на «Не совсем про меня», иначе — по ответам */
+export function effectiveType(state: SdvgState): ProcType | null {
+  return state.chosen ?? procType(state.l2)
+}
+
+/** Второй по частоте тип среди ответов (без основного); при равенстве — тот, что встретился раньше */
+export function secondType(l2: ProcType[], primary: ProcType): ProcType | null {
+  const rest = l2.filter((t) => t !== primary)
+  return rest.length ? procType(rest) : null
 }
