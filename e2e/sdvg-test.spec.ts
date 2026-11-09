@@ -239,3 +239,69 @@ test('пересланный тип говорит о человеке, а не 
   await page.goto('/sdvg-test/tip/poslednyaya-noch')
   await expect(page.getByText('«включаюсь, когда уже горит»')).toBeVisible()
 })
+
+test('первый экран: кот как на лендинге, засыпает и радуется нажатию; кнопка внизу, лишних строк нет', async ({ page }) => {
+  await page.clock.install()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/sdvg-test')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Тест на СДВГ')
+  await expect(page.getByText('Что тебе мешает начинать дела?').first()).toBeVisible()
+  await expect(page.getByText('Ответы считаются в твоём браузере')).toHaveCount(0)
+  await expect(page.getByText('Это самопроверка, а не диагноз')).toHaveCount(0)
+  await expect(page.getByText('Тест бесплатный')).toHaveCount(0)
+  // кот — тот же размер, что на лендинге (clamp(141px, 33dvh, 262px)): на 844 px высоты это 262 px; и над заголовком по центру
+  const cat = page.getByRole('button', { name: 'Погладить напарника' })
+  const box = (await cat.boundingBox())!
+  expect(Math.round(box.width)).toBe(262)
+  expect(Math.abs(box.x + box.width / 2 - 195)).toBeLessThan(2)
+  const h1 = (await page.getByRole('heading', { level: 1 }).boundingBox())!
+  expect(box.y + box.height).toBeLessThanOrEqual(h1.y + 1)
+  // главная кнопка — в нижней части экрана (зона большого пальца), поля 16 px
+  const cta = (await page.getByRole('button', { name: 'Начать' }).boundingBox())!
+  expect(cta.y + cta.height).toBeGreaterThan(844 - 24)
+  expect(cta.y + cta.height).toBeLessThanOrEqual(844 - 12)
+  // нажатие — радость, потом снова спокойно; 7 с без действий — засыпает; движение — просыпается
+  await cat.click()
+  await expect(cat).toHaveAttribute('data-mood', 'excited')
+  await page.clock.fastForward(2000)
+  await expect(cat).toHaveAttribute('data-mood', 'calm')
+  await page.clock.fastForward(8000)
+  await expect(cat).toHaveAttribute('data-mood', 'sleepy')
+  await page.mouse.move(100, 100)
+  await expect(cat).toHaveAttribute('data-mood', 'calm')
+})
+
+test('первый экран на маленьком телефоне 360×640: кнопка «Начать» видна без прокрутки', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 640 })
+  await page.goto('/sdvg-test')
+  const cta = (await page.getByRole('button', { name: 'Начать' }).boundingBox())!
+  expect(cta.y + cta.height).toBeLessThanOrEqual(640)
+  expect(cta.y).toBeGreaterThan(300)
+})
+
+test('вопрос: «Назад» слева от полосы, кот слева от текста вопроса; «Дальше» вступления — внизу экрана', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/sdvg-test?step=pre&adult=1')
+  const next = (await page.getByRole('button', { name: 'Дальше' }).boundingBox())!
+  expect(next.y + next.height).toBeGreaterThan(844 - 24)
+  expect(next.y + next.height).toBeLessThanOrEqual(844 - 12)
+  // на шаге имени — исключение: «Дальше» и «Пропустить» остаются под полем, не прижаты к низу
+  await page.goto('/sdvg-test?step=name&adult=1&l=MMHM&s=study#a=222222')
+  const input = (await page.getByRole('textbox').boundingBox())!
+  const nameNext = (await page.getByRole('button', { name: 'Дальше' }).boundingBox())!
+  expect(nameNext.y).toBeGreaterThan(input.y)
+  expect(nameNext.y).toBeLessThan(input.y + input.height + 80)
+  await expect(page.getByRole('button', { name: 'Пропустить' })).toBeVisible()
+  await page.goto('/sdvg-test?step=a1&adult=1')
+  const back = (await page.getByRole('button', { name: /Назад/ }).boundingBox())!
+  const bar = (await page.getByRole('progressbar').boundingBox())!
+  const q = (await page.getByRole('heading', { level: 2 }).boundingBox())!
+  const cat = (await page.getByRole('heading', { level: 2 }).locator('xpath=../preceding-sibling::div').boundingBox())!
+  // «Назад» — у левого края и на одной линии с полосой, полоса правее «Назад»
+  expect(back.x).toBeLessThan(24)
+  expect(bar.x).toBeGreaterThan(back.x + back.width)
+  expect(Math.abs(back.y + back.height / 2 - (bar.y + bar.height / 2))).toBeLessThan(4)
+  // кот слева от текста вопроса, текст мельче прежних 20 px
+  expect(cat.x + cat.width).toBeLessThanOrEqual(q.x + 1)
+  expect(await page.getByRole('heading', { level: 2 }).evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeLessThan(20)
+})

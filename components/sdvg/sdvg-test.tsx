@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { playPurr } from '@/lib/reward-sound'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { MascotDoll, type MascotAction, type MascotExpression } from '@/components/mascot-doll'
@@ -33,7 +34,7 @@ import {
 } from '@/lib/sdvg'
 
 /**
- * Тест «Что мешает тебе начинать дела?» (/sdvg-test) — 1:1 по плану владельца 08.11
+ * Тест на СДВГ «Что тебе мешает начинать дела?» (/sdvg-test) — 1:1 по плану владельца 08.11
  * (research/14-lead-magnets/owner-asrs-bridge.md). Шаг — новый адрес (история браузера: «Назад» = предыдущий экран),
  * ответы ASRS — только во фрагменте `#a=…` и только в браузере. Имя — только на этом устройстве.
  */
@@ -44,6 +45,8 @@ const AUTO_START_KEY = 'naparnik:autoStart'
 const CALC_MS = 3000
 /** Ответ виден отмеченным и кот успевает черкнуть в блокноте, потом — следующий вопрос (ТЗ: 250–400 мс) */
 const ADVANCE_MS = 320
+/** Кот первого экрана засыпает через 7 с без действий (на лендинге — 20 с) */
+const SLEEP_MS = 7000
 
 function fill(text: string, vars: Record<string, string>) {
   return text.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? '')
@@ -220,26 +223,14 @@ export function SdvgTest() {
   const reaction = lastL2 ? catLines[lastL2][step === 'sphere' ? 3 : (n as number) - 8] : null
   const barAt = n ?? (step === 'sphere' ? 11 : step === 'name' ? 12 : null)
   const canGoBack = asrsPhase || notesPhase && step !== 'calc'
+  // кот — слева от первого текста экрана (на каждом шаге заново: на вид это тот же эталон, держать один экземпляр негде)
+  const cat = <MascotDoll expression={face} action={action} size={64} label="Напарник" />
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-8 pt-6 text-foreground">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {canGoBack && (
-            <button
-              type="button"
-              className="h-11 pr-1 text-[15px] text-muted-foreground"
-              onClick={() => window.history.back()}
-            >
-              ← {copy.cat.back}
-            </button>
-          )}
-        </div>
-        <MascotDoll expression={face} action={action} size={72} label="Напарник" />
-      </div>
-
-      {/* полоса идёт до самого результата: 10 вопросов + сфера + имя (иначе после «осталось 1» шли бы ещё экраны) */}
-      {barAt !== null && <Progress at={state.adult === false ? barAt - 6 : barAt} total={state.adult === false ? 6 : 12} />}
+      {step !== 'intro' && (
+        <TopBar back={canGoBack} at={barAt === null ? null : state.adult === false ? barAt - 6 : barAt} total={state.adult === false ? 6 : 12} />
+      )}
 
       {asrsPhase && <CatNotebook mode="asrs" scribbles={state.asrs.length} />}
       {notesPhase && <CatNotebook mode="notes" notes={notesOf(state.l2.slice(0, step === 'sphere' || step === 'name' || step === 'calc' ? 4 : answeredBefore))} />}
@@ -250,44 +241,52 @@ export function SdvgTest() {
       )}
 
       {step === 'intro' && (
-        <Screen>
-          <h1 className="text-[28px] font-bold leading-tight">{copy.entry.title}</h1>
-          <p className="text-[15px] leading-relaxed text-muted-foreground">{copy.entry.subtitle}</p>
-          <p className="font-hand text-[20px] leading-snug">{copy.cat.intro}</p>
-          <ul className="flex flex-col gap-1.5 text-[15px]">
+        // Первый экран: кот большой, как на лендинге, по центру сверху; главная кнопка — в зоне большого пальца
+        // (низ экрана, поля 16 px, учитывается safe-area), всё остальное над ней. Нижний колонтитул — под сгибом.
+        <div className="flex min-h-[calc(100dvh-1.5rem)] flex-col items-center text-center">
+          <IntroCat />
+          <h1 className="mt-3 text-[34px] font-extrabold leading-tight tracking-tight">{copy.entry.title}</h1>
+          <p className="mt-1 text-[20px] font-bold leading-snug">{copy.entry.question}</p>
+          <p className="mt-4 text-[15px] leading-relaxed text-muted-foreground">{copy.entry.subtitle}</p>
+          {/* на низких экранах (≤ 700 px) рукописная строка и пункт скрыты: иначе главная кнопка уходит под сгиб */}
+          <p className="mt-3 font-hand text-[20px] leading-snug [@media(max-height:700px)]:hidden">{copy.cat.intro}</p>
+          <ul className="mt-3 flex flex-col gap-1.5 text-[15px] [@media(max-height:700px)]:hidden">
             {copy.entry.points.map((p) => (
               <li key={p}>· {p}</li>
             ))}
           </ul>
-          <Primary
-            onClick={() => {
-              trackEvent('test_started')
-              setResume(null)
-              go({ ...EMPTY })
-            }}
-          >
-            {copy.entry.button}
-          </Primary>
-          {resume && (
-            <button
-              type="button"
-              className="h-11 text-[15px] font-semibold text-primary"
+          <div className="mt-auto flex w-full flex-col gap-1 pb-[max(1rem,env(safe-area-inset-bottom))] pt-6">
+            {resume && (
+              <button
+                type="button"
+                className="h-11 text-[15px] font-semibold text-primary"
+                onClick={() => {
+                  const u = new URL(resume.url, window.location.origin)
+                  window.history.replaceState(null, '', resume.url)
+                  setState(readState(u.search, u.hash))
+                }}
+              >
+                {fill(copy.entry.resume, { n: String(resume.n) })}
+              </button>
+            )}
+            <Primary
               onClick={() => {
-                const u = new URL(resume.url, window.location.origin)
-                window.history.replaceState(null, '', resume.url)
-                setState(readState(u.search, u.hash))
+                trackEvent('test_started')
+                setResume(null)
+                go({ ...EMPTY })
               }}
             >
-              {fill(copy.entry.resume, { n: String(resume.n) })}
-            </button>
-          )}
-          <p className="text-xs text-muted-foreground">{copy.entry.fine}</p>
-        </Screen>
+              {copy.entry.button}
+            </Primary>
+          </div>
+        </div>
       )}
 
       {step === 'age' && (
         <Screen>
-          <h2 className="text-2xl font-bold">{copy.age.question}</h2>
+          <Head cat={cat}>
+            <h2 className="text-[22px] font-bold leading-snug">{copy.age.question}</h2>
+          </Head>
           <Choice onClick={() => go({ adult: true })}>{copy.age.yes}</Choice>
           <Choice onClick={() => go({ adult: false })}>{copy.age.no}</Choice>
         </Screen>
@@ -298,17 +297,20 @@ export function SdvgTest() {
       )}
 
       {step === 'pre' && (
-        <Screen>
-          <p className="rounded-2xl bg-card px-3 py-2 font-hand text-[20px] leading-snug">{copy.cat.pre}</p>
+        <Page foot={<Primary onClick={() => go({})}>{copy.preAsrs.button}</Primary>}>
+          <Head cat={cat}>
+            <p className="rounded-2xl bg-card px-3 py-2 font-hand text-[18px] leading-snug">{copy.cat.pre}</p>
+          </Head>
           <p className="text-[17px] leading-relaxed">{copy.preAsrs.text}</p>
           <p className="text-[15px] leading-relaxed text-muted-foreground">{asrs.instruction}</p>
-          <Primary onClick={() => go({})}>{copy.preAsrs.button}</Primary>
-        </Screen>
+        </Page>
       )}
 
       {n !== null && n <= 6 && (
         <Screen key={step}>
-          <h2 className="text-[20px] font-semibold leading-snug">{asrs.items[n - 1]}</h2>
+          <Head cat={cat}>
+            <h2 className="text-[18px] font-semibold leading-snug">{asrs.items[n - 1]}</h2>
+          </Head>
           <div className="flex flex-col gap-2" role="radiogroup" aria-label={asrs.items[n - 1]}>
             {asrs.options.map((label, value) => (
               <Choice
@@ -325,19 +327,22 @@ export function SdvgTest() {
       )}
 
       {step === 'sep' && (
-        <Screen>
+        <Page foot={<Primary onClick={() => go({})}>{copy.separator.button}</Primary>}>
           <CatNotebook mode="tear" scribbles={state.asrs.length} />
-          <p className="font-hand text-[20px] leading-snug">
-            {copy.cat.sep} {copy.cat.sepSelf}
-          </p>
+          <Head cat={cat}>
+            <p className="font-hand text-[18px] leading-snug">
+              {copy.cat.sep} {copy.cat.sepSelf}
+            </p>
+          </Head>
           <p className="text-[17px] leading-relaxed">{copy.separator.text}</p>
-          <Primary onClick={() => go({})}>{copy.separator.button}</Primary>
-        </Screen>
+        </Page>
       )}
 
       {n !== null && n > 6 && (
         <Screen key={step}>
-          <h2 className="text-[22px] font-semibold leading-snug">{copy.layer2[n - 7].question}</h2>
+          <Head cat={cat}>
+            <h2 className="text-[20px] font-semibold leading-snug">{copy.layer2[n - 7].question}</h2>
+          </Head>
           <div className="flex flex-col gap-2" role="radiogroup" aria-label={copy.layer2[n - 7].question}>
             {TYPES.map((t) => (
               <Choice
@@ -354,8 +359,10 @@ export function SdvgTest() {
 
       {step === 'sphere' && (
         <Screen>
-          <h2 className="text-[22px] font-semibold">{copy.sphere.question}</h2>
-          <p className="text-sm text-muted-foreground">{copy.sphere.why}</p>
+          <Head cat={cat}>
+            <h2 className="text-[20px] font-semibold leading-snug">{copy.sphere.question}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{copy.sphere.why}</p>
+          </Head>
           <div className="flex flex-col gap-2" role="radiogroup" aria-label={copy.sphere.question}>
             {SPHERES.map((s) => (
               <Choice key={s} checked={state.sphere === s} onClick={() => go({ sphere: s })}>
@@ -367,9 +374,12 @@ export function SdvgTest() {
       )}
 
       {step === 'name' && (
+        // здесь кнопка и «Пропустить» — под полем, как были (владелец, 10.11: исключение из правила «кнопка внизу»)
         <Screen>
-          <h2 className="text-[22px] font-semibold">{copy.name.question}</h2>
-          <p className="text-sm text-muted-foreground">{copy.name.hint}</p>
+          <Head cat={cat}>
+            <h2 className="text-[20px] font-semibold leading-snug">{copy.name.question}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{copy.name.hint}</p>
+          </Head>
           <input
             className="h-12 rounded-xl border border-border bg-card px-4 text-[17px] outline-none focus:ring-2 focus:ring-ring"
             placeholder={copy.name.placeholder}
@@ -398,7 +408,9 @@ export function SdvgTest() {
 
       {step === 'calc' && (
         <Screen>
-          <p className="font-hand text-[22px]">{copy.cat.calcTitle}</p>
+          <Head cat={cat}>
+            <p className="font-hand text-[20px]">{copy.cat.calcTitle}</p>
+          </Head>
           <ul className="flex flex-col gap-3 text-[17px]" aria-live="polite">
             {copy.calc.map((line, i) => (
               <li key={line} className={i <= calcLine ? 'opacity-100' : 'opacity-30'}>
@@ -412,6 +424,7 @@ export function SdvgTest() {
 
       {step === 'result' && type && (
         <Result
+          cat={cat}
           state={state}
           type={type}
           name={name.trim()}
@@ -451,6 +464,7 @@ export function SdvgTest() {
 }
 
 function Result({
+  cat,
   state,
   type,
   name,
@@ -462,6 +476,7 @@ function Result({
   onChoose,
   onChange,
 }: {
+  cat: ReactNode
   state: SdvgState
   type: ProcType
   name: string
@@ -493,9 +508,11 @@ function Result({
       {/* (а) «Что я записал» — первым: каждая строка из конкретного ответа; ответы ВОЗ сюда не попадают */}
       {page && (
         <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4" aria-labelledby="nb-title">
-          <h2 id="nb-title" className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-            {copy.notebook.title}
-          </h2>
+          <Head cat={cat}>
+            <h2 id="nb-title" className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              {copy.notebook.title}
+            </h2>
+          </Head>
           {/* бирки из ответов человека (эффект самоотнесения); балла ВОЗ здесь нет и быть не должно */}
           <ul className="flex flex-wrap gap-1.5" aria-label="Коротко">
             {[t.title, ...(sphere === 'all' ? [] : [copy.sphere.options[sphere]]), copy.types.tagStep].map((tag) => (
@@ -664,38 +681,73 @@ function Result({
   )
 }
 
+/** Высота верхней полосы (отступ 40 + строка 44 + подпись 22) — от неё считается высота экранов с кнопкой внизу */
+const TOP_H = 106
+
 /**
- * Полоса прогресса: на первом вопросе она уже не пустая (подаренный прогресс, Nunes и
- * Drèze 2006). Подпись: в первой половине — сколько сделано, во второй — сколько осталось (градиент цели).
+ * Верхняя строка: «Назад» у левого края, правее — сплошная полоса прогресса (Duolingo): на первом вопросе уже не
+ * пустая (подаренный прогресс, Nunes и Drèze 2006). Подпись: в первой половине — сколько сделано, во второй —
+ * сколько осталось (градиент цели). Без полосы (возраст, вступление, результат) место остаётся пустым — экраны не прыгают.
  */
-function Progress({ at, total }: { at: number; total: number }) {
-  const done = at - 1
+function TopBar({ back, at, total }: { back: boolean; at: number | null; total: number }) {
+  const done = at === null ? 0 : at - 1
   const label =
-    done === 0
-      ? copy.progress.start
-      : at <= total / 2
-        ? fill(copy.progress.done, { k: String(done), total: String(total) })
-        : fill(copy.progress.left, { k: String(total - done) })
+    at === null
+      ? ''
+      : done === 0
+        ? copy.progress.start
+        : at <= total / 2
+          ? fill(copy.progress.done, { k: String(done), total: String(total) })
+          : fill(copy.progress.left, { k: String(total - done) })
   return (
-    <div className="mt-3 flex flex-col gap-1.5">
-      {/* Сплошная полоса, как у Duolingo: толстая дорожка, заливка с бликом, растёт плавно. На первом вопросе уже
-          есть короткий «язычок» — полоса не начинается с пустой. */}
-      <div
-        className="h-4 w-full overflow-hidden rounded-full bg-foreground/10"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={total}
-        aria-valuenow={at}
-        aria-label={fill(copy.progress.aria, { n: String(at), total: String(total) })}
-      >
-        <div
-          className="relative h-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:transition-none"
-          style={{ width: `${8 + (92 * done) / total}%` }}
-        >
-          <span className="absolute inset-x-2 top-1 h-1 rounded-full bg-white/35" />
+    <div className="mt-10">
+      <div className="flex h-11 items-center gap-3">
+        <div className="w-[76px] shrink-0">
+          {back && (
+            <button type="button" className="h-11 whitespace-nowrap text-[15px] text-muted-foreground" onClick={() => window.history.back()}>
+              ← {copy.cat.back}
+            </button>
+          )}
         </div>
+        {at !== null && (
+          <div
+            className="h-4 min-w-0 flex-1 overflow-hidden rounded-full bg-foreground/10"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={total}
+            aria-valuenow={at}
+            aria-label={fill(copy.progress.aria, { n: String(at), total: String(total) })}
+          >
+            <div
+              className="relative h-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:transition-none"
+              style={{ width: `${8 + (92 * done) / total}%` }}
+            >
+              <span className="absolute inset-x-2 top-1 h-1 rounded-full bg-white/35" />
+            </div>
+          </div>
+        )}
       </div>
-      <p className="font-mono text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1.5 h-4 pl-[88px] font-mono text-xs text-muted-foreground">{label}</p>
+    </div>
+  )
+}
+
+/** Кот слева, первый текст экрана справа */
+function Head({ cat, children }: { cat: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="shrink-0">{cat}</div>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  )
+}
+
+/** Экран с главной кнопкой внизу — в зоне большого пальца, как на первом экране (поля 16 px, safe-area) */
+function Page({ children, foot }: { children: ReactNode; foot: ReactNode }) {
+  return (
+    <div className="flex flex-col" style={{ minHeight: `calc(100dvh - 1.5rem - ${TOP_H}px)` }}>
+      <div className="mt-6 flex flex-col gap-4">{children}</div>
+      <div className="mt-auto flex flex-col gap-1 pb-[max(1rem,env(safe-area-inset-bottom))] pt-6">{foot}</div>
     </div>
   )
 }
@@ -739,6 +791,60 @@ function Choice({
       } ${shaded ? 'bg-[repeating-linear-gradient(135deg,transparent_0_6px,oklch(1_0_0/0.04)_6px_12px)]' : ''}`}
     >
       {children}
+    </button>
+  )
+}
+
+/**
+ * Кот первого экрана — те же повадки, что на лендинге (components/landing/hero.tsx): засыпает через 7 с без действий
+ * и просыпается от любого движения (7 с вместо 20 — владелец, 10.11); на нажатие — радость и мурлыканье; в начале машет. Размер тот же, что на лендинге.
+ */
+function IntroCat() {
+  const [asleep, setAsleep] = useState(false)
+  const [petted, setPetted] = useState(false)
+  const [greeting, setGreeting] = useState(true)
+  const petTimer = useRef(0)
+  useEffect(() => {
+    const hello = window.setTimeout(() => setGreeting(false), 2200)
+    let timer = 0
+    const wake = () => {
+      window.clearTimeout(timer)
+      setAsleep(false)
+      timer = window.setTimeout(() => setAsleep(true), SLEEP_MS)
+    }
+    wake()
+    const events = ['pointermove', 'pointerdown', 'keydown', 'touchstart'] as const
+    events.forEach((e) => window.addEventListener(e, wake, { passive: true }))
+    return () => {
+      window.clearTimeout(hello)
+      window.clearTimeout(timer)
+      window.clearTimeout(petTimer.current)
+      events.forEach((e) => window.removeEventListener(e, wake))
+    }
+  }, [])
+  function pet() {
+    playPurr()
+    setPetted(true)
+    window.clearTimeout(petTimer.current)
+    petTimer.current = window.setTimeout(() => setPetted(false), 1600)
+  }
+  const expression: MascotExpression = petted ? 'excited' : asleep ? 'sleepy' : 'calm'
+  return (
+    <button
+      type="button"
+      onClick={pet}
+      aria-label={copy.cat.pet}
+      data-mood={expression}
+      className="press relative z-10 mt-6 cursor-pointer rounded-full outline-offset-8"
+    >
+      <MascotDoll
+        expression={expression}
+        action={petted ? 'celebrate' : greeting ? 'wave' : 'idle'}
+        size={249}
+        label=""
+        className="size-[clamp(141px,33dvh,262px)]"
+        inlinePoster
+      />
     </button>
   )
 }
