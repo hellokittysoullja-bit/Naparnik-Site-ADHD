@@ -44,3 +44,26 @@ export async function seedStarts(page: Page, n: number) {
     localStorage.setItem('naparnik:companionName', JSON.stringify('Тень'))
   }, n)
 }
+
+/**
+ * Знакомство v2 до экрана договора: пять вопросов (первый вариант в каждом) → «твоя цифра» → шаг (предвыбран)
+ * → «собираю» → план. Договор («Удерживай, чтобы начать») остаётся на экране.
+ */
+export async function walkOnboarding(page: Page, opts: { toPlan?: boolean } = {}) {
+  // Защита от двойного тапа (400 мс между «Продолжить») не должна съедать клики теста: после каждого шага — пауза
+  const pause = () => page.waitForTimeout(500)
+  for (let i = 0; i < 5; i++) {
+    await page.getByRole('radiogroup').getByRole('radio').first().click()
+    await page.getByRole('button', { name: 'Продолжить' }).click()
+    await pause()
+  }
+  await page.getByRole('button', { name: 'Продолжить' }).click() // «твоя цифра»
+  await pause()
+  await page.getByRole('radiogroup', { name: 'Первый шаг' }).waitFor()
+  await page.getByRole('button', { name: 'Продолжить' }).click() // шаг предвыбран
+  await page.getByRole('button', { name: /Начать первые/ }).waitFor({ timeout: 6000 }) // после «собираю»
+  if (!opts.toPlan) {
+    await pause()
+    await page.getByRole('button', { name: /Начать первые/ }).click()
+  }
+}

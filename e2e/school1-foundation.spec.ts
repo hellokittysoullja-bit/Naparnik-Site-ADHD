@@ -41,6 +41,7 @@ test('знакомство в адресе: «Назад» браузера, п�
   await page.getByRole('radio').first().click()
   await page.getByRole('button', { name: /Продолжить/ }).click()
   await expect(page).toHaveURL(/step=2&s=study/)
+  await page.waitForTimeout(500) // защита от двойного тапа (400 мс)
   await page.getByRole('radio').nth(1).click()
   await page.getByRole('button', { name: /Продолжить/ }).click()
   await expect(page).toHaveURL(/step=3&s=study&h=week/)
@@ -60,7 +61,7 @@ test('знакомство в адресе: «Назад» браузера, п�
 })
 
 test('свой текст шага в адрес не попадает', async ({ page }) => {
-  await page.goto('/app/start?step=4&s=study&h=week&b=phone')
+  await page.goto('/app/start?step=7&s=study&h=week&b=phone&m=relief&c=hour')
   await page.getByText('Своё дело').click()
   await page.getByRole('textbox').fill('Позвонить в деканат')
   await page.getByRole('button', { name: /Продолжить/ }).click()
