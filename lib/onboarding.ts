@@ -244,7 +244,8 @@ export const FIRST_STEP_WRITE = 'Выписать первый шаг'
 /** Шаги для сферы с поправкой на помеху: «не знаю, с чего» — первым идёт «Выписать первый шаг» */
 export function stepsFor(sphere: Sphere | null, blocker: Blocker | null): string[] {
   const base = STEPS[sphere ?? 'unsure']
-  if (blocker === 'where' && !base.includes(FIRST_STEP_WRITE)) return [FIRST_STEP_WRITE, ...base]
+  // три шага, как у остальных: «Выписать первый шаг» встаёт первым, последний уходит (иначе экран не помещался)
+  if (blocker === 'where' && !base.includes(FIRST_STEP_WRITE)) return [FIRST_STEP_WRITE, ...base].slice(0, 3)
   if (blocker === 'where') return [FIRST_STEP_WRITE, ...base.filter((s) => s !== FIRST_STEP_WRITE)]
   return base
 }
@@ -381,7 +382,9 @@ export function onboardingFromQuery(params: URLSearchParams, saved: OnboardingSt
             : !firstStep
               ? STEP_FIRST
               : LAST_STEP
-  const step = Math.min(Math.max(1, rawStep), reachable)
+  let step = Math.min(Math.max(1, rawStep), reachable)
+  // «твоя цифра» есть только при числе: без него по ссылке — сразу выбор шага
+  if (step === STEP_FIGURE && !COSTS.find((c) => c.key === cost)?.monthly) step = STEP_FIRST
   return { step, sphere, hanging, blocker, motive, cost, firstStep }
 }
 

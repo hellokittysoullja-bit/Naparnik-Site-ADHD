@@ -85,7 +85,11 @@ export function AfterFirst() {
           : 'Остров уже твой. Давай сохраню его, чтобы он не потерялся.'
     face = 'happy'
   } else if (stage === 'when') {
-    line = nudge ? 'Выбери любое время — *потом можно поменять*.' : 'Когда завтра посидим 2 минуты?'
+    line = nudge
+      ? 'Выбери любое время — *потом можно поменять*.'
+      : when && timeLabel
+        ? `Записал: завтра ${timeLabel}.`
+        : 'Когда завтра посидим 2 минуты?'
     face = 'listening'
   } else {
     line = promise === 'try'
