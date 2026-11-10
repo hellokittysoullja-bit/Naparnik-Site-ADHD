@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { collectErrors, watchLayoutShift } from './helpers'
+import { collectErrors, walkOnboarding, watchLayoutShift } from './helpers'
 
 test('новичок: лендинг → знакомство → первая сессия стартует сама → Дом → Мир', async ({ page }) => {
   const errors = collectErrors(page)
@@ -8,10 +8,7 @@ test('новичок: лендинг → знакомство → первая �
   await page.getByRole('link', { name: /Давай/ }).first().click()
   await expect(page).toHaveURL(/\/app\/start/)
 
-  for (let step = 0; step < 4; step++) {
-    await page.getByRole('radiogroup').getByRole('radio').first().click()
-    await page.getByRole('button', { name: 'Продолжить' }).click()
-  }
+  await walkOnboarding(page)
   // удержание для пальца; клавиатура стартует сразу (hold-to-start.tsx)
   const hold = page.getByRole('button', { name: /Удерживай|Начать|старт/i }).last()
   await hold.focus()
@@ -176,10 +173,7 @@ test('переходы знакомства без чужих кадров: не
   await page.goto('/?intro=1')
   await page.getByRole('link', { name: /Давай/ }).first().click()
   await expect(page).toHaveURL(/\/app\/start/)
-  for (let step = 0; step < 4; step++) {
-    await page.getByRole('radiogroup').getByRole('radio').first().click()
-    await page.getByRole('button', { name: 'Продолжить' }).click()
-  }
+  await walkOnboarding(page)
   const hold = page.getByRole('button', { name: /Удерживай|Начать|старт/i }).last()
   await hold.focus()
   await page.keyboard.press('Enter')
@@ -244,8 +238,10 @@ test('знакомство: кот — один и тот же на всех ш�
   await page.goto('/app/start')
   await expect(page.getByRole('radiogroup')).toBeVisible()
   await page.evaluate(() => ((window as unknown as { __cat: Element | null }).__cat = document.querySelector('.vt-cat')))
-  for (let step = 0; step < 4; step++) {
-    await page.getByRole('radiogroup').getByRole('radio').first().click()
+  // пять вопросов + «цифра» + шаг: на каждом кот тот же
+  for (let step = 0; step < 7; step++) {
+    const radios = page.getByRole('radiogroup').getByRole('radio')
+    if (await radios.count()) await radios.first().click()
     await page.getByRole('button', { name: 'Продолжить' }).click()
     await page.waitForTimeout(900) // уход/въезд ответов и переезд кота
     const same = await page.evaluate(() => {
@@ -254,6 +250,8 @@ test('знакомство: кот — один и тот же на всех ш�
     })
     expect(same, `шаг ${step + 2}`).toBe(true)
   }
+  await expect(page.getByRole('button', { name: /Начать первые/ })).toBeVisible({ timeout: 6000 })
+  await page.getByRole('button', { name: /Начать первые/ }).click()
   await expect(page.getByRole('button', { name: 'Начать первую сессию' })).toBeVisible()
 })
 
@@ -338,22 +336,46 @@ for (const [w, h] of [[1280, 720], [1440, 900]] as const) {
   })
 }
 
-test('знакомство: перед договором кот собирает твои ответы, и они видны на карточке', async ({ page }) => {
+test('знакомство: перед планом кот собирает твои ответы, план и договор собраны из них', async ({ page }) => {
   await page.goto('/app/start')
   await page.getByRole('radiogroup').getByRole('radio', { name: 'Учёба' }).click()
   await page.getByRole('button', { name: 'Продолжить' }).click()
-  // «сколько уже висит» — второй вопрос, ответ виден на договоре
-  await page.getByRole('radiogroup', { name: 'Сколько уже висит' }).getByRole('radio', { name: 'Неделю' }).click()
+  await page.waitForTimeout(500)
+  // «сколько уже висит» — второй вопрос, ответ виден в плане
+  await page.getByRole('radiogroup', { name: 'Сколько уже висит' }).getByRole('radio', { name: 'Неделю-две' }).click()
   await page.getByRole('button', { name: 'Продолжить' }).click()
-  await page.getByRole('radiogroup').getByRole('radio').nth(1).click()
+  await page.waitForTimeout(500)
+  await page.getByRole('radiogroup').getByRole('radio', { name: 'Рука сама тянется к телефону' }).click()
   await page.getByRole('button', { name: 'Продолжить' }).click()
-  await page.getByRole('radiogroup').getByRole('radio').first().click()
+  await page.waitForTimeout(500)
+  await page.getByRole('radiogroup').getByRole('radio', { name: 'Докажу себе, что могу' }).click()
   await page.getByRole('button', { name: 'Продолжить' }).click()
+  await page.waitForTimeout(500)
+  await page.getByRole('radiogroup').getByRole('radio', { name: 'Около часа' }).click()
+  await page.getByRole('button', { name: 'Продолжить' }).click()
+  await page.waitForTimeout(500)
+  // «твоя цифра» — только из его ответа, с подписью, что оценка его
+  await expect(page.getByText('Это твоя оценка, не наша. Я просто умножил на 30.')).toBeVisible()
+  await page.waitForTimeout(500) // защита от двойного тапа (400 мс) не должна съесть клик
+  await page.getByRole('button', { name: 'Продолжить' }).click()
+  await page.waitForTimeout(500)
+  await page.getByRole('radiogroup', { name: 'Первый шаг' }).waitFor()
+  await page.waitForTimeout(500)
+  await page.getByRole('button', { name: 'Продолжить' }).click()
+  await page.waitForTimeout(500)
   // «собираю»: три строки с ответами отмечаются по одной
-  await expect(page.getByRole('list', { name: 'Собираю твои первые минуты' })).toBeVisible()
-  await expect(page.getByText(/^Первый шаг: /)).toBeVisible()
-  // договор: ответы чипами на карточке
+  await expect(page.getByRole('list', { name: 'Собираю твой план' })).toBeVisible()
+  await expect(page.getByText(/^Шаг на 2 минуты: /)).toBeVisible()
+  await expect(page.getByText('Приём против «Рука сама тянется к телефону»')).toBeVisible()
+  // план: каждая строка — ответ человека
+  await expect(page.getByText('Твой план для учёбы')).toBeVisible({ timeout: 6000 })
+  await expect(page.getByText('учёба — уже неделю-две')).toBeVisible()
+  await expect(page.getByText('наш приём: Телефон экраном вниз — я посторожу')).toBeVisible()
+  await expect(page.getByText('Доказано: я могу начинать')).toBeVisible()
+  await page.getByRole('button', { name: /Начать первые/ }).click()
+  // договор: «если — то» из помехи и ответы чипами на карточке
   await expect(page.getByRole('button', { name: 'Начать первую сессию' })).toBeVisible({ timeout: 4000 })
+  await expect(page.locator('.commit-card').getByText('Если рука тянется к телефону — кладу его экраном вниз и смотрю на кота')).toBeVisible()
   await expect(page.locator('.commit-card').getByText('Учёба', { exact: true })).toBeVisible()
-  await expect(page.locator('.commit-card').getByText('Висит неделю', { exact: true })).toBeVisible()
+  await expect(page.locator('.commit-card').getByText('Висит неделю-две', { exact: true })).toBeVisible()
 })

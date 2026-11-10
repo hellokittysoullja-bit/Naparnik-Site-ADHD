@@ -124,6 +124,11 @@ export function FocusSession() {
   // пришли из теста /sdvg-test: после первой победы — экран «если — то» и сохранения (research/14), а не сразу домой
   // Запоминаем при открытии: после автостарта адрес чистится от шага, а финал должен знать, откуда пришли
   const [fromTest] = useState(() => searchParams.get('from') === 'sdvg')
+  // пришли из знакомства (/app/start): финал первой сессии ведёт на «Как было?», а не сразу домой
+  const [fromOnb] = useState(() => searchParams.get('from') === 'onb')
+  const [onbNext] = useState(
+    () => `/app/start/after?${new URLSearchParams(['m', 'b', 's'].flatMap((k) => (searchParams.get(k) ? [[k, searchParams.get(k) as string]] : []))).toString()}`,
+  )
   const [testNext] = useState(
     () => `/sdvg-test/dalshe?${new URLSearchParams({ t: searchParams.get('t') ?? '', s: searchParams.get('s') ?? '' }).toString()}`,
   )
@@ -1085,12 +1090,18 @@ export function FocusSession() {
         // План на завтра и остальное — уже с Дома, после пика, не вместо него
         <div className="flex w-full flex-col gap-2">
           <Link
-            href={fromTest ? withAttribution(testNext, typeof window === 'undefined' ? '' : window.location.search) : '/app'}
+            href={
+              fromTest
+                ? withAttribution(testNext, typeof window === 'undefined' ? '' : window.location.search)
+                : fromOnb
+                  ? withAttribution(onbNext, typeof window === 'undefined' ? '' : window.location.search)
+                  : '/app'
+            }
             onTouchStart={() => {}}
             className="btn-chunky block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <span className="btn-face flex h-[52px] items-center justify-center rounded-[16px] bg-primary px-6 text-[17px] font-bold tracking-[-0.01em] text-primary-foreground">
-              {fromTest ? 'Дальше' : 'Дальше — в мой дом'}
+              {fromTest || fromOnb ? 'Дальше' : 'Дальше — в мой дом'}
             </span>
           </Link>
           <Button

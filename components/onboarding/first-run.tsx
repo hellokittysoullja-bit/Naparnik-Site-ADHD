@@ -13,14 +13,21 @@ import {
   ChevronLeft,
   CircleQuestionMark,
   Compass,
+  Dices,
+  Dumbbell,
   Feather,
+  Handshake,
   Hourglass,
   House,
   MessageCircle,
   PenLine,
+  ShieldCheck,
   Smartphone,
+  Sofa,
   Sparkles,
   Sun,
+  Timer,
+  Wind,
   type LucideIcon,
 } from 'lucide-react'
 import { MascotDoll as MascotSvg } from '@/components/mascot-doll';
@@ -35,25 +42,44 @@ import { useClientMount } from '@/hooks/use-client-mount'
 import { hapticThreshold } from '@/lib/haptics'
 import {
   BLOCKERS,
-  HANGING,
+  COSTS,
+  COST_CAPTION,
   EMPTY_ONBOARDING,
   FIRST_MINUTES,
+  HANGING,
+  LAST_STEP,
+  MOTIVES,
   SPHERES,
-  STEPS,
+  STEP_BLOCKER,
+  STEP_COST,
+  STEP_FIGURE,
+  STEP_FIRST,
+  STEP_HANGING,
+  STEP_MOTIVE,
+  STEP_PLAN,
+  STEP_SPHERE,
   ONBOARDING_QUERY_KEYS,
+  costBundle,
+  defaultStep,
   onboardingFromQuery,
   onboardingToQuery,
+  planLines,
   readOnboarding,
+  stepsFor,
+  suggestStep,
   writeOnboarding,
   type Blocker,
+  type Cost,
   type Hanging,
+  type Motive,
   type OnboardingState,
   type Sphere,
 } from '@/lib/onboarding'
 
 /**
- * Первый вход в стиле Duolingo: кот здоровается → два вопроса чипами →
- * первый шаг → «удерживай, чтобы начать» → сразу 2-минутная сессия.
+ * Первый вход в стиле Duolingo (v2, документ владельца 10.11): пять вопросов чипами
+ * (что висит, сколько, что мешает, ради чего, сколько ест) → «твоя цифра» → первый шаг → «собираю» → план →
+ * договор с «если — то» и «удерживай, чтобы начать» → сразу 2-минутная сессия.
  *
  * Откуда каждое решение (knowledge/playbook в youtube_researcher):
  * - онбординг = первое реальное действие, не слайды-тур (90% их пропускают);
@@ -62,6 +88,7 @@ import {
  *   на выбор — контингентная обратная связь, а не молчаливая форма;
  * - «Пока не знаю» — честный вариант ответа, а не стыдный пропуск (DAD-тест);
  * - главная кнопка всегда в одном месте у большого пальца, как на лендинге;
+ * - цена бездействия — только из числа, которое назвал сам человек (кот умножает на 30 и говорит об этом);
  * - удержание вместо тапа — ритуал обязательства (Chilli/How We Feel),
  *   заодно защита от случайного старта;
  * - шаг переживает перезагрузку: вернулся — продолжаем, а не с нуля.
@@ -90,20 +117,21 @@ const BLOCKER_ICON: Record<Blocker, LucideIcon> = {
   tired: BatteryLow,
 }
 
-const SPHERE_REACTION: Record<Sphere, string> = {
-  study: 'Учёба. Понял — начнём *с малого*.',
-  work: 'Работа. Ок, без героизма — *один кусочек*.',
-  home: 'Дом. Отлично: тут шаг *виден сразу*.',
-  message: 'Сообщение или звонок. Самое *липкое* — разберём.',
-  unsure: 'Нормально. Начнём с того, что *под рукой*.',
+const MOTIVE_ICON: Record<Motive, LucideIcon> = {
+  relief: Wind,
+  people: Handshake,
+  safety: ShieldCheck,
+  rest: Sofa,
+  proof: Dumbbell,
 }
 
-/** Три вопроса, выбор шага и договор — 5 точек прогресса; приветствие вне шкалы */
-const STEP_SPHERE = 1
-const STEP_HANGING = 2
-const STEP_BLOCKER = 3
-const STEP_FIRST = 4
-const LAST_STEP = 5
+const COST_ICON: Record<Cost, LucideIcon> = {
+  q15: Timer,
+  hour: Hourglass,
+  two: CalendarClock,
+  allday: BatteryLow,
+  unknown: CircleQuestionMark,
+}
 
 /** Адрес знакомства для состояния: наш шаг и ответы плюс всё, что уже было в адресе (метка ролика и т. п.) */
 function onboardingUrl(state: OnboardingState): string {
@@ -113,6 +141,9 @@ function onboardingUrl(state: OnboardingState): string {
   current.forEach((v, k) => out.append(k, v))
   return `${window.location.pathname}?${out.toString()}`
 }
+
+/** Время для защиты от двойного тапа — вне компонента: это событие, а не часть отрисовки */
+const clock = () => performance.now()
 
 export function FirstRun() {
   const router = useRouter()
@@ -246,41 +277,51 @@ export function FirstRun() {
   useEffect(() => {
     if (step === LAST_STEP) router.prefetch('/app/session')
   }, [step, router])
-  const steps = state.sphere ? STEPS[state.sphere] : STEPS.unsure
+  const steps = stepsFor(state.sphere, state.blocker)
   const chosenStep = customOpen ? custom.trim() : state.firstStep
-  const blocker = BLOCKERS.find((b) => b.key === state.blocker)
+  const sphere = SPHERES.find((x) => x.key === state.sphere)
   const hanging = HANGING.find((h) => h.key === state.hanging)
+  const blocker = BLOCKERS.find((b) => b.key === state.blocker)
+  const motive = MOTIVES.find((m) => m.key === state.motive)
+  const cost = COSTS.find((c) => c.key === state.cost)
+  const bundle = costBundle(state)
 
-  // Можно ли идти дальше с текущего экрана
+  // Можно ли идти дальше с текущего экрана (крючок, «цифра» и план — без ответа)
   const canContinue =
     (step === STEP_SPHERE && !!state.sphere) ||
     (step === STEP_HANGING && !!state.hanging) ||
     (step === STEP_BLOCKER && !!state.blocker) ||
-    (step === STEP_FIRST && !!chosenStep)
+    (step === STEP_MOTIVE && !!state.motive) ||
+    (step === STEP_COST && !!state.cost) ||
+    step === STEP_FIGURE ||
+    (step === STEP_FIRST && !!chosenStep) ||
+    step === STEP_PLAN
 
-  // двойной клик по «Продолжить» пролетал через шаг: на 3-м шаге выбор уже предзаполнен, и второй клик сразу
-  // уводил на удержание — вопрос «с чего начнём» человек так и не видел. Пока слайд въезжает, клики не считаются.
+  // двойной клик по «Продолжить» пролетал через шаг: на шаге выбора дела выбор уже предзаполнен, и второй клик сразу
+  // уводил дальше — вопрос «с чего начнём» человек так и не видел. Пока слайд въезжает, клики не считаются.
   const lastGoRef = useRef(0)
   function next() {
-    if (building || performance.now() - lastGoRef.current < 400) return
+    if (building || clock() - lastGoRef.current < 400) return
     if (!canContinue) {
       // Не немая кнопка: кот мягко подсказывает, что сделать
       setNudge(true)
       return
     }
-    if (step === STEP_SPHERE && state.sphere && !state.firstStep) {
-      update({ firstStep: STEPS[state.sphere][0] })
+    // на выборе дела предвыбран самый маленький шаг (с поправкой на помеху); ответы могли смениться — старый выбор сбрасывается
+    if (step === STEP_FIGURE && (!state.firstStep || !steps.includes(state.firstStep))) {
+      update({ firstStep: defaultStep(state.sphere, state.blocker) })
     }
     if (step === STEP_FIRST && customOpen && custom.trim()) {
       update({ firstStep: custom.trim() })
     }
-    lastGoRef.current = performance.now()
+    lastGoRef.current = clock()
     setHop(true)
     window.clearTimeout(hopTimer.current)
     hopTimer.current = window.setTimeout(() => setHop(false), 900)
-    if (step === LAST_STEP - 1) {
+    if (step === STEP_FIRST) {
+      // «Собираю твой план» (2,5 с): три строки отмечаются по одной — план собран из его ответов, а не шаблон
       setBuilding(true)
-      buildTimer.current = window.setTimeout(() => go(LAST_STEP), reduceMotion ? 700 : BUILD_MS)
+      buildTimer.current = window.setTimeout(() => go(STEP_PLAN), reduceMotion ? 700 : BUILD_MS)
       return
     }
     go(step + 1)
@@ -310,11 +351,16 @@ export function FirstRun() {
     // мелькнуть между знакомством и стартом. Дальше флагом владеет сессия; на других экранах его снимает AppNav.
     document.body.dataset.focusImmersive = 'true'
     update({ step: LAST_STEP, firstStep: label })
+    // from=onb + ответы: финал первой сессии ведёт на «Как было?» (/app/start/after), а не сразу домой
     const params = new URLSearchParams({
       step: label,
       d: String(FIRST_MINUTES),
       auto: '1',
+      from: 'onb',
     })
+    if (state.motive) params.set('m', state.motive)
+    if (state.blocker) params.set('b', state.blocker)
+    if (state.sphere) params.set('s', state.sphere)
     // Пропуск автостарта: auto=1 срабатывает, только если его выдала эта кнопка. Иначе чужая ссылка
     // /app/session?step=…&auto=1 сама запускала сессию и записывала свой текст в старты — а старты уходят
     // в промпт напарника при каждом разговоре (components/focus-session.tsx, AUTO_START_KEY).
@@ -330,38 +376,48 @@ export function FirstRun() {
     )
   }
 
-  // Что говорит кот и с каким лицом — реакция на выбор, а не статичный текст
+  // Что говорит кот и с каким лицом — реакция на выбор, а не статичный текст. Тексты — документ владельца 10.11
   let line = ''
   let face: MascotExpression = 'calm'
   if (step === STEP_SPHERE) {
     line = nudge
       ? 'Выбери любой вариант — *ошибиться нельзя*.'
-      : state.sphere
-        ? SPHERE_REACTION[state.sphere]
+      : sphere
+        ? sphere.echo
         : 'Что сейчас *висит* больше всего?'
-    face = state.sphere ? 'happy' : nudge ? 'listening' : 'calm'
+    face = sphere ? 'happy' : nudge ? 'listening' : 'calm'
   } else if (step === STEP_HANGING) {
-    line = nudge
-      ? 'Примерно — *этого хватит*.'
-      : hanging
-        ? hanging.reaction
-        : 'А сколько это уже *висит*?'
+    line = nudge ? 'Примерно — *этого хватит*.' : hanging ? hanging.echo : 'А сколько это уже *висит*?'
     face = hanging ? 'happy' : 'listening'
   } else if (step === STEP_BLOCKER) {
-    line = nudge
-      ? 'Любой ответ подойдёт — *я подстроюсь*.'
-      : blocker
-        ? blocker.reaction
-        : 'А что обычно *мешает начать*?'
+    line = nudge ? 'Любой ответ подойдёт — *я подстроюсь*.' : blocker ? blocker.echo : 'Что обычно *мешает начать*?'
     face = blocker ? 'happy' : 'listening'
+  } else if (step === STEP_MOTIVE) {
+    line = nudge
+      ? 'Выбери то, что *ближе всего*.'
+      : motive
+        ? motive.echo
+        : 'Представь: это больше не висит. Что изменится *первым*?'
+    face = motive ? 'happy' : 'listening'
+  } else if (step === STEP_COST) {
+    line = nudge
+      ? 'Примерно — *этого хватит*.'
+      : 'Честно: сколько в день уходит на то, чтобы думать об этом, откладывать, снова вспоминать?'
+    face = 'listening'
+  } else if (step === STEP_FIGURE) {
+    line = cost?.figure ?? ''
+    face = cost?.key === 'allday' ? 'listening' : 'calm'
   } else if (step === STEP_FIRST && building) {
-    line = `Секунду — собираю *твои ${FIRST_MINUTES} минуты*.`
+    line = 'Секунду, собираю…'
     face = 'calm'
   } else if (step === STEP_FIRST) {
     line = nudge
       ? 'Напиши хоть одно слово — *этого хватит*.'
-      : `Первый шаг на *${FIRST_MINUTES} минуты*. Выбери или напиши свой.`
+      : `Давай найдём самый маленький кусочек. Такой, чтобы на него хватило ${FIRST_MINUTES} минут. Выбери или напиши свой.`
     face = 'calm'
+  } else if (step === STEP_PLAN) {
+    line = 'Это не план «стать продуктивным». Это план начать. Начинать — это и есть навык.'
+    face = 'happy'
   }
 
   // Шаг как у Duolingo: кот и пузырь стоят, ответы уезжают в сторону хода (вперёд — влево), новые въезжают
@@ -465,20 +521,29 @@ export function FirstRun() {
         <motion.div
           key={building ? 'build' : step}
           {...(step === LAST_STEP ? commitMotion : listMotion)}
-          className={step === LAST_STEP ? 'flex flex-col' : 'flex min-h-0 flex-1 flex-col'}
+          // план на низком экране длиннее места: прокручивается весь блок (полоса скрыта), а не карточка внутри себя
+          className={
+            step === LAST_STEP
+              ? 'flex flex-col'
+              : step === STEP_PLAN
+                ? 'flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-width:none]'
+                : 'flex min-h-0 flex-1 flex-col'
+          }
         >
           {building && (
             <BuildList
               rows={[
-                [SPHERES.find((x) => x.key === state.sphere)?.label ?? 'Пока не знаю', hanging?.chip.toLowerCase()]
-                  .filter(Boolean)
-                  .join(' · '),
-                blocker ? `${blocker.label}\u00a0—\u00a0учту` : 'Подстроюсь по ходу',
-                `Первый шаг: ${chosenStep || steps[0]}`,
+                `Шаг на 2 минуты: ${chosenStep || steps[0]}`,
+                blocker ? `Приём против «${blocker.label}»` : 'Приём под твою помеху',
+                motive
+                  ? `Неделя маленьких стартов — ради «${motive.label.charAt(0).toLowerCase()}${motive.label.slice(1)}»`
+                  : 'Неделя маленьких стартов',
               ]}
             />
           )}
-          {!building && step >= STEP_SPHERE && step < LAST_STEP && (
+          {!building && step === STEP_FIGURE && <FigureCard caption={cost?.monthly ? COST_CAPTION : null} bundle={bundle} />}
+          {!building && step === STEP_PLAN && <PlanCard state={state} step={chosenStep || steps[0]} />}
+          {!building && ((step >= STEP_SPHERE && step <= STEP_COST) || step === STEP_FIRST) && (
             <>
               <div
                 className="mt-5 flex flex-col gap-2.5 overflow-y-auto pb-2"
@@ -490,7 +555,11 @@ export function FirstRun() {
                       ? 'Сколько уже висит'
                       : step === STEP_BLOCKER
                         ? 'Что мешает начать'
-                        : 'Первый шаг'
+                        : step === STEP_MOTIVE
+                          ? 'Ради чего'
+                          : step === STEP_COST
+                            ? 'Сколько это ест'
+                            : 'Первый шаг'
                 }
                 onKeyDown={onRadioKeys}
               >
@@ -510,7 +579,7 @@ export function FirstRun() {
                         }
                         setNudge(false)
                         // Новая сфера — новые шаги: старый выбор шага сбрасываем
-                        update({ sphere: s.key, firstStep: STEPS[s.key][0] })
+                        update({ sphere: s.key, firstStep: null })
                       }}
                     />
                   ))}
@@ -537,6 +606,10 @@ export function FirstRun() {
                       }}
                     />
                   ))}
+                {step === STEP_HANGING && hanging?.insert && (
+                  // вина — с характера на механизм: только для «месяц и дольше» и «не помню», остальным не тратим секунды
+                  <p className="glass-hearthside mt-1 rounded-2xl px-4 py-3 text-[15px] leading-snug text-foreground/90">{hanging.insert}</p>
+                )}
                 {step === STEP_BLOCKER &&
                   BLOCKERS.map((b, i) => (
                     <Option
@@ -557,7 +630,46 @@ export function FirstRun() {
                           else catReact('excited', 'celebrate')
                         }
                         setNudge(false)
-                        update({ blocker: b.key })
+                        // Новая помеха — новый порядок и умолчание шагов: старый выбор шага сбрасываем
+                        update({ blocker: b.key, firstStep: null })
+                      }}
+                    />
+                  ))}
+                {step === STEP_MOTIVE &&
+                  MOTIVES.map((m, i) => (
+                    <Option
+                      key={m.key}
+                      firstTab={i === 0 && !state.motive}
+                      icon={MOTIVE_ICON[m.key]}
+                      hue={OPTION_HUES[i % OPTION_HUES.length]}
+                      label={m.label}
+                      selected={state.motive === m.key}
+                      onSelect={() => {
+                        if (state.motive !== m.key) {
+                          hapticThreshold()
+                          catReact(m.key === 'proof' ? 'excited' : 'happy', m.key === 'proof' ? 'celebrate' : 'wave')
+                        }
+                        setNudge(false)
+                        update({ motive: m.key })
+                      }}
+                    />
+                  ))}
+                {step === STEP_COST &&
+                  COSTS.map((c, i) => (
+                    <Option
+                      key={c.key}
+                      firstTab={i === 0 && !state.cost}
+                      icon={COST_ICON[c.key]}
+                      hue={OPTION_HUES[i % OPTION_HUES.length]}
+                      label={c.label}
+                      selected={state.cost === c.key}
+                      onSelect={() => {
+                        if (state.cost !== c.key) {
+                          hapticThreshold()
+                          catReact(c.key === 'allday' ? 'sleepy' : 'listening', 'idle')
+                        }
+                        setNudge(false)
+                        update({ cost: c.key })
                       }}
                     />
                   ))}
@@ -610,6 +722,24 @@ export function FirstRun() {
                         }}
                       />
                     )}
+                    {/* «Подскажи» (как «перемешать» у Finch): не застрять на пустом поле */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        hapticThreshold()
+                        catReact('happy', 'wave', 700)
+                        setCustom(suggestStep(state.sphere, state.blocker, customOpen ? custom.trim() : state.firstStep))
+                        setCustomOpen(true)
+                        setNudge(false)
+                      }}
+                      className="press flex min-h-11 items-center gap-2 self-start rounded-full px-3 text-[15px] font-semibold text-muted-foreground"
+                    >
+                      <Dices className="size-[18px]" aria-hidden="true" />
+                      Подскажи
+                    </button>
+                    {state.blocker === 'tired' && (
+                      <p className="px-1 text-[13px] leading-snug text-muted-foreground">Можно ещё меньше.</p>
+                    )}
                   </>
                 )}
               </div>
@@ -619,12 +749,10 @@ export function FirstRun() {
           {step === LAST_STEP && (
             <Commit
               label={chosenStep || steps[0]}
-              reason={blocker?.reaction ?? null}
-              answers={[
-                SPHERES.find((x) => x.key === state.sphere)?.label,
-                hanging?.chip,
-                blocker?.label,
-              ].filter((x): x is string => !!x && x !== 'Пока не знаю')}
+              ifThen={blocker?.ifThen ?? null}
+              answers={[sphere?.label, hanging?.chip, blocker?.label].filter(
+                (x): x is string => !!x && x !== 'Пока не знаю',
+              )}
             />
           )}
         </motion.div>
@@ -645,7 +773,7 @@ export function FirstRun() {
             className="btn-chunky btn-wake block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <span className="btn-face flex h-[52px] items-center justify-center rounded-[16px] bg-primary px-6 text-[17px] font-bold tracking-[-0.01em] text-primary-foreground">
-              Продолжить
+              {step === STEP_PLAN ? `Начать первые ${FIRST_MINUTES} минуты` : 'Продолжить'}
             </span>
           </button>
         )}
@@ -659,7 +787,7 @@ export function FirstRun() {
  * Кот слева, вопрос в пузыре справа (раскладка Duolingo). layoutId общий с
  * приветствием — кот не исчезает, а переезжает: одно существо, один разговор.
  */
-function CatAsks({
+export function CatAsks({
   line,
   face,
   nudge,
@@ -743,9 +871,9 @@ function CatAsks({
  */
 // Свой оттенок у каждого варианта (Duolingo, Brilliant: цветные иконки, а не серые контурные «как в настройках»).
 // Тёплые и холодные вперемешку, лайм не берём — он за выбором и главной кнопкой
-const OPTION_HUES = [65, 205, 330, 150, 265, 25]
+export const OPTION_HUES = [65, 205, 330, 150, 265, 25]
 
-function Option({
+export function Option({
   icon: Icon,
   label,
   selected,
@@ -805,24 +933,24 @@ function Option({
 
 /** Договор перед стартом: что именно делаем, сколько и почему не страшно */
 /** Ответы человека отмечаются по одной (раз в 0,4 с): договор собран из них, а не взят из шаблона */
-const BUILD_MS = 1500
+const BUILD_MS = 2500
 function BuildList({ rows }: { rows: string[] }) {
   const reduce = useReducedMotion()
   return (
-    <ul className="mt-5 flex flex-col gap-2.5" aria-label="Собираю твои первые минуты">
+    <ul className="mt-5 flex flex-col gap-2.5" aria-label="Собираю твой план">
       {rows.map((row, i) => (
         <motion.li
           key={i}
           initial={reduce ? { opacity: 0 } : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1], delay: 0.15 + i * 0.4 }}
+          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1], delay: 0.15 + i * 0.7 }}
           className="option-card flex min-h-14 items-center gap-3 rounded-2xl px-4 py-3"
         >
           <motion.span
             aria-hidden="true"
             initial={{ scale: 0.4, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={reduce ? { duration: 0.1 } : { type: 'spring', stiffness: 520, damping: 22, delay: 0.4 + i * 0.4 }}
+            transition={reduce ? { duration: 0.1 } : { type: 'spring', stiffness: 520, damping: 22, delay: 0.4 + i * 0.7 }}
             className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary"
           >
             <Check className="size-3.5 text-primary-foreground" strokeWidth={3.5} />
@@ -834,11 +962,58 @@ function BuildList({ rows }: { rows: string[] }) {
   )
 }
 
-function Commit({ label, reason, answers }: { label: string; reason: string | null; answers: string[] }) {
+/** «Твоя цифра»: подпись «это твоя оценка» — под числом, а связка со сроком — только из его ответов */
+function FigureCard({ caption, bundle }: { caption: string | null; bundle: string | null }) {
+  if (!caption && !bundle) return null
+  return (
+    <div className="glass-hearthside mt-5 flex flex-col gap-2.5 rounded-2xl px-4 py-4">
+      {caption && <p className="text-[13px] font-semibold leading-snug text-muted-foreground">{caption}</p>}
+      {bundle && <p className="text-[15px] leading-snug text-foreground/90">{bundle}</p>}
+    </div>
+  )
+}
+
+/** Экран плана: в каждой строке — ответ самого человека, без «эффекта Барнума» (общих фраз, подходящих всем) */
+function PlanCard({ state, step }: { state: OnboardingState; step: string }) {
+  const plan = planLines(state, step)
+  const rows: [string, ReactNode][] = [
+    ['Что висит', plan.hanging],
+    ['Что мешает', plan.blocker ? `${plan.blocker} → наш приём: ${plan.approach}` : null],
+    ['Ради чего', plan.motive],
+    ['Сегодня', plan.today],
+    ['Неделя', plan.week],
+  ]
+  return (
+    <div className="glass-hearthside mt-5 shrink-0 rounded-2xl px-4 py-4">
+      <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+        {plan.title}
+      </p>
+      <ul className="mt-3 flex flex-col gap-2.5">
+        {rows
+          .filter(([, v]) => !!v)
+          .map(([k, v]) => (
+            <li key={k} className="flex gap-2.5 text-[15px] leading-snug">
+              <span aria-hidden="true" className="mt-[7px] size-2 shrink-0 rotate-45 rounded-[2px] bg-primary" />
+              <span>
+                <span className="font-semibold">{k}:</span> {v}
+              </span>
+            </li>
+          ))}
+      </ul>
+      {plan.future && (
+        <p className="mt-3.5 border-t border-white/10 pt-3 text-[15px] leading-snug">
+          <span className="font-semibold">Ты через 7 дней:</span> <span className="font-hand text-[19px]">«{plan.future}»</span>
+        </p>
+      )}
+    </div>
+  )
+}
+
+function Commit({ label, ifThen, answers }: { label: string; ifThen: string | null; answers: string[] }) {
   const promises: { text: ReactNode }[] = [
-    { text: 'Я сижу рядом и молчу' },
-    { text: 'Можно бросить в любой момент' },
-    { text: 'Старт засчитается сразу' },
+    { text: 'Кот сидит рядом' },
+    { text: 'Плохо — можно' },
+    { text: `Остановиться через ${FIRST_MINUTES} минуты — можно` },
   ]
   return (
     <div className="flex flex-col items-center">
@@ -862,16 +1037,12 @@ function Commit({ label, reason, answers }: { label: string; reason: string | nu
           </div>
         )}
         <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
-          твои первые {FIRST_MINUTES} минуты
+          следующие {FIRST_MINUTES} минуты я делаю только одно
         </p>
         <p className="mt-2 line-clamp-3 break-words text-balance text-[clamp(24px,4.4dvh,32px)] font-bold leading-[1.1] tracking-tight">
           {label}
         </p>
-        {reason && (
-          <p className="mt-2 font-hand text-[19px] leading-snug text-secondary-foreground">
-            <EmphasisText text={reason} />
-          </p>
-        )}
+        {ifThen && <p className="mt-3 font-hand text-[19px] leading-snug text-secondary-foreground">{ifThen}</p>}
         <ul className="mt-4 flex flex-col gap-2 text-left [@media(max-height:700px)]:hidden">
           {promises.map((p, i) => (
             // светлее muted: под карточкой ночной горизонт лендинга светлее фона приложения (на 1280×720 было 4,1:1)

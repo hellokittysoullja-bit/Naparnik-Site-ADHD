@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { decodeAttribution, encodeAttribution, isNid, newNid, readAttribution, withAttribution } from '@/lib/visitor'
-import { EMPTY_ONBOARDING, STEPS, onboardingFromQuery, onboardingToQuery } from '@/lib/onboarding'
+import {
+  EMPTY_ONBOARDING,
+  costBundle,
+  defaultStep,
+  onboardingFromQuery,
+  onboardingToQuery,
+  planLines,
+  stepsFor,
+} from '@/lib/onboarding'
 import { ENTRY_VARIANTS, entryVariantKey } from '@/content/entry-variants'
 
 describe('анонимный ID', () => {
@@ -40,11 +48,19 @@ describe('источник перехода', () => {
 })
 
 describe('знакомство в адресе', () => {
-  const full = { step: 5, sphere: 'study' as const, hanging: 'week' as const, blocker: 'phone' as const, firstStep: STEPS.study[1] }
+  const full = {
+    step: 9,
+    sphere: 'study' as const,
+    hanging: 'week' as const,
+    blocker: 'phone' as const,
+    motive: 'relief' as const,
+    cost: 'hour' as const,
+    firstStep: stepsFor('study', 'phone')[1],
+  }
 
   it('туда и обратно: тот же шаг и те же ответы', () => {
     const q = new URLSearchParams(onboardingToQuery(full))
-    expect(q.toString()).toBe('step=5&s=study&h=week&b=phone&f=1')
+    expect(q.toString()).toBe('step=9&s=study&h=week&b=phone&m=relief&c=hour&f=1')
     expect(onboardingFromQuery(q, EMPTY_ONBOARDING)).toEqual(full)
   })
 
@@ -55,17 +71,56 @@ describe('знакомство в адресе', () => {
     expect(q.get('f')).toBe('own')
     expect(onboardingFromQuery(q, own)?.firstStep).toBe('Позвонить маме про курсовую')
     // на другом устройстве своего текста нет — человек снова на вопросе о первом шаге
-    expect(onboardingFromQuery(q, EMPTY_ONBOARDING)?.step).toBe(4)
+    expect(onboardingFromQuery(q, EMPTY_ONBOARDING)?.step).toBe(7)
   })
 
   it('по ссылке нельзя перепрыгнуть дальше первого вопроса без ответа', () => {
-    expect(onboardingFromQuery(new URLSearchParams('step=5&s=study'), EMPTY_ONBOARDING)?.step).toBe(2)
+    expect(onboardingFromQuery(new URLSearchParams('step=9&s=study'), EMPTY_ONBOARDING)?.step).toBe(2)
     expect(onboardingFromQuery(new URLSearchParams('step=4&s=hack&h=week'), EMPTY_ONBOARDING)?.step).toBe(1)
     expect(onboardingFromQuery(new URLSearchParams('step=-3'), EMPTY_ONBOARDING)?.step).toBe(1)
+    // без ответа «сколько ест» дальше этого вопроса не пускает, без шага — дальше выбора шага
+    expect(onboardingFromQuery(new URLSearchParams('step=9&s=work&h=month&b=fear&m=relief'), EMPTY_ONBOARDING)?.step).toBe(5)
+    expect(onboardingFromQuery(new URLSearchParams('step=9&s=work&h=month&b=fear&m=relief&c=hour'), EMPTY_ONBOARDING)?.step).toBe(7)
   })
 
   it('без step в адресе — берём запись с устройства', () => {
     expect(onboardingFromQuery(new URLSearchParams('src=reel-12'), EMPTY_ONBOARDING)).toBeNull()
+  })
+})
+
+describe('знакомство: шаги, цена бездействия и план', () => {
+  it('«не знаю, с чего» — первым «Выписать первый шаг»; «боюсь, что плохо» — по умолчанию черновик', () => {
+    expect(stepsFor('study', 'where')[0]).toBe('Выписать первый шаг')
+    // у работы такой шаг уже есть — он переезжает на первое место и не дублируется
+    expect(stepsFor('work', 'where')).toEqual(['Выписать первый шаг', 'Открыть документ или задачу', 'Написать 3 строки черновика'])
+    expect(defaultStep('message', 'fear')).toBe('Написать черновик ответа (не отправлять)')
+    expect(defaultStep('home', 'tired')).toBe('Убрать одну поверхность')
+  })
+
+  it('цена бездействия — только из числа человека; пример документа слово в слово', () => {
+    const base = { ...EMPTY_ONBOARDING, sphere: 'work' as const, hanging: 'month' as const, cost: 'hour' as const }
+    expect(costBundle(base)).toBe(
+      'Рабочая задача висит уже месяц. По твоей оценке, она забирает около часа в день — примерно 30 часов только за этот месяц. Если ничего не менять, следующий месяц возьмёт ещё столько же. Мы предлагаем вместо этого 2 минуты — прямо сейчас.',
+    )
+    // без числа («весь день», «не могу сказать») связки с часами нет
+    expect(costBundle({ ...base, cost: 'allday' })).toBeNull()
+    expect(costBundle({ ...base, cost: 'unknown' })).toBeNull()
+    // короткий срок — без «этого месяца»
+    expect(costBundle({ ...base, hanging: 'week' })).not.toContain('этот месяц')
+    // сообщение + месяц — отдельная строка про тревогу, а не про часы
+    expect(costBundle({ ...base, sphere: 'message' })).toContain('меньше времени, чем один такой день тревоги')
+  })
+
+  it('план: каждая строка — ответ человека; «через 7 дней» ведёт мотив', () => {
+    const plan = planLines(
+      { ...EMPTY_ONBOARDING, sphere: 'home', hanging: 'week', blocker: 'phone', motive: 'safety', cost: 'hour' },
+      'Собрать 10 вещей на место',
+    )
+    expect(plan.title).toBe('Твой план для дома и быта')
+    expect(plan.hanging).toBe('дом и быт — уже неделю-две')
+    expect(plan.approach).toBe('Телефон экраном вниз — я посторожу')
+    expect(plan.today).toBe('2 минуты — «Собрать 10 вещей на место»')
+    expect(plan.future).toBe('Бумажки сдвинулись')
   })
 })
 

@@ -60,7 +60,7 @@ export function AppNav() {
 
   // Знакомство — один путь без боковых выходов: меню нет уже в HTML. Раньше его прятал эффект знакомства после
   // первой отрисовки, и «Дом/Фокус/Мир» мелькали внизу при каждом входе с лендинга (02.11).
-  if (pathname === "/app/start") return null;
+  if (pathname.startsWith("/app/start")) return null;
 
   return (
     <nav
