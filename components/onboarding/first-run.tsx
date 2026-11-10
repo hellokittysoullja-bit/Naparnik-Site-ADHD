@@ -403,10 +403,10 @@ export function FirstRun() {
     line = nudge
       ? 'Примерно — *этого хватит*.'
       : 'Честно: сколько в день уходит на то, чтобы думать об этом, откладывать, снова вспоминать?'
-    face = 'listening'
+    face = 'calm'
   } else if (step === STEP_FIGURE) {
     line = cost?.figure ?? ''
-    face = cost?.key === 'allday' ? 'listening' : 'calm'
+    face = 'calm'
   } else if (step === STEP_FIRST && building) {
     line = 'Секунду, собираю…'
     face = 'calm'
@@ -500,11 +500,14 @@ export function FirstRun() {
         <span className="size-11 shrink-0" />
       </div>
 
-      <section className="flex min-h-0 flex-1 flex-col pb-[calc(6rem+env(safe-area-inset-bottom))]">
+      {/* Если экран низкий (iPhone в Safari ≈ 650 px) и варианты не помещаются, прокручивается ВЕСЬ блок — кот, пузырь и
+          варианты вместе, как страница. Раньше прокручивался только список под пузырём: верхний вариант обрезался
+          жёсткой линией под котом, снизу торчал обрезанный. Масок и затуханий нет — Safari выносит их в тяжёлые слои */}
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pb-[calc(6.5rem+env(safe-area-inset-bottom))] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {/* Кот — один на всё знакомство (одна кукла, не пересоздаётся): на вопросах слева от пузыря, на договоре
           переезжает в центр и растёт. Уходящие ответы закреплены внутри этого же блока — не прыгают, когда
           меняется шапка */}
-      <div className={`relative flex min-h-0 flex-1 flex-col ${step === LAST_STEP ? 'justify-center' : ''}`}>
+      <div className={`relative flex min-h-full shrink-0 flex-col ${step === LAST_STEP ? 'justify-center' : ''}`}>
       {step >= 1 && step <= LAST_STEP && (
         <CatAsks
           line={line}
@@ -521,14 +524,7 @@ export function FirstRun() {
         <motion.div
           key={building ? 'build' : step}
           {...(step === LAST_STEP ? commitMotion : listMotion)}
-          // план на низком экране длиннее места: прокручивается весь блок (полоса скрыта), а не карточка внутри себя
-          className={
-            step === LAST_STEP
-              ? 'flex flex-col'
-              : step === STEP_PLAN
-                ? 'flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-width:none]'
-                : 'flex min-h-0 flex-1 flex-col'
-          }
+          className="flex flex-col"
         >
           {building && (
             <BuildList
@@ -546,7 +542,7 @@ export function FirstRun() {
           {!building && ((step >= STEP_SPHERE && step <= STEP_COST) || step === STEP_FIRST) && (
             <>
               <div
-                className="mt-5 flex flex-col gap-2.5 overflow-y-auto pb-2"
+                className="mt-5 flex flex-col gap-2.5 pb-2 [@media(max-height:700px)]:mt-4 [@media(max-height:700px)]:gap-2"
                 role="radiogroup"
                 aria-label={
                   step === STEP_SPHERE
@@ -666,7 +662,7 @@ export function FirstRun() {
                       onSelect={() => {
                         if (state.cost !== c.key) {
                           hapticThreshold()
-                          catReact(c.key === 'allday' ? 'sleepy' : 'listening', 'idle')
+                          catReact('listening', 'idle')
                         }
                         setNudge(false)
                         update({ cost: c.key })
@@ -820,7 +816,7 @@ export function CatAsks({
           expression={face}
           action={think ? 'think' : action ?? (hop ? 'wave' : 'idle')}
           size={148}
-          className={commit ? 'size-[148px]' : 'size-[104px]'}
+          className={commit ? 'size-[148px]' : 'size-[104px] [@media(max-height:700px)]:size-[84px]'}
           label={commit ? 'Напарник готов' : 'Напарник'}
         />
       </motion.div>
@@ -850,7 +846,7 @@ export function CatAsks({
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.16 }}
             aria-live="polite"
-            className="font-hand text-[21px] font-medium leading-snug text-secondary-foreground"
+            className="font-hand text-[21px] font-medium leading-snug text-secondary-foreground [@media(max-height:700px)]:text-[19px]"
           >
             <EmphasisText text={line} />
           </motion.p>
@@ -899,7 +895,7 @@ export function Option({
       onClick={onSelect}
       onTouchStart={() => {}}
       data-selected={selected ? '' : undefined}
-      className="option-card flex min-h-14 w-full items-center gap-3 rounded-2xl px-4 py-3 text-left"
+      className="option-card flex min-h-14 w-full shrink-0 items-center gap-3 rounded-2xl px-4 py-3 text-left [@media(max-height:700px)]:min-h-12 [@media(max-height:700px)]:py-2"
     >
       {/* плитка 32×32 своего оттенка; у выбранного цвет ярче и плотнее */}
       <span

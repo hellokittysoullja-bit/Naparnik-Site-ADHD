@@ -38,14 +38,20 @@ test('«твоя цифра»: число умножает слова челов
 
 test('шаги: «не знаю, с чего» — первым «Выписать первый шаг»; «боюсь, что плохо» — предвыбран черновик; «нет сил» — «Можно ещё меньше»', async ({ page }) => {
   await page.goto('/app/start?step=6&s=work&h=week&b=where&m=relief&c=hour')
+  await expect(page.getByText('Это твоя оценка, не наша.')).toBeVisible()
+  await page.waitForTimeout(600) // экран догидратирован, защита от двойного тапа не съест клик
   await page.getByRole('button', { name: 'Продолжить' }).click()
   const first = page.getByRole('radiogroup', { name: 'Первый шаг' }).getByRole('radio').first()
   await expect(first).toHaveText('Выписать первый шаг')
   await expect(first).toHaveAttribute('aria-checked', 'true')
   await page.goto('/app/start?step=6&s=message&h=week&b=fear&m=relief&c=hour')
+  await expect(page.getByText('Это твоя оценка, не наша.')).toBeVisible()
+  await page.waitForTimeout(600) // экран догидратирован, защита от двойного тапа не съест клик
   await page.getByRole('button', { name: 'Продолжить' }).click()
   await expect(page.getByRole('radio', { name: 'Написать черновик ответа (не отправлять)' })).toHaveAttribute('aria-checked', 'true')
   await page.goto('/app/start?step=6&s=home&h=week&b=tired&m=relief&c=hour')
+  await expect(page.getByText('Это твоя оценка, не наша.')).toBeVisible()
+  await page.waitForTimeout(600) // экран догидратирован, защита от двойного тапа не съест клик
   await page.getByRole('button', { name: 'Продолжить' }).click()
   await expect(page.getByText('Можно ещё меньше.')).toBeVisible()
   // «Подскажи» подставляет шаг из списка
