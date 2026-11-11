@@ -26,7 +26,10 @@ const Body = z.object({ a: z.record(z.string(), z.string()).optional() })
 
 export const POST = handle(async (req) => {
   sameOrigin(req)
-  rateLimit(req, 'visit', 20)
+  // Запрос дешёвый (без ИИ), а у мобильных операторов сотни людей выходят с одного IP (CGNAT): при 20/мин часть
+  // пришедших из рекламы теряла метку источника (429). Высокий потолок — только от явного флуда; общий лимит на /api/* —
+  // правило Vercel Firewall (research/19 §3.2).
+  rateLimit(req, 'visit', 600)
   const parsed = Body.safeParse(await readJsonBody(req, 1024))
   if (!parsed.success) return fail(400)
   const params = new URLSearchParams()

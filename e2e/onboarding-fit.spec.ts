@@ -1,21 +1,9 @@
 import { expect, test } from '@playwright/test'
+import { SCREENS } from './onboarding-screens'
 
 // iPhone в Safari: видимая высота ≈ 650 px (844 минус панели). Раньше список вариантов прокручивался внутри себя и
 // верхний/нижний вариант обрезался жёсткой линией под котом и над кнопкой (баг владельца, 10.11). Теперь на 650 px
 // не прокручивается ничего — при тех же размерах кота, текста и вариантов (сжаты только отступы).
-
-const SCREENS = [
-  ['что висит', 'step=1&s=unsure'],
-  ['сколько висит + пояснение', 'step=2&s=work&h=month'],
-  ['что мешает (самая длинная реплика)', 'step=3&s=work&h=week&b=where'],
-  ['ради чего', 'step=4&s=work&h=month&b=fear&m=rest'],
-  ['сколько ест', 'step=5&s=work&h=month&b=fear&m=relief&c=allday'],
-  ['твоя цифра', 'step=6&s=work&h=month&b=fear&m=relief&c=hour'],
-  ['первый шаг, «не знаю, с чего»', 'step=7&s=message&h=week&b=where&m=relief&c=hour&f=0'],
-  ['первый шаг, «нет сил»', 'step=7&s=message&h=week&b=tired&m=relief&c=hour&f=0'],
-  ['план', 'step=8&s=message&h=month&b=fear&m=rest&c=hour&f=0'],
-  ['договор', 'step=9&s=work&h=month&b=phone&m=relief&c=hour&f=1'],
-] as const
 
 for (const [name, query] of SCREENS) {
   test(`знакомство «${name}» на 390×650: ничего не прокручивается, всё над кнопкой`, async ({ page }) => {
@@ -122,3 +110,4 @@ test('лендинг и знакомство: стекло без размыти
     expect(blurred, url).toBe(0)
   }
 })
+
