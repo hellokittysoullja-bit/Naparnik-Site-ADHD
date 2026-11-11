@@ -5,6 +5,7 @@ import type { TurnContext } from '../core/turn'
 import type { MemoryProvider, MemoryWrite } from '../memory/provider'
 import { renderMemory } from '../memory/render'
 import { assemble } from '../prompt/assemble'
+import { fitConversation } from '../prompt/context-budget'
 import { CHAT_SYSTEM, FOCUS_CHAT_SYSTEM, situation } from '../prompt/tasks/chat'
 import { rememberFactInput, savePlanInput, tools } from '../tools/catalog'
 
@@ -25,8 +26,11 @@ export const CHAT_LIMITS = {
   // (сравнение 11.11: при 600 Gemini обрывалась на полуслове)
   maxOutputTokens: 1024,
   maxChars: 700,
+  // история разговора: ~6 тыс. токенов ≈ 40–60 реплик кота и человека
+  historyTokens: 6_000,
 } as const
 
+const { historyTokens: HISTORY_TOKENS, ...TURN_LIMITS } = CHAT_LIMITS
 const MAX_AUTO_ROUNDS = 2
 
 export async function chatTurn(input: {
@@ -46,7 +50,8 @@ export async function chatTurn(input: {
     taskSystem: input.mode === 'focus' ? FOCUS_CHAT_SYSTEM : CHAT_SYSTEM,
     memory: renderMemory(snapshot),
     situation: situation(input.clientHour),
-    conversation: input.conversation,
+    // бюджет истории (prompt/context-budget.ts): сайт укладывается и так, боту с длинной историей — обязательно
+    conversation: fitConversation(input.conversation, HISTORY_TOKENS),
   })
   const last = input.userTexts.at(-1) ?? ''
   const stream = streamTurn({
@@ -59,7 +64,7 @@ export async function chatTurn(input: {
     // кризис — по текущей реплике (прошлую уже обработали); латинские слова — из всего разговора
     userTexts: [last],
     echoTexts: input.userTexts,
-    ...CHAT_LIMITS,
+    ...TURN_LIMITS,
     signal: input.signal,
   })
   return stream.pipeThrough(memoryLifecycle(input.ctx, input.memory))
