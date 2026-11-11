@@ -121,3 +121,71 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     await ctx.close()
   })
 }
+
+// iPhone владельца (11.11): во время сессии фон приложения (fixed, без z-index) рисовался поверх названия дела,
+// таймера и переключателей — на экране была пустота; кольцо было меньше кота; страница прокручивалась.
+for (const height of [650, 844]) {
+  test(`сессия из знакомства: таймер виден, кольцо вокруг кота, без прокрутки (390×${height})`, async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height } })
+    const page = await ctx.newPage()
+    await page.goto('/app/start?step=9&s=home&h=month&b=fear&m=relief&c=q15&f=0')
+    const hold = page.getByRole('button', { name: 'Начать первую сессию' })
+    await hold.focus()
+    await page.keyboard.press('Enter')
+    const timer = page.getByText(/^\d\d:\d\d$/)
+    await timer.waitFor({ timeout: 15000 })
+    await page.waitForTimeout(1500) // въезд экрана (opacity 0 → 1)
+    // текст таймера светлый: в его прямоугольнике должны быть яркие пиксели, а не тёмный фон
+    const shot = (await timer.screenshot()).toString('base64')
+    const bright = await page.evaluate(async (b64) => {
+      const img = new Image()
+      img.src = 'data:image/png;base64,' + b64
+      await img.decode()
+      const c = document.createElement('canvas')
+      c.width = img.width
+      c.height = img.height
+      const g = c.getContext('2d')!
+      g.drawImage(img, 0, 0)
+      const d = g.getImageData(0, 0, c.width, c.height).data
+      let n = 0
+      for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 1] > 200 && d[i + 2] > 200) n++
+      return n
+    }, shot)
+    expect(bright, 'светлые пиксели таймера').toBeGreaterThan(200)
+    const geo = await page.evaluate(() => {
+      const ring = document.querySelector('svg circle[r="72"]')!.closest('svg')!.getBoundingClientRect()
+      const cat = document.querySelector('[aria-label="Напарник работает рядом"]')!.getBoundingClientRect()
+      return { ring: ring.width, cat: cat.width, scroll: document.scrollingElement!.scrollHeight - innerHeight }
+    })
+    expect(geo.ring).toBeGreaterThanOrEqual(geo.cat + 25)
+    expect(geo.scroll).toBeLessThanOrEqual(0)
+    await ctx.close()
+  })
+}
+
+// Владелец 11.11: «идеально симметричное с котом кольцо». Кот стоит низко в своём квадрате (запас окна рисунка под уши
+// и прыжки): кольцо по центру квадрата давало зазор сверху 46,5 px, снизу 10,5. Рамка силуэта в квадрате 130 — по альфе
+// эталона (x 0,042–0,958, y 0,305–0,971). Без «дыхания» (reduced-motion) верх и низ различаются на сдвиг дыхания (±2 px).
+test('кольцо сессии симметрично вокруг кота', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 650 }, reducedMotion: 'reduce' })
+  const page = await ctx.newPage()
+  await page.goto('/app/start?step=9&s=home&h=month&b=fear&m=relief&c=q15&f=0')
+  await page.getByRole('button', { name: 'Начать первую сессию' }).focus()
+  await page.keyboard.press('Enter')
+  await page.getByText(/^\d\d:\d\d$/).waitFor({ timeout: 15000 })
+  await page.waitForTimeout(800)
+  const g = await page.evaluate(() => {
+    const svg = document.querySelector('svg circle[r="72"]')!.closest('svg')!.getBoundingClientRect()
+    const cat = document.querySelector('[aria-label="Напарник работает рядом"]')!.getBoundingClientRect()
+    const R = (svg.width * 72) / 156 - (svg.width * 5) / 156 / 2
+    const cx = svg.x + svg.width / 2
+    const cy = svg.y + svg.height / 2
+    const box = { l: cat.x + 0.042 * cat.width, r: cat.x + 0.958 * cat.width, t: cat.y + 0.305 * cat.height, b: cat.y + 0.971 * cat.height }
+    return { top: box.t - (cy - R), bottom: cy + R - box.b, left: box.l - (cx - R), right: cx + R - box.r, ringTop: svg.y }
+  })
+  expect(Math.abs(g.top - g.bottom), JSON.stringify(g)).toBeLessThanOrEqual(6)
+  expect(Math.abs(g.left - g.right), JSON.stringify(g)).toBeLessThanOrEqual(3)
+  expect(Math.min(g.top, g.bottom, g.left, g.right)).toBeGreaterThan(8)
+  expect(g.ringTop, 'кольцо не упирается в верх экрана').toBeGreaterThanOrEqual(12)
+  await ctx.close()
+})

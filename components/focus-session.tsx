@@ -615,7 +615,7 @@ export function FocusSession() {
 
   if (phase === 'setup') {
     return (
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 py-6">
+      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-4 py-6">
         <h1 className="sr-only">Фокус-сессия: выбери первый шаг</h1>
         {/* Сцена: существо в центре внимания, а не в углу формы */}
         <div className="flex flex-1 flex-col items-center justify-center gap-4">
@@ -821,7 +821,7 @@ export function FocusSession() {
   if (phase === 'starting') {
     // Хореография: мир затихает, существо садится рядом, сессия проявляется
     return (
-      <div data-vt-arrived="session" className="vt-session mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 py-8">
+      <div data-vt-arrived="session" className="vt-session relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 py-8">
         <h1 className="sr-only">Напарник садится рядом</h1>
         <motion.div
           className="vt-cat"
@@ -868,7 +868,7 @@ export function FocusSession() {
           className="pointer-events-none fixed inset-x-0 bottom-0 h-[34vh] bg-gradient-to-t from-background/85 to-transparent"
         />
         <motion.div
-          className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 pt-8 pb-[32vh]"
+          className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 pt-8 pb-[32vh] [@media(max-height:700px)]:gap-3 [@media(max-height:700px)]:pb-[27vh] [@media(max-height:700px)]:pt-8"
           initial={reducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6 }}
@@ -886,9 +886,12 @@ export function FocusSession() {
               полупрозрачного foreground, а дуга получила мягкое лаймовое
               свечение (тот же язык, что у очага/сияния), иначе на малом
               прогрессе она читается не как кольцо, а как случайный блик. */}
-          <div className="relative flex items-center justify-center">
+          {/* mb-2: кольцо выходит на 16 px за кота снизу — без отступа на коротких экранах касалось пузыря */}
+          <div className="relative mb-2 flex items-center justify-center">
             <svg
-              className="pointer-events-none absolute -inset-4"
+              // явный размер: SVG — заменяемый элемент, Safari не растягивает его краевыми отступами (-inset-4)
+              // и рисовал кольцо меньше кота (iPhone владельца, 11.11)
+              className="pointer-events-none absolute -left-4 -top-4 size-[calc(100%+2rem)]"
               viewBox="0 0 156 156"
               aria-hidden="true"
             >
@@ -918,6 +921,11 @@ export function FocusSession() {
                 }}
               />
             </svg>
+            {/* Кот в своём квадрате стоит низко (сверху окна рисунка запас под уши и прыжки), и кольцо, отцентрованное
+                по квадрату, висело над ним. Замер на рендере (ringgap.mjs, 11.11): без сдвига зазор кольцо→силуэт сверху
+                46,5 px, снизу 10,5, слева 13,5, справа 12,5. Подъём на 18 px уравнивает верх и низ; берём 16 — середина
+                «дыхания» (y 0 → −4). Только пиксели: проценты translate считаются от высоты обёртки, а она выше 130 */}
+            <div className="-translate-y-4">
             <motion.div
               animate={
                 reducedMotion
@@ -935,6 +943,7 @@ export function FocusSession() {
                 size={130}
               />
             </motion.div>
+            </div>
           </div>
           <p className="glass max-w-72 text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed">
             <EmphasisText
@@ -1014,7 +1023,7 @@ export function FocusSession() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 px-4 py-8">
+    <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 px-4 py-8">
       <MascotSvg expression="excited" action="celebrate" label="Напарник радуется" size={110} />
       <div className="flex flex-col gap-2 text-center">
         <h1 className="text-2xl font-bold">

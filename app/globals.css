@@ -1563,3 +1563,9 @@ html.vt-run .app-page-enter { animation: none; }
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
+
+/* Пока идёт сессия, меню спрятано — и его место снизу (pb-16) не нужно: оно делало экран сессии выше вьюпорта на 64 px
+   и давало прокрутку (iPhone владельца, 11.11) */
+body[data-focus-immersive] .session-main {
+  padding-bottom: 0;
+}

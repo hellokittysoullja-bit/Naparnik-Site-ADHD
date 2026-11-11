@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function SessionPage() {
   preloadFonts('caveat-400-cyr') // рукопись в репликах напарника на первом экране
   return (
-    <main className="app-page-enter flex min-h-dvh flex-col pb-16">
+    <main className="session-main app-page-enter flex min-h-dvh flex-col pb-16">
       <Suspense fallback={null}>
         <FocusSession />
       </Suspense>
