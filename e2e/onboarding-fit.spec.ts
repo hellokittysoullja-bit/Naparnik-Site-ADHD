@@ -106,3 +106,19 @@ test('ссылка на середину знакомства (перезагр�
   await page.waitForTimeout(800)
   expect(await page.evaluate(() => (window as unknown as { __flash: number }).__flash)).toBe(0)
 })
+
+// На ночном небе-видео (лендинг, знакомство) стекло без backdrop-filter: под ним гладкое тёмное небо, кадр тот же
+// (разница 0,00–0,03 из 255), а Safari размывал фон заново на каждом кадре видео и «выпрыгивания» пузыря (11.11)
+test('лендинг и знакомство: стекло без размытия фона', async ({ page }) => {
+  for (const url of ['/?intro=1', '/app/start?step=2&s=work&h=month', '/app/start?step=9&s=work&h=week&b=fear&m=relief&c=hour&f=0']) {
+    await page.goto(url)
+    await page.locator('.glass-hearthside').first().waitFor()
+    const blurred = await page.evaluate(() =>
+      [...document.querySelectorAll('*')].filter((e) => {
+        const s = getComputedStyle(e)
+        return (s.backdropFilter && s.backdropFilter !== 'none') || ((s as unknown as Record<string, string>).webkitBackdropFilter ?? 'none') !== 'none'
+      }).length,
+    )
+    expect(blurred, url).toBe(0)
+  }
+})
