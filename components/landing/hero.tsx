@@ -308,7 +308,7 @@ export function Hero({ headline = DEFAULT_HEADLINE }: { headline?: EntryHeadline
     <section
       id="hero"
       // Шапки нет: hero занимает весь вьюпорт, первый экран начинается с сцены
-      className="grain grain-hero relative flex h-dvh min-h-0 flex-col items-center justify-center overflow-hidden px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] [@media(max-height:700px)]:pt-[max(0.5rem,env(safe-area-inset-top))] [@media(max-height:520px)]:h-auto [@media(max-height:520px)]:min-h-dvh lg:pb-20 lg:pt-6"
+      className="grain grain-hero night-glass relative flex h-dvh min-h-0 flex-col items-center justify-center overflow-hidden px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] [@media(max-height:700px)]:pt-[max(0.5rem,env(safe-area-inset-top))] [@media(max-height:520px)]:h-auto [@media(max-height:520px)]:min-h-dvh lg:pb-20 lg:pt-6"
     >
       {/* Атмосфера: ночная сцена с луной и звёздами — иммерсивный фон.
           ВАЖНО: высота сцены зафиксирована 100svh, а не inset-0. На мобильном

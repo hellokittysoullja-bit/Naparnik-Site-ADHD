@@ -484,7 +484,7 @@ export function FirstRun() {
     <div className="pointer-events-none fixed inset-0">
       <NightScene />
     </div>
-    <main data-vt-arrived="onb" className="vt-onb relative mx-auto flex h-dvh w-full max-w-md flex-col overflow-hidden px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
+    <main data-vt-arrived="onb" className="vt-onb night-glass relative mx-auto flex h-dvh w-full max-w-md flex-col overflow-hidden px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
       <h1 className="sr-only">Знакомство с Напарником</h1>
       {/* Где я: назад + прогресс. На приветствии шкалы нет — вопросов ещё не было */}
       <div className="flex h-12 shrink-0 items-center gap-2">
