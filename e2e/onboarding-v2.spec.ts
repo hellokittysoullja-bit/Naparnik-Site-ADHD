@@ -162,3 +162,30 @@ for (const height of [650, 844]) {
     await ctx.close()
   })
 }
+
+// Владелец 11.11: «идеально симметричное с котом кольцо». Кот стоит низко в своём квадрате (запас окна рисунка под уши
+// и прыжки): кольцо по центру квадрата давало зазор сверху 46,5 px, снизу 10,5. Рамка силуэта в квадрате 130 — по альфе
+// эталона (x 0,042–0,958, y 0,305–0,971). Без «дыхания» (reduced-motion) верх и низ различаются на сдвиг дыхания (±2 px).
+test('кольцо сессии симметрично вокруг кота', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 650 }, reducedMotion: 'reduce' })
+  const page = await ctx.newPage()
+  await page.goto('/app/start?step=9&s=home&h=month&b=fear&m=relief&c=q15&f=0')
+  await page.getByRole('button', { name: 'Начать первую сессию' }).focus()
+  await page.keyboard.press('Enter')
+  await page.getByText(/^\d\d:\d\d$/).waitFor({ timeout: 15000 })
+  await page.waitForTimeout(800)
+  const g = await page.evaluate(() => {
+    const svg = document.querySelector('svg circle[r="72"]')!.closest('svg')!.getBoundingClientRect()
+    const cat = document.querySelector('[aria-label="Напарник работает рядом"]')!.getBoundingClientRect()
+    const R = (svg.width * 72) / 156 - (svg.width * 5) / 156 / 2
+    const cx = svg.x + svg.width / 2
+    const cy = svg.y + svg.height / 2
+    const box = { l: cat.x + 0.042 * cat.width, r: cat.x + 0.958 * cat.width, t: cat.y + 0.305 * cat.height, b: cat.y + 0.971 * cat.height }
+    return { top: box.t - (cy - R), bottom: cy + R - box.b, left: box.l - (cx - R), right: cx + R - box.r, ringTop: svg.y }
+  })
+  expect(Math.abs(g.top - g.bottom), JSON.stringify(g)).toBeLessThanOrEqual(6)
+  expect(Math.abs(g.left - g.right), JSON.stringify(g)).toBeLessThanOrEqual(3)
+  expect(Math.min(g.top, g.bottom, g.left, g.right)).toBeGreaterThan(8)
+  expect(g.ringTop, 'кольцо не упирается в верх экрана').toBeGreaterThanOrEqual(12)
+  await ctx.close()
+})

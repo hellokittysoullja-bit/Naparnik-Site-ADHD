@@ -868,7 +868,7 @@ export function FocusSession() {
           className="pointer-events-none fixed inset-x-0 bottom-0 h-[34vh] bg-gradient-to-t from-background/85 to-transparent"
         />
         <motion.div
-          className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 pt-8 pb-[32vh] [@media(max-height:700px)]:gap-3 [@media(max-height:700px)]:pb-[30vh] [@media(max-height:700px)]:pt-4"
+          className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 pt-8 pb-[32vh] [@media(max-height:700px)]:gap-3 [@media(max-height:700px)]:pb-[27vh] [@media(max-height:700px)]:pt-8"
           initial={reducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6 }}
@@ -921,10 +921,11 @@ export function FocusSession() {
                 }}
               />
             </svg>
-            {/* Кот в своём квадрате стоит низко: сверху окна рисунка запас под уши и прыжки. Середина рисунка
-                (по альфе эталона, минимакс до самого дальнего пикселя) — на 17,7 % ниже середины квадрата; поднимаем
-                кота на столько же, и кольцо обнимает его ровно: до хвоста и ушей ~12 px (было — хвост на кольце) */}
-            <div className="-translate-y-[17.7%]">
+            {/* Кот в своём квадрате стоит низко (сверху окна рисунка запас под уши и прыжки), и кольцо, отцентрованное
+                по квадрату, висело над ним. Замер на рендере (ringgap.mjs, 11.11): без сдвига зазор кольцо→силуэт сверху
+                46,5 px, снизу 10,5, слева 13,5, справа 12,5. Подъём на 18 px уравнивает верх и низ; берём 16 — середина
+                «дыхания» (y 0 → −4). Только пиксели: проценты translate считаются от высоты обёртки, а она выше 130 */}
+            <div className="-translate-y-4">
             <motion.div
               animate={
                 reducedMotion
