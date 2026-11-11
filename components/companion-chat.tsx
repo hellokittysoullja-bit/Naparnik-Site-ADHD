@@ -271,7 +271,7 @@ export function CompanionChat({
       memoryRef.current = m
       setMemoryCtx(m)
     })
-  }, [])
+  }, [boot]) // boot — из useState, не меняется: эффект по-прежнему один раз
 
   const suggestionChips = useMemo(
     () =>
@@ -554,9 +554,17 @@ export function CompanionChat({
     // прямо здесь значило бы читать диктору одно первое слово навсегда.
     pendingAnnounceIdRef.current = lastAssistant.id
     setReactingId(lastAssistant.id)
+  }, [messages])
+
+  // Реакция гаснет через 1,6 с. Таймер — в своём эффекте: раньше он жил в эффекте выше и сбрасывался его очисткой на
+  // каждом новом куске ответа (ИИ шлёт ответ частями, `messages` меняется), а повторный запуск выходил раньше, чем
+  // заводил таймер заново, — очаг и аватар оставались «в реакции» до ухода с Дома. Скриптовый ответ приходит одним
+  // куском, поэтому без ключа ИИ (как в тестах) этого не было видно.
+  useEffect(() => {
+    if (!reactingId) return
     const t = window.setTimeout(() => setReactingId(null), 1600)
     return () => window.clearTimeout(t)
-  }, [messages])
+  }, [reactingId])
 
   // Фиксируем текст объявления, когда обмен реально завершился (не во время
   // streaming/submitted — тот же признак «устаканилось», что уже использует

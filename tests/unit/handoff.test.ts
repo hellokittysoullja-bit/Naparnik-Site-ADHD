@@ -68,7 +68,8 @@ describe('перенос ID на свой домен: только подпис�
     const carried = await verifyHandoff(loc.searchParams.get('_t'), SECRET, NEW)
     expect(carried).toMatchObject({ nid: NID, home: true })
 
-    for (const to of ['//evil.example/x', '/\\evil.example']) {
+    // табуляция и переносы строк разбор адреса выбрасывает: «/<TAB>/evil» превращался в «//evil»
+    for (const to of ['//evil.example/x', '/\\evil.example', '/\t/evil.example/x', '/\n/evil.example', '/\r\\evil.example']) {
       const r = await handoff(new Request(`https://adhd-naparnik.vercel.app/api/handoff?to=${encodeURIComponent(to)}`))
       const l = new URL(r.headers.get('location')!)
       expect(l.host).toBe(NEW)
