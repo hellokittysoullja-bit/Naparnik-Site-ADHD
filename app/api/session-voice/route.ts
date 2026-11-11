@@ -1,7 +1,6 @@
-import { generateText } from 'ai'
 import { z } from 'zod'
-import { google } from '@ai-sdk/google'
-import { personaBase } from '@/lib/companion'
+import { dataMessage } from '@/lib/ai/context'
+import { runTurn } from '@/lib/ai/harness'
 import { sessionVoicePresets } from '@/lib/scripted-companion'
 import { handle, rateLimit, readJsonBody, sameOrigin } from '@/lib/api-guard'
 
@@ -26,35 +25,38 @@ const Body = z.object({
   moment: z.enum(['start', 'middle', 'late', 'done', 'early-exit']),
   task: z.string().trim().min(1).transform((s) => s.slice(0, 300)),
   minutes: z.number().int().min(1).max(240).optional(),
+  audience: z.enum(['adult', 'minor']).optional(),
 })
+
+const SYSTEM =
+  'Режим: ФОКУС-СЕССИЯ. Человек работает над делом из блока данных, ты сидишь рядом. Отвечай ТОЛЬКО самой фразой, без кавычек и пояснений.'
 
 export const POST = handle(async (req) => {
   sameOrigin(req)
   rateLimit(req, 'session-voice', 30)
   const parsed = Body.safeParse(await readJsonBody(req, 4 * 1024))
   if (!parsed.success) return Response.json({ text: null }, { status: 400 })
-  const { moment, task, minutes } = parsed.data
-  const prompt = momentPrompts[moment]
-  try {
-    const { text } = await generateText({
-      model: process.env.GOOGLE_GENERATIVE_AI_API_KEY
-        ? google('gemini-2.5-flash-lite')
-        : 'openai/gpt-5.4-nano',
-      instructions: `${personaBase}
-
-Режим: ФОКУС-СЕССИЯ. Человек работает над: «${task}»${
-        minutes ? ` (сессия ${minutes} минут)` : ''
-      }. Отвечай ТОЛЬКО самой фразой, без кавычек и пояснений.`,
-      prompt,
-      maxOutputTokens: 1024, // одна-две короткие фразы; запас под токены рассуждения моделей шлюза
-      maxRetries: 1,
-      abortSignal: req.signal,
-    })
-    return Response.json({ text: text.trim() })
-  } catch {
-    // LLM недоступен — скриптовый пресет вместо молчания
+  const { moment, task, minutes, audience } = parsed.data
+  const preset = () => {
     const presets = sessionVoicePresets[moment]
-    const fallback = presets ? presets[task.length % presets.length] : null
-    return Response.json({ text: fallback })
+    return presets ? presets[task.length % presets.length] : null
   }
+  // Дело человека — в блоке данных, не в инструкции (находка 4 аудита безопасности). Обвязка: кризис в тексте дела →
+  // проверенный ответ; модель не уложилась в 4 с или ответила не тем тоном → следующая модель → заготовка.
+  const { value } = await runTurn<string | null>({
+    task: 'session-voice',
+    system: SYSTEM,
+    data: dataMessage({ 'Дело': task, 'Длина сессии, минут': minutes }),
+    prompt: momentPrompts[moment],
+    userTexts: [task],
+    audience,
+    timeoutMs: 4000,
+    maxOutputTokens: 120,
+    maxChars: 220,
+    parse: (text) => text,
+    fallback: preset,
+    onCrisis: (reply) => reply,
+    signal: req.signal,
+  })
+  return Response.json({ text: value })
 })

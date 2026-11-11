@@ -9,6 +9,7 @@ import { MascotDoll as MascotSvg } from '@/components/mascot-doll'
 import { EmphasisText } from '@/components/emphasis-text'
 import { RevealIsland, type RevealNewItem } from '@/components/reveal-island'
 import { ChevronRight, Sparkles } from 'lucide-react'
+import { getAudience } from '@/lib/audience'
 import {
   addFind,
   clearActiveSession,
@@ -99,7 +100,7 @@ async function fetchVoice(moment: Moment, task: string, minutes: number): Promis
     const res = await fetch('/api/session-voice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ moment, task, minutes }),
+      body: JSON.stringify({ moment, task, minutes, audience: getAudience() }),
     })
     if (!res.ok) return fallbackVoice[moment]
     const data = (await res.json()) as { text: string | null }
@@ -186,6 +187,8 @@ export function FocusSession() {
   // понимал, сработало дробление или нет, и был вынужден жать вслепую ещё
   // раз. Теперь ошибка видима и даёт явный повтор (WCAG Status Messages).
   const [breakError, setBreakError] = useState(false)
+  // кризисный текст в поле дела: обвязка вернула проверенный бережный ответ с телефонами помощи вместо шагов
+  const [careReply, setCareReply] = useState<string | null>(null)
   async function breakDown() {
     if (!task.trim() || breaking) return
     setBreaking(true)
@@ -194,11 +197,12 @@ export function FocusSession() {
       const res = await fetch('/api/breakdown', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: task.trim() }),
+        body: JSON.stringify({ task: task.trim(), audience: getAudience() }),
       })
       if (res.ok) {
-        const data = (await res.json()) as { steps: string[] | null }
-        if (data.steps) setBrokenSteps(data.steps)
+        const data = (await res.json()) as { steps: string[] | null; reply?: string }
+        if (data.reply) setCareReply(data.reply)
+        else if (data.steps) setBrokenSteps(data.steps)
         else setBreakError(true)
       } else {
         setBreakError(true)
@@ -711,6 +715,11 @@ export function FocusSession() {
               <Sparkles className="size-4 shrink-0 text-primary" aria-hidden="true" />
               {breaking ? 'Дроблю…' : 'Звучит крупно? Раздробить'}
             </button>
+          )}
+          {careReply && (
+            <p role="status" className="glass rounded-2xl px-4 py-3 text-[0.95rem] leading-relaxed text-foreground">
+              {careReply}
+            </p>
           )}
           {breakError && !brokenSteps && !breaking && (
             <div
