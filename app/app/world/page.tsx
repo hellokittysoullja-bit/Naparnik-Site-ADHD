@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 export default function WorldPage() {
   preloadFonts('manrope-700-cyr') // жирные подписи острова на первом экране
   return (
-    <main className="app-page-enter flex min-h-dvh flex-col pb-20">
+    <main className="app-page-enter relative flex min-h-dvh flex-col pb-20">
       <Island />
     </main>
   )

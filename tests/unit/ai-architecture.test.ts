@@ -341,3 +341,20 @@ describe('номера: только 112 (решение владельца 11.1
     (t) => expect(checkOutput(t, { maxChars: 300 }).ok).toBe(true),
   )
 })
+
+describe('без ключа AnyModel маршруты ведут себя как до обвязки (вливание ничего не ухудшает)', () => {
+  it('Google-ключ: чат на Flash, разовые задачи на Flash-Lite; без ключей — AI Gateway', async () => {
+    const { modelChain, resetModelsForTests } = await vi.importActual<typeof import('@/lib/ai/models')>('@/lib/ai/models')
+    vi.stubEnv('ANYMODEL_API_KEY', '')
+    resetModelsForTests()
+    vi.stubEnv('GOOGLE_GENERATIVE_AI_API_KEY', 'k')
+    expect(modelChain('chat').map((s) => s.id)).toEqual(['gemini-2.5-flash'])
+    expect(modelChain('session-voice').map((s) => s.id)).toEqual(['gemini-2.5-flash-lite'])
+    expect(modelChain('breakdown').map((s) => s.id)).toEqual(['gemini-2.5-flash-lite'])
+    vi.stubEnv('GOOGLE_GENERATIVE_AI_API_KEY', '')
+    expect(modelChain('chat').map((s) => s.id)).toEqual(['google/gemini-3.6-flash'])
+    expect(modelChain('breakdown').map((s) => s.id)).toEqual(['openai/gpt-5.4-nano'])
+    vi.unstubAllEnvs()
+    resetModelsForTests()
+  })
+})

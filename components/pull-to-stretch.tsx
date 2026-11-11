@@ -43,7 +43,10 @@ export function PullToStretch({
    */
   const stretchingRef = useRef(false)
   const onRefreshRef = useRef(onRefresh)
-  onRefreshRef.current = onRefresh
+  // свежий обработчик — после рендера, а не во время него: читается только на отпускании пальца
+  useEffect(() => {
+    onRefreshRef.current = onRefresh
+  })
 
   useEffect(() => {
     const el = scrollRef.current

@@ -73,19 +73,29 @@ const ROUTES: Record<TaskName, readonly (keyof typeof PROFILES)[]> = {
   'onboarding-first-step': ['primary', 'fallback'],
 }
 
+/**
+ * Запасной путь без ключа AnyModel — ТОТ ЖЕ, что был у маршрутов до обвязки, чтобы вливание в main ничего не
+ * ухудшило, пока ключ не лежит в Vercel: есть ключ Google — Gemini напрямую (чат на Flash, разовые задачи на
+ * Flash-Lite), нет — AI Gateway (на Vercel он работает без ключа; вне Vercel ответ не придёт, и канал возьмёт
+ * заготовку, как и раньше). Модели шлюза указаны строкой, провайдер выбирает сам AI SDK.
+ */
+function legacyChain(task: TaskName): ModelStep[] {
+  const chat = task === 'chat'
+  if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+    const id = chat ? 'gemini-2.5-flash' : 'gemini-2.5-flash-lite'
+    return [{ id, model: google(id) }]
+  }
+  const id = chat ? 'google/gemini-3.6-flash' : 'openai/gpt-5.4-nano'
+  return [{ id, model: id }]
+}
+
 export function modelChain(task: TaskName): ModelStep[] {
   const am = anyModel()
-  if (am) {
-    const route = ROUTES[task]
-    return route.map((k) => {
-      const p = PROFILES[k]
-      return { id: p.id, model: am.chatModel(p.id), robust: p.robust }
-    })
-  }
-  if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-    return [{ id: 'gemini-2.5-flash-lite', model: google('gemini-2.5-flash-lite') }]
-  }
-  return []
+  if (!am) return legacyChain(task)
+  return ROUTES[task].map((k) => {
+    const p = PROFILES[k]
+    return { id: p.id, model: am.chatModel(p.id), robust: p.robust }
+  })
 }
 
 /** Для тестов: сбросить кэш провайдера после смены переменных окружения */

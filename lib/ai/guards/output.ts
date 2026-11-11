@@ -69,7 +69,7 @@ const FILE_EXT = 'docx?|xlsx?|pptx?|pdf|txt|md|csv|png|jpe?g|gif|zip|key|pages|n
 const LINK_RULES = [
   /https?:\/\/|www\.|t\.me\/|(?<![\p{L}\d])(?:tg|mailto):/iu,
   /(?<![\p{L}\d])@[a-z0-9_]{4,}/iu,
-  new RegExp(String.raw`(?<![\p{L}\d.])[\p{L}\d-]{2,}\.(?!(?:${FILE_EXT})(?![\p{L}\d]))(?:[a-z]{2,24}|рф|рус|онлайн|москва|сайт|дети|бел|укр)(?![\p{L}\d])`, 'iu'),
+  new RegExp(String.raw`(?<![\p{L}\d.])[\p{L}\d-]+\.(?!(?:${FILE_EXT})(?![\p{L}\d]))(?:[a-z]{2,24}|рф|рус|онлайн|москва|сайт|дети|бел|укр)(?![\p{L}\d])`, 'iu'),
   // «example точка ру», «example [.] ru», «example dot ru», «example . ru»
   /[\p{L}\d-]{2,}\s*(?:\[\.\]|\(\.\)|。|\sточка\s|\sdot\s)\s*(?:[a-z]{2,24}|ру|ком|рф)(?![\p{L}\d])/iu,
   /[a-z\d-]{2,}\s\.\s?(?:ru|com|org|net|io|me|xyz|info|su)(?![\p{L}\d])/iu,

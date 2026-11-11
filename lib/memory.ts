@@ -276,6 +276,11 @@ export function keepMemory(): void {
 const HOME_COOKIE = 'naparnik_home'
 const HOME_REFRESH_KEY = 'naparnik:homeAt'
 const HOME_REFRESH_MS = 30 * 86_400_000
+// markHome зовут на каждую запись в память и на каждое возвращение во вкладку. Пока ответ сервера в пути (или если он
+// не пришёл: нет сети, 429), каждая следующая запись слала POST /api/home ещё раз — 3–4 запроса за первые 100 мс старта
+// сессии и бесконечные повторы без сети. Один запрос за раз и не чаще раза в минуту.
+let homePostAt = 0
+const HOME_RETRY_MS = 60_000
 export function markHome(hasStarts: boolean): void {
   try {
     if (typeof document === 'undefined') return
@@ -292,6 +297,8 @@ export function markHome(hasStarts: boolean): void {
     }
     if (has && Date.now() - last < HOME_REFRESH_MS) return
     if (!has) document.cookie = `${HOME_COOKIE}=1; Max-Age=34560000; Path=/; SameSite=Lax; Secure`
+    if (Date.now() - homePostAt < HOME_RETRY_MS) return
+    homePostAt = Date.now()
     void fetch('/api/home', { method: 'POST', keepalive: true, credentials: 'same-origin' })
       .then((r) => {
         if (!r.ok) return
@@ -503,7 +510,8 @@ export async function getNotes(): Promise<CompanionNote[]> {
 
 export async function addNote(text: string): Promise<void> {
   const notes = await getNotes()
-  const trimmed = text.trim()
+  // потолок как у сервера (MemorySchema, 300): заметку пишет модель, длину она не ограничивает сама
+  const trimmed = text.trim().slice(0, 300)
   if (!trimmed) return
   // тот же ключ сравнения, что у правил памяти обвязки (lib/ai/memory/policy.ts): «Пишет диплом.» и «пишет
   // диплом» — один факт, на устройстве и на сервере одинаково

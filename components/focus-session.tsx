@@ -425,6 +425,9 @@ export function FocusSession() {
       setVoice(fallbackVoice.start)
       setPhase('running')
     })
+    // Только при открытии: восстановить идущую сессию или автостарт — один раз (restoredRef бережёт от повтора).
+    // start создаётся заново на каждом рендере: в зависимостях эффект срабатывал бы каждый раз.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Завершение по нулю — отдельным эффектом, а не изнутри setState-апдейтера

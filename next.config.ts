@@ -6,6 +6,9 @@ import { ENTRY_VARIANTS } from './content/entry-variants'
 // 'unsafe-inline' для скриптов — осознанно: nonce требует динамического рендера каждой страницы и стоил бы
 // статического HTML с CDN (первая отрисовка — см. CLAUDE.md). eval, плагины, подмена <base> и встраивание
 // в чужие фреймы запрещены и так. Vercel Toolbar на превью-деплоях получает свои адреса.
+// `blob:` и `data:` — только там, где они реально нужны (картинки: вшитый постер кота и шум фона — `data:`). Видео и звук
+// идут своими файлами, сервис-воркер — свой скрипт, файл календаря скачивается ссылкой (CSP это не регулирует):
+// лишние `blob:`/`data:` в media-src, worker-src и img-src убраны 11.11 (security-audit §2.7).
 const isDev = process.env.NODE_ENV !== 'production'
 const isPreview = process.env.VERCEL_ENV === 'preview'
 const live = isPreview ? ' https://vercel.live' : ''
@@ -14,11 +17,11 @@ const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}${live}`,
   `style-src 'self' 'unsafe-inline'${live}`,
-  `img-src 'self' data: blob:${isPreview ? ' https://vercel.live https://vercel.com' : ''}`,
+  `img-src 'self' data:${isPreview ? ' https://vercel.live https://vercel.com' : ''}`,
   `font-src 'self' data:${isPreview ? ' https://vercel.live https://assets.vercel.com' : ''}`,
   `connect-src 'self'${isPreview ? ' https://vercel.live wss://ws-us3.pusher.com' : ''}${isDev ? ' ws:' : ''}`,
-  "media-src 'self' data: blob:",
-  "worker-src 'self' blob:",
+  "media-src 'self'",
+  "worker-src 'self'",
   "manifest-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
