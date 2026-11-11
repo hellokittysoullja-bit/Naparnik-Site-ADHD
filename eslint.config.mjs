@@ -27,6 +27,25 @@ const config = [
     rules: { "react/jsx-key": "off" },
   },
   {
+    // Единственный вход к модели — обвязка lib/ai (research/20-ai-harness/security-ai.md R2): прямой вызов
+    // модели из маршрута или экрана обходит кризисный ответ, проверку выхода, страховку моделей и журнал.
+    files: ["app/**", "components/**", "lib/**", "hooks/**"],
+    ignores: ["lib/ai/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            { name: "ai", importNames: ["generateText", "streamText", "generateObject", "streamObject", "ToolLoopAgent"], message: "Модель — только через lib/ai (runTurn/chatTurn)." },
+            { name: "@ai-sdk/google", message: "Провайдеры — только в lib/ai/models.ts." },
+            { name: "@ai-sdk/openai-compatible", message: "Провайдеры — только в lib/ai/models.ts." },
+            { name: "@ai-sdk/gateway", message: "Провайдеры — только в lib/ai/models.ts." },
+          ],
+        },
+      ],
+    },
+  },
+  {
     ignores: [".next/**", "node_modules/**", "next-env.d.ts", "design/**", "fonts-library/**", "public/**", "lib/asset-versions.ts", "components/mascot-poster-inline.ts", "e2e-report/**", "test-results/**"],
   },
 ];

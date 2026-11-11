@@ -1,3 +1,5 @@
+import { matchVariants } from './normalize'
+
 /**
  * Проверки на входе (OpenAI Agents SDK: input guardrails, режим «до вызова модели» — ради безопасности и денег).
  * Правила, а не модель: мгновенно, бесплатно, предсказуемо. Это не диагностика — это повод ответить бережно.
@@ -33,9 +35,8 @@ const INJECTION = [
 export type InputVerdict = { crisis: boolean; injection: boolean }
 
 export function checkInput(texts: string[]): InputVerdict {
-  const all = texts.join('\n')
-  return {
-    crisis: CRISIS.some((r) => r.test(all)),
-    injection: INJECTION.some((r) => r.test(all)),
-  }
+  // сопоставление по нормализованному тексту: латинские двойники и невидимые символы не обходят проверку (guards/normalize.ts)
+  const variants = matchVariants(texts.join('\n'))
+  const any = (rules: RegExp[]) => variants.some((v) => rules.some((r) => r.test(v)))
+  return { crisis: any(CRISIS), injection: any(INJECTION) }
 }

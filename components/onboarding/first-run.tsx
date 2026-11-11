@@ -40,6 +40,7 @@ import { withAttribution } from '@/lib/visitor'
 import { getPatterns, peekStarts } from '@/lib/memory'
 import { useClientMount } from '@/hooks/use-client-mount'
 import { hapticThreshold } from '@/lib/haptics'
+import { firstStepFor } from '@/lib/ai-client'
 import {
   BLOCKERS,
   COSTS,
@@ -181,6 +182,44 @@ export function FirstRun() {
     reactTimer.current = window.setTimeout(() => setReact(null), ms)
   }
   useEffect(() => () => window.clearTimeout(reactTimer.current), [])
+
+  // «Подскажи» через обвязку (lib/ai): своё дело в поле → первый крошечный шаг для НЕГО; поле пустое, в нём уже
+  // подсказка из списка или обвязка не ответила — мгновенная подсказка сферы, как раньше
+  const [thinking, setThinking] = useState(false)
+  const [careReply, setCareReply] = useState<string | null>(null)
+  const suggestAbort = useRef<AbortController | null>(null)
+  useEffect(() => () => suggestAbort.current?.abort(), [])
+  async function suggest() {
+    hapticThreshold()
+    setNudge(false)
+    setCareReply(null)
+    const typed = custom.trim()
+    const local = () => suggestStep(state.sphere, state.blocker, typed || state.firstStep)
+    if (typed.length < 3 || stepsFor(state.sphere, state.blocker).includes(typed)) {
+      catReact('happy', 'wave', 700)
+      setCustom(local())
+      return
+    }
+    suggestAbort.current?.abort()
+    const ctrl = new AbortController()
+    suggestAbort.current = ctrl
+    setThinking(true)
+    setReact({ face: 'focused', action: 'think' })
+    const answer = await firstStepFor(
+      typed,
+      { sphere: SPHERES.find((x) => x.key === state.sphere)?.label, blocker: BLOCKERS.find((b) => b.key === state.blocker)?.label },
+      { signal: ctrl.signal },
+    )
+    if (ctrl.signal.aborted) return
+    setThinking(false)
+    setReact(null)
+    if (answer?.kind === 'care') {
+      setCareReply(answer.reply)
+      return
+    }
+    catReact('happy', 'wave', 700)
+    setCustom(answer?.step ?? local())
+  }
 
   const buildTimer = useRef(0)
   useEffect(() => () => window.clearTimeout(buildTimer.current), [])
@@ -767,18 +806,19 @@ export function FirstRun() {
                     {customOpen && (
                     <button
                       type="button"
-                      onClick={() => {
-                        hapticThreshold()
-                        catReact('happy', 'wave', 700)
-                        setCustom(suggestStep(state.sphere, state.blocker, (customOpen && custom.trim()) || state.firstStep))
-                        setCustomOpen(true)
-                        setNudge(false)
-                      }}
-                      className="press flex min-h-11 items-center gap-2 self-start rounded-full px-3 text-[15px] font-semibold text-muted-foreground"
+                      disabled={thinking}
+                      aria-busy={thinking}
+                      onClick={suggest}
+                      className="press flex min-h-11 items-center gap-2 self-start rounded-full px-3 text-[15px] font-semibold text-muted-foreground disabled:opacity-70"
                     >
                       <Dices className="size-[18px]" aria-hidden="true" />
-                      Подскажи
+                      {thinking ? 'Думаю…' : 'Подскажи'}
                     </button>
+                    )}
+                    {careReply && (
+                      <p role="status" className="text-[15px] leading-snug text-foreground/90">
+                        {careReply}
+                      </p>
                     )}
                   </>
                 )}

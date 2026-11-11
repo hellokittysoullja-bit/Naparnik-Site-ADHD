@@ -104,8 +104,20 @@ export function handle(fn: (req: Request) => Promise<Response>) {
       return await fn(req)
     } catch (e) {
       if (e instanceof Response) return e
-      console.error('[api]', e)
+      // только форма ошибки: у APICallError (AI SDK) в полях requestBodyValues/responseBody лежит весь промпт с
+      // памятью человека — в журнал Vercel он попасть не должен (security-ai.md R8, OWASP LLM02)
+      console.error(JSON.stringify({ t: 'api-error', path: new URL(req.url).pathname, ...errorShape(e) }))
       return fail(500)
     }
+  }
+}
+
+/** Безопасная форма ошибки для журнала: имя, статус, повторяемость — без тела запроса и ответа */
+export function errorShape(e: unknown): { name: string; status?: number; retryable?: boolean } {
+  const x = (e ?? {}) as { name?: unknown; statusCode?: unknown; isRetryable?: unknown }
+  return {
+    name: typeof x.name === 'string' ? x.name.slice(0, 60) : 'Error',
+    status: typeof x.statusCode === 'number' ? x.statusCode : undefined,
+    retryable: typeof x.isRetryable === 'boolean' ? x.isRetryable : undefined,
   }
 }

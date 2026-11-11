@@ -14,7 +14,12 @@ import type { LanguageModel } from 'ai'
  */
 export const ANYMODEL_BASE_URL = 'https://anymodel.org/v1'
 
-export type ModelStep = { id: string; model: LanguageModel }
+export type ModelStep = {
+  id: string
+  model: LanguageModel
+  /** устойчивее к взлому промпта: при подозрении цепочка начинается с неё (core/middleware.ts) */
+  robust?: boolean
+}
 
 let anymodel: ReturnType<typeof createOpenAICompatible> | null = null
 
@@ -41,7 +46,7 @@ export function modelChain(): ModelStep[] {
   if (am) {
     return [
       { id: PRIMARY_MODEL, model: am.chatModel(PRIMARY_MODEL) },
-      { id: FALLBACK_MODEL, model: am.chatModel(FALLBACK_MODEL) },
+      { id: FALLBACK_MODEL, model: am.chatModel(FALLBACK_MODEL), robust: true },
     ]
   }
   if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) {

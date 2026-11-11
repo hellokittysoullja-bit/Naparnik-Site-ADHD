@@ -11,7 +11,7 @@
  * находки, число стартов, время суток).
  */
 
-import type { MemoryContextPayload } from '@/lib/companion'
+import type { MemorySnapshot as MemoryContextPayload } from '@/lib/ai/memory/schema'
 
 export type ScriptedReply = {
   text: string
