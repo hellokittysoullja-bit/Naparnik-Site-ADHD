@@ -886,7 +886,8 @@ export function FocusSession() {
               полупрозрачного foreground, а дуга получила мягкое лаймовое
               свечение (тот же язык, что у очага/сияния), иначе на малом
               прогрессе она читается не как кольцо, а как случайный блик. */}
-          <div className="relative flex items-center justify-center">
+          {/* mb-2: кольцо выходит на 16 px за кота снизу — без отступа на коротких экранах касалось пузыря */}
+          <div className="relative mb-2 flex items-center justify-center">
             <svg
               // явный размер: SVG — заменяемый элемент, Safari не растягивает его краевыми отступами (-inset-4)
               // и рисовал кольцо меньше кота (iPhone владельца, 11.11)
@@ -920,6 +921,10 @@ export function FocusSession() {
                 }}
               />
             </svg>
+            {/* Кот в своём квадрате стоит низко: сверху окна рисунка запас под уши и прыжки. Середина рисунка
+                (по альфе эталона, минимакс до самого дальнего пикселя) — на 17,7 % ниже середины квадрата; поднимаем
+                кота на столько же, и кольцо обнимает его ровно: до хвоста и ушей ~12 px (было — хвост на кольце) */}
+            <div className="-translate-y-[17.7%]">
             <motion.div
               animate={
                 reducedMotion
@@ -937,6 +942,7 @@ export function FocusSession() {
                 size={130}
               />
             </motion.div>
+            </div>
           </div>
           <p className="glass max-w-72 text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed">
             <EmphasisText
