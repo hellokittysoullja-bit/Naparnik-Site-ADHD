@@ -74,26 +74,32 @@ function gridOf(verts: number[], cols: number, rows: number) {
   return { verts: out, idx };
 }
 
-/** Декодированные слои рига — один раз на страницу, общие для всех экземпляров (у каждого свой контекст). */
-const imageCache = new Map<string, Promise<HTMLImageElement[]>>();
-export function loadRigImages(rig: RigData, baseUrl: string): Promise<HTMLImageElement[]> {
-  let p = imageCache.get(baseUrl);
+/**
+ * Декодированные слои рига — один раз на страницу, общие для всех экземпляров (у каждого свой контекст). Кэш по
+ * адресу слоя: загрузку можно начать раньше, чем пришёл rig.json (preloadRigImages), и loadRigImages подхватит её.
+ */
+const texCache = new Map<string, Promise<HTMLImageElement>>();
+function loadTexture(url: string): Promise<HTMLImageElement> {
+  let p = texCache.get(url);
   if (!p) {
-    p = Promise.all(
-      rig.parts.map(
-        (part) =>
-          new Promise<HTMLImageElement>((res, rej) => {
-            const im = new Image();
-            im.onload = () => res(im);
-            im.onerror = () => rej(new Error("texture " + part.tex));
-            im.src = asset(baseUrl + part.tex);
-          }),
-      ),
-    );
-    p.catch(() => imageCache.delete(baseUrl));
-    imageCache.set(baseUrl, p);
+    p = new Promise<HTMLImageElement>((res, rej) => {
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = () => rej(new Error("texture " + url));
+      im.src = url;
+    });
+    p.catch(() => texCache.delete(url));
+    texCache.set(url, p);
   }
   return p;
+}
+export function loadRigImages(rig: RigData, baseUrl: string): Promise<HTMLImageElement[]> {
+  return Promise.all(rig.parts.map((part) => loadTexture(asset(baseUrl + part.tex))));
+}
+/** Начать загрузку слоёв по известным именам, не дожидаясь rig.json (он 350 КБ; слои ждали его целиком). */
+export function preloadRigImages(texNames: readonly string[], baseUrl: string): void {
+  if (typeof Image === "undefined") return;
+  for (const tex of texNames) void loadTexture(asset(baseUrl + tex)).catch(() => {});
 }
 
 /**

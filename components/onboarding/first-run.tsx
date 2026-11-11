@@ -942,7 +942,7 @@ export function Option({
       onClick={onSelect}
       onTouchStart={() => {}}
       data-selected={selected ? '' : undefined}
-      className="option-card flex min-h-14 w-full shrink-0 items-center gap-3 rounded-2xl px-4 py-3 text-left"
+      className="option-card flex min-h-14 w-full shrink-0 items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left"
     >
       {/* плитка 32×32 своего оттенка; у выбранного цвет ярче и плотнее */}
       <span

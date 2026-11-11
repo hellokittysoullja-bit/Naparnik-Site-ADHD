@@ -35,7 +35,7 @@ export const ASSET_VERSIONS: Record<string, string> = {
   "/scene/night-portrait.webp": "11ae8a5f98"
 };
 
-/** Адрес своей статики с версией содержимого: такой адрес кэшируется на год (next.config.mjs). */
+/** Адрес своей статики с версией содержимого: такой адрес кэшируется на год (next.config.ts). */
 export function asset(p: string): string {
   const v = ASSET_VERSIONS[p];
   return v ? `${p}?v=${v}` : p;

@@ -54,4 +54,36 @@ describe('API: вход проверяется до вызова модели', 
     expect(last.status).toBe(429)
     expect(Number(last.headers.get('retry-after'))).toBeGreaterThan(0)
   })
+
+  it('Safari < 16.4 без Sec-Fetch-Site: чужой Origin → 403, свой проходит дальше', async () => {
+    const evil = await breakdown(post('{"task":"ab"}', { origin: 'https://evil.example' }))
+    expect(evil.status).toBe(403)
+    expect((await breakdown(post('{"task":"ab"}', { origin: 'null' }))).status).toBe(403)
+    // свой адрес — дальше, до проверки тела (task короче 3 → 400, модель не зовётся)
+    expect((await breakdown(post('{"task":"ab"}', { origin: 'http://localhost' }))).status).toBe(400)
+  })
+
+  it('не JSON (text/plain — «простой» запрос чужой формы) → 415 без тела', async () => {
+    for (const route of [breakdown, voice, companion]) {
+      const res = await route(post('{"task":"убрать стол"}', { 'content-type': 'text/plain' }))
+      expect(res.status).toBe(415)
+      expect(await res.text()).toBe('')
+    }
+  })
+
+  it('бесконечное тело без Content-Length обрывается на потолке, а не читается в память целиком', async () => {
+    const chunk = new Uint8Array(64 * 1024).fill(32)
+    const endless = new ReadableStream<Uint8Array>({ pull: (c) => c.enqueue(chunk) })
+    const req = new Request('http://localhost/api', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-real-ip': '10.8.8.8' },
+      body: endless,
+      duplex: 'half',
+    } as RequestInit)
+    const res = await Promise.race([
+      companion(req),
+      new Promise<Response>((r) => setTimeout(() => r(new Response(null, { status: 599 })), 3000)),
+    ])
+    expect(res.status).toBe(413)
+  })
 })

@@ -9,7 +9,7 @@ import type { EntryHeadline } from "@/content/entry-variants";
  * SectionNav, Footer) не выводились и удалены 22.10 как мёртвый код. Вернуть: взять
  * их из git (`git show 72de752:components/landing/<файл>`), снять `html,body{overflow:hidden}`.
  *
- * Общий для `/` и заголовков под ролики (`/?src=…` → app/v/[variant], proxy.ts): отличается только `headline`.
+ * Общий для `/` и заголовков под ролики (`/?src=…` → app/v/[variant], rewrite в next.config.ts): отличается только `headline`.
  * Вшитые шрифты первого экрана (app/hero-fonts.css) подключает каждая страница сама.
  */
 export function Landing({ headline }: { headline?: EntryHeadline }) {

@@ -1,8 +1,8 @@
 /**
- * Анонимный посетитель и источник перехода — общее для proxy.ts, API и клиента (без зависимостей от Node и React).
+ * Анонимный посетитель и источник перехода — общее для proxy.ts, /api/visit и клиента (без зависимостей от Node и React).
  *
  * `nid` — случайный ID посетителя, как `logged_out_uuid` у Duolingo (проверено 08.11: сервер ставит его новому
- * посетителю на 1 год). Ставит его СЕРВЕР (proxy.ts, httpOnly): Safari живёт cookie, записанные скриптом, ~7 дней,
+ * посетителю на 1 год). Ставит его СЕРВЕР (POST /api/visit, httpOnly): Safari живёт cookie, записанные скриптом, ~7 дней,
  * серверные — нет. Это удобство, не источник истины: из встроенного браузера Instagram/TikTok в Safari переносится
  * только адрес, поэтому шаг и ответы воронки живут в адресе (research/13, план «школа 1», фаза 0–1).
  *
@@ -23,7 +23,7 @@ export const ATTRIBUTION_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'ut
 export type AttributionKey = (typeof ATTRIBUTION_KEYS)[number]
 export type Attribution = Partial<Record<AttributionKey, string>>
 
-/** Разовые параметры переезда со старого домена на новый (proxy.ts): переносят анонимный ID и метку «свой» */
+/** Прежний формат переноса со старого домена (голые `?_nid=…&_home=1`): больше НЕ принимается, proxy только убирает его из адреса. Перенос — подписанным жетоном `_t` (lib/handoff.ts) */
 export const HANDOFF_NID = '_nid'
 export const HANDOFF_HOME = '_home'
 

@@ -1,4 +1,5 @@
 import { SiteAnalytics } from "@/components/analytics";
+import { VisitBeacon } from "@/components/visit-beacon";
 import type { Metadata, Viewport } from "next";
 import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
@@ -69,6 +70,7 @@ export default function RootLayout({
     >
       <body className="antialiased font-sans">
         {children}
+        <VisitBeacon />
         {process.env.NODE_ENV === "production" && <SiteAnalytics />}
       </body>
     </html>

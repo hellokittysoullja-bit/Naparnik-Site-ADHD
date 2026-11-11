@@ -9,12 +9,38 @@
 /** Пустой ответ с кодом: наружу — никаких подробностей, стек только в логах сервера. */
 export const fail = (status: number, headers?: HeadersInit) => new Response(null, { status, headers })
 
-/** Тело с потолком размера: проверяем и заявленную длину, и фактическую (заголовок можно подделать). */
+/**
+ * Тело JSON с потолком размера. (1) Только `application/json`: наши клиенты шлют его всегда, а «простые» запросы
+ * (text/plain, формы) — то, чем чужая страница стучится без предварительного запроса браузера. (2) Потолок проверяем
+ * и по заявленной длине, и по фактической — и читаем поток по кускам: без Content-Length (chunked) раньше тело
+ * целиком ложилось в память, прежде чем его мерили.
+ */
 export async function readJsonBody(req: Request, maxBytes: number): Promise<unknown> {
+  const type = (req.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
+  if (type !== 'application/json') throw fail(415)
   const declared = Number(req.headers.get('content-length') ?? '0')
   if (declared > maxBytes) throw fail(413)
-  const buf = await req.arrayBuffer()
-  if (buf.byteLength > maxBytes) throw fail(413)
+  const chunks: Uint8Array[] = []
+  let size = 0
+  if (req.body) {
+    const reader = req.body.getReader()
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.byteLength
+      if (size > maxBytes) {
+        void reader.cancel().catch(() => {})
+        throw fail(413)
+      }
+      chunks.push(value)
+    }
+  }
+  const buf = new Uint8Array(size)
+  let at = 0
+  for (const c of chunks) {
+    buf.set(c, at)
+    at += c.byteLength
+  }
   try {
     return JSON.parse(new TextDecoder().decode(buf))
   } catch {
@@ -52,12 +78,23 @@ export function rateLimit(req: Request, bucket: string, limit: number, windowMs 
 }
 
 /**
- * Чужой сайт не должен гонять наш API из браузеров своих посетителей. Браузеры всегда шлют Sec-Fetch-Site;
- * curl — нет, от скриптов защищают лимит и потолки выше.
+ * Чужой сайт не должен гонять наш API из браузеров своих посетителей. Современные браузеры шлют Sec-Fetch-Site;
+ * Safari до 16.4 его не шлёт, но шлёт Origin на любом POST — сверяем его хост с нашим (Origin: null — песочница или
+ * чужой редирект — тоже отказ). curl не шлёт ни того, ни другого: от скриптов защищают лимит и потолки выше.
  */
 export function sameOrigin(req: Request): void {
   const site = req.headers.get('sec-fetch-site')
   if (site !== null && site !== 'same-origin') throw fail(403)
+  const origin = req.headers.get('origin')
+  if (origin === null) return
+  let from: string
+  try {
+    from = new URL(origin).host
+  } catch {
+    throw fail(403)
+  }
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? new URL(req.url).host
+  if (from !== host) throw fail(403)
 }
 
 /** Обёртка: брошенный Response — это ответ; всё прочее — 500 без тела. */
