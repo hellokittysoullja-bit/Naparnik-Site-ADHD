@@ -193,6 +193,7 @@ export function FirstRun() {
   const urlStepRef = useRef<number | null>(null)
   const pushedRef = useRef(0)
   const fromPopRef = useRef(false)
+  const leavingRef = useRef(false)
 
   // Уже есть старты — онбординг не нужен: человек вернулся, ведём домой.
   useEffect(() => {
@@ -223,7 +224,9 @@ export function FirstRun() {
   // браузера (и свайп на iPhone) открывает предыдущий вопрос. Ответ на том же вопросе — замена записи.
   // urlStepRef — шаг, который сейчас в адресе (объявлен выше, у чтения адреса при открытии).
   useEffect(() => {
-    if (urlStepRef.current === null) return
+    // Уход на сессию уже начат (begin): Next считает replaceState/pushState во время перехода новой навигацией
+    // и молча отменяет router.push — кнопка навсегда оставалась на «Поехали» (iPhone владельца, 11.11)
+    if (urlStepRef.current === null || leavingRef.current) return
     const url = onboardingUrl(state)
     if (state.step !== urlStepRef.current && !fromPopRef.current) {
       window.history.pushState(null, '', url)
@@ -361,12 +364,15 @@ export function FirstRun() {
   }
 
   function begin() {
+    if (leavingRef.current) return
     const label = chosenStep || steps[0]
+    leavingRef.current = true
     setLeaving(true)
     // меню прячем ещё до перехода: страница Фокуса монтируется не в том же кадре, что новый адрес, и меню успевало
     // мелькнуть между знакомством и стартом. Дальше флагом владеет сессия; на других экранах его снимает AppNav.
     document.body.dataset.focusImmersive = 'true'
-    update({ step: LAST_STEP, firstStep: label })
+    // в память, но не в состояние: новое состояние запустило бы синхронизацию адреса посреди перехода
+    writeOnboarding({ ...state, step: LAST_STEP, firstStep: label })
     // from=onb + ответы: финал первой сессии ведёт на «Как было?» (/app/start/after), а не сразу домой
     const params = new URLSearchParams({
       step: label,
