@@ -1,11 +1,14 @@
 import type { ModelMessage, TextStreamPart, ToolSet } from 'ai'
+import { emit } from '../core/hooks'
 import { streamTurn } from '../core/stream-turn'
 import type { TurnContext } from '../core/turn'
-import type { MemoryProvider } from '../memory/provider'
+import type { MemoryProvider, MemoryWrite } from '../memory/provider'
 import { renderMemory } from '../memory/render'
 import { assemble } from '../prompt/assemble'
 import { CHAT_SYSTEM, FOCUS_CHAT_SYSTEM, situation } from '../prompt/tasks/chat'
-import { tools } from '../tools/catalog'
+import { rememberFactInput, savePlanInput, tools } from '../tools/catalog'
+
+type Part = TextStreamPart<ToolSet>
 
 /**
  * Агент «разговор с котом» — одна точка для всех каналов (веб-чат сейчас, бот потом). Канал отвечает только за
@@ -46,7 +49,7 @@ export async function chatTurn(input: {
     conversation: input.conversation,
   })
   const last = input.userTexts.at(-1) ?? ''
-  return streamTurn({
+  const stream = streamTurn({
     ctx: input.ctx,
     instructions,
     messages,
@@ -59,4 +62,46 @@ export async function chatTurn(input: {
     ...CHAT_LIMITS,
     signal: input.signal,
   })
+  return stream.pipeThrough(memoryLifecycle(input.ctx, input.memory))
+}
+
+/**
+ * Шаг «после хода» жизненного цикла памяти (Hermes agent/memory_provider.py: sync_turn): принятые вызовы
+ * инструментов памяти → записи → поставщик памяти, когда ход закончился. Поток ответа проходит насквозь без
+ * изменений; сбой памяти ответ не ломает (fail-open). У памяти на устройстве записи исполняет клиент — здесь они
+ * только попадают в журнал; у серверного хранилища (бот, база) — записываются этим шагом.
+ */
+function memoryLifecycle(ctx: TurnContext, memory: MemoryProvider): TransformStream<Part, Part> {
+  const writes: MemoryWrite[] = []
+  return new TransformStream<Part, Part>({
+    transform(part, controller) {
+      if (part.type === 'tool-call' && !('invalid' in part && part.invalid)) {
+        const w = toMemoryWrite(part.toolName, part.input)
+        if (w) writes.push(w)
+      }
+      controller.enqueue(part)
+    },
+    async flush() {
+      for (const w of writes) emit({ type: 'memory.write', kind: w.kind, accepted: true }, ctx)
+      if (writes.length === 0 || !memory.onTurnEnd) return
+      try {
+        await memory.onTurnEnd(ctx, writes)
+      } catch {
+        emit({ type: 'memory.write', kind: 'error', accepted: false }, ctx)
+      }
+    },
+  })
+}
+
+/** Вызов инструмента → запись памяти. Вход уже проверен схемой инструмента (tools/catalog.ts) */
+export function toMemoryWrite(tool: string, input: unknown): MemoryWrite | null {
+  if (tool === 'rememberFact') {
+    const r = rememberFactInput.safeParse(input)
+    return r.success ? { kind: 'fact', text: r.data.fact } : null
+  }
+  if (tool === 'savePlan') {
+    const r = savePlanInput.safeParse(input)
+    return r.success ? { kind: 'plan', task: r.data.task, firstStep: r.data.firstStep, startTime: r.data.startTime } : null
+  }
+  return null
 }
