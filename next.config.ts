@@ -28,23 +28,24 @@ const csp = [
 ].join('; ')
 
 // Свой домен (план «школа 1», фаза 0). Пока CANONICAL_HOST не задан в Vercel — ничего не происходит. Когда задан
-// (например, «naparnik.ru»), старый адрес навсегда (308) уводит на новый тот же путь с теми же параметрами и
-// переносит анонимный ID и метку «свой» разовыми параметрами (_nid, _home — их ставит и убирает proxy.ts):
-// cookie привязаны к домену и сами не переезжают. API на старом адресе не трогаем (вебхуки бота).
+// (например, «naparnik.ru»), старый адрес уводит на новый тот же путь с теми же параметрами. Вернувшегося (cookie `nid`
+// или «свой») — через /api/handoff на старом же адресе: cookie привязаны к домену и сами не переезжают, функция
+// переносит их ПОДПИСАННЫМ жетоном (lib/handoff.ts, VISIT_SECRET); статический redirect подписать не может, а голый
+// `?_nid=` позволял подставить чужой ID (research/19-perf-security/security-audit.md §2.2). Ответ своему человеку
+// свой — поэтому не permanent. API на старом адресе не трогаем (вебхуки бота).
 const LEGACY_HOST = 'adhd-naparnik.vercel.app'
 function moveToCanonicalHost() {
   const target = process.env.CANONICAL_HOST?.trim().toLowerCase()
   if (!target || target === LEGACY_HOST) return []
   const legacy = { type: 'host' as const, value: LEGACY_HOST }
-  const nid = { type: 'cookie' as const, key: 'nid', value: '(?<nid>[A-Za-z0-9_-]{22})' }
+  const nid = { type: 'cookie' as const, key: 'nid' }
   const home = { type: 'cookie' as const, key: 'naparnik_home', value: '1' }
   const source = '/:path((?!api/).*)'
-  const to = (q: string) => `https://${target}/:path${q}`
+  const handoff = '/api/handoff?to=/:path'
   return [
-    { source, has: [legacy, nid, home], destination: to('?_nid=:nid&_home=1'), permanent: true },
-    { source, has: [legacy, nid], destination: to('?_nid=:nid'), permanent: true },
-    { source, has: [legacy, home], destination: to('?_home=1'), permanent: true },
-    { source, has: [legacy], destination: to(''), permanent: true },
+    { source, has: [legacy, nid], destination: handoff, permanent: false },
+    { source, has: [legacy, home], destination: handoff, permanent: false },
+    { source, has: [legacy], destination: `https://${target}/:path`, permanent: true },
   ]
 }
 

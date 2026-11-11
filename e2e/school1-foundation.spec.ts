@@ -124,11 +124,11 @@ test('метку «свой» ставит сервер: после визита
   expect(r.headers().location).toBe('/app?src=reel-phone')
 })
 
-test('переезд на свой домен: разовые параметры ставят ID и метку «свой» и исчезают из адреса', async ({ page }) => {
+test('чужая ссылка с ?_nid=&_home=1 не подставляет ID: параметры убираются, cookie не ставятся', async ({ page }) => {
+  // security-audit §2.2: раньше любой мог разослать ссылку со своим ID — у каждого нового посетителя он жил год.
+  // Перенос при переезде домена — только подписанным жетоном (lib/handoff.ts, tests/unit/handoff.test.ts).
   const res = await page.request.get('/app?_nid=BBBBBBBBBBBBBBBBBBBBBB&_home=1&src=x', { maxRedirects: 0 })
   expect(res.status()).toBe(307)
   expect(res.headers().location).toBe('/app?src=x')
-  const set = res.headers()['set-cookie'] ?? ''
-  expect(set).toMatch(/nid=BBBBBBBBBBBBBBBBBBBBBB/)
-  expect(set).toMatch(/naparnik_home=1/)
+  expect(res.headers()['set-cookie']).toBeUndefined()
 })

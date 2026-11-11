@@ -69,6 +69,6 @@ describe('лендинг под ролик — статический rewrite в
 
   it('proxy работает только на переносе домена, не на первом визите', () => {
     const keys = proxyConfig.matcher.flatMap((m) => ('has' in m ? m.has.map((h) => h.key) : ['<missing>']))
-    expect(keys.sort()).toEqual(['_home', '_nid'])
+    expect(keys.sort()).toEqual(['_home', '_nid', '_t'])
   })
 })
