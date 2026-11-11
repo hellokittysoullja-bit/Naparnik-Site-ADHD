@@ -615,7 +615,7 @@ export function FocusSession() {
 
   if (phase === 'setup') {
     return (
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 py-6">
+      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-4 py-6">
         <h1 className="sr-only">Фокус-сессия: выбери первый шаг</h1>
         {/* Сцена: существо в центре внимания, а не в углу формы */}
         <div className="flex flex-1 flex-col items-center justify-center gap-4">
@@ -821,7 +821,7 @@ export function FocusSession() {
   if (phase === 'starting') {
     // Хореография: мир затихает, существо садится рядом, сессия проявляется
     return (
-      <div data-vt-arrived="session" className="vt-session mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 py-8">
+      <div data-vt-arrived="session" className="vt-session relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 py-8">
         <h1 className="sr-only">Напарник садится рядом</h1>
         <motion.div
           className="vt-cat"
@@ -868,7 +868,7 @@ export function FocusSession() {
           className="pointer-events-none fixed inset-x-0 bottom-0 h-[34vh] bg-gradient-to-t from-background/85 to-transparent"
         />
         <motion.div
-          className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 pt-8 pb-[32vh]"
+          className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 pt-8 pb-[32vh] [@media(max-height:700px)]:gap-3 [@media(max-height:700px)]:pb-[30vh] [@media(max-height:700px)]:pt-4"
           initial={reducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6 }}
@@ -888,7 +888,9 @@ export function FocusSession() {
               прогрессе она читается не как кольцо, а как случайный блик. */}
           <div className="relative flex items-center justify-center">
             <svg
-              className="pointer-events-none absolute -inset-4"
+              // явный размер: SVG — заменяемый элемент, Safari не растягивает его краевыми отступами (-inset-4)
+              // и рисовал кольцо меньше кота (iPhone владельца, 11.11)
+              className="pointer-events-none absolute -left-4 -top-4 size-[calc(100%+2rem)]"
               viewBox="0 0 156 156"
               aria-hidden="true"
             >
@@ -1014,7 +1016,7 @@ export function FocusSession() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 px-4 py-8">
+    <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 px-4 py-8">
       <MascotSvg expression="excited" action="celebrate" label="Напарник радуется" size={110} />
       <div className="flex flex-col gap-2 text-center">
         <h1 className="text-2xl font-bold">
