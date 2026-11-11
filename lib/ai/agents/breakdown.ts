@@ -15,11 +15,25 @@ export const BREAKDOWN_SYSTEM = `Режим: ДРОБЛЕНИЕ ЗАДАЧИ. Ч
 
 export const BREAKDOWN_FALLBACK = ['Открыть то, что нужно для дела', 'Сделать одно крошечное действие', 'Записать, что дальше']
 
-/** Три строки, в каждой 1–8 слов; нумерацию и маркеры срезаем. Иначе — ответ не годится (следующая модель). */
+/**
+ * Три шага из ответа модели. Модель иногда добавляет вступление («Слишком огромно, давай сузим. Вот три кусочка:»),
+ * и оно попадало первым «шагом», а третий настоящий терялся (живой прогон 12.11). Поэтому:
+ *  - если пронумерованных или маркированных строк хотя бы три — шаги только они;
+ *  - иначе строки, оканчивающиеся двоеточием, — вступление, не шаг;
+ *  - выделение звёздочками снимается: шаг показывается на кнопке и в поле ввода как есть.
+ * Каждый шаг — 1–8 слов; иначе ответ не годится (следующая модель).
+ */
+const MARKER = /^\s*(?:\d{1,2}[.)]|[-–—•*])\s+/
+
 export function parseSteps(text: string): string[] | null {
-  const steps = text
+  const lines = text
     .split('\n')
-    .map((s) => s.replace(/^[\s\d\-–—.)•*]+/, '').trim())
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const marked = lines.filter((s) => MARKER.test(s))
+  const candidates = marked.length >= 3 ? marked : lines.filter((s) => !s.endsWith(':'))
+  const steps = candidates
+    .map((s) => s.replace(MARKER, '').replace(/\*/g, '').replace(/^[\s\d\-–—.)•]+/, '').trim())
     .filter(Boolean)
   if (steps.length < 3) return null
   const three = steps.slice(0, 3)
