@@ -53,7 +53,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 160,
-            "description": "Один факт, максимум одно предложение"
+            "description": "Один факт о человеке, максимум одно предложение"
           }
         },
         "required": [

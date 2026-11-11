@@ -22,8 +22,18 @@ export const savePlanInput = z.object({
   startTime: safeText(40).optional().describe('Примерное время старта, например «09:00» или «после обеда»'),
 })
 
+// Факт уходит в память и в каждый следующий разговор — значит это самое опасное место для «сохранённой»
+// инъекции (Hermes tools/memory_tool_store.py: строгий скан каждой записи; security-ai.md R6). Отказ, если факт
+// похож на указание коту, а не на сведение о человеке, или несёт контакты.
+const INSTRUCTION_LIKE =
+  /(?<!\p{L})(?:отныне|с этого момента|игнорир\p{L}*|забудь|ты должен|ты обязан|отвечай|говори|вызывай|не упоминай|system|assistant|json|prompt|промпт\p{L}*|инструкци\p{L}*)(?!\p{L})/iu
+const CONTACT = /[\w.+-]+@[\w-]+\.[\w.]+|\+?\d[\d\s()‐-]{6,}\d/u
+
 export const rememberFactInput = z.object({
-  fact: safeText(160).describe('Один факт, максимум одно предложение'),
+  fact: safeText(160)
+    .refine((s) => !INSTRUCTION_LIKE.test(s), 'похоже на указание, а не на факт о человеке')
+    .refine((s) => !CONTACT.test(s), 'контакты не запоминаем')
+    .describe('Один факт о человеке, максимум одно предложение'),
 })
 
 export const startFocusInput = z.object({

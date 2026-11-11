@@ -44,6 +44,7 @@ import {
   type MemoryContext,
 } from '@/lib/memory'
 import { scriptedReply } from '@/lib/scripted-companion'
+import { rememberFactInput, savePlanInput } from '@/lib/ai/tools/catalog'
 import { useClientMount } from '@/hooks/use-client-mount'
 import type { UIMessage } from 'ai'
 
@@ -337,12 +338,20 @@ export function CompanionChat({
     async onToolCall({ toolCall }) {
       if (toolCall.dynamic) return
 
+      // Устройство — последний исполнитель инструмента, значит проверяет и оно, той же схемой, что сервер
+      // (lib/ai/tools/catalog.ts; security-ai.md R5, «complete mediation»). Негодный вызов не пишет в память, но
+      // ответ инструменту даётся всегда — иначе чат ждал бы его вечно.
+      const refuse = (tool: 'savePlan' | 'rememberFact'): void => {
+        void addToolOutput({ tool, toolCallId: toolCall.toolCallId, output: 'Не сохранил.' })
+      }
+
       if (toolCall.toolName === 'savePlan') {
-        const { task, firstStep, startTime } = toolCall.input as {
-          task: string
-          firstStep: string
-          startTime?: string
+        const parsed = savePlanInput.safeParse(toolCall.input)
+        if (!parsed.success) {
+          refuse('savePlan')
+          return
         }
+        const { task, firstStep, startTime } = parsed.data
         savePlan({ task, firstStep, startTime }).then(async () => {
           const fresh = await buildMemoryContext()
           memoryRef.current = fresh
@@ -359,8 +368,12 @@ export function CompanionChat({
       }
 
       if (toolCall.toolName === 'rememberFact') {
-        const { fact } = toolCall.input as { fact: string }
-        addNote(fact).then(async () => {
+        const parsed = rememberFactInput.safeParse(toolCall.input)
+        if (!parsed.success) {
+          refuse('rememberFact')
+          return
+        }
+        addNote(parsed.data.fact).then(async () => {
           memoryRef.current = await buildMemoryContext()
           addToolOutput({
             tool: 'rememberFact',

@@ -201,7 +201,7 @@ export function streamTurn(input: StreamTurnInput): ReadableStream<Part> {
 
       // middleware запроса (Hermes llm_request): может переставить цепочку, поправить инструкцию и набор инструментов
       const req = applyRequestMiddleware(
-        { instructions: input.instructions, messages: input.messages, chain: modelChain(), tools: input.tools, hedgeAfterMs: input.hedgeAfterMs },
+        { instructions: input.instructions, messages: input.messages, chain: modelChain(ctx.task), tools: input.tools, hedgeAfterMs: input.hedgeAfterMs },
         { ctx, input: verdict },
       )
       const chain = req.chain

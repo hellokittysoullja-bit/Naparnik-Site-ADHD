@@ -37,17 +37,42 @@ function anyModel() {
   return anymodel
 }
 
+/**
+ * Профили моделей — данные, а не ветки кода (Hermes providers/base.py: профиль провайдера как запись).
+ * robust — устойчивее к взлому промпта (core/middleware.ts ставит её первой при подозрении).
+ */
+type Profile = { id: string; robust?: boolean }
+
 /** Основная модель — выбор владельца (11.11); запасная — по замеру: тёплый тон, 2,5–4 с через тот же ключ */
 export const PRIMARY_MODEL = 'ds/deepseek-v4-flash'
 export const FALLBACK_MODEL = 'cc/claude-haiku-5-5'
 
-export function modelChain(): ModelStep[] {
+const PROFILES: Record<string, Profile> = {
+  primary: { id: PRIMARY_MODEL },
+  fallback: { id: FALLBACK_MODEL, robust: true },
+}
+
+/**
+ * Маршруты задач (Hermes hermes_cli/config_defaults.py: у каждой вспомогательной задачи свой маршрут). Сейчас у
+ * всех задач одна цепочка — так решил владелец («одна модель везде»); таблица — место, где задаче дают свою
+ * модель (например, дешёвую для фоновой выжимки памяти), не трогая ядро и маршруты.
+ */
+export type TaskName = 'chat' | 'session-voice' | 'breakdown' | 'onboarding-first-step'
+const ROUTES: Record<TaskName, readonly (keyof typeof PROFILES)[]> = {
+  chat: ['primary', 'fallback'],
+  'session-voice': ['primary', 'fallback'],
+  breakdown: ['primary', 'fallback'],
+  'onboarding-first-step': ['primary', 'fallback'],
+}
+
+export function modelChain(task?: string): ModelStep[] {
   const am = anyModel()
   if (am) {
-    return [
-      { id: PRIMARY_MODEL, model: am.chatModel(PRIMARY_MODEL) },
-      { id: FALLBACK_MODEL, model: am.chatModel(FALLBACK_MODEL), robust: true },
-    ]
+    const route = ROUTES[task as TaskName] ?? ROUTES.chat
+    return route.map((k) => {
+      const p = PROFILES[k]
+      return { id: p.id, model: am.chatModel(p.id), robust: p.robust }
+    })
   }
   if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     return [{ id: 'gemini-2.5-flash-lite', model: google('gemini-2.5-flash-lite') }]

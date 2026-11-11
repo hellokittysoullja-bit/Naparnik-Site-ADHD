@@ -70,7 +70,7 @@ export async function runTurn<T>(input: TurnInput<T>): Promise<TurnResult<T>> {
   if (baseMessages.length === 0) throw new Error(`runTurn(${input.task}): nothing to send`)
   // middleware запроса (Hermes llm_request) — тот же конвейер, что у потокового хода
   const req = applyRequestMiddleware(
-    { instructions: systemFor(input.system), messages: baseMessages, chain: modelChain(), hedgeAfterMs: input.hedgeAfterMs ?? 1500 },
+    { instructions: systemFor(input.system), messages: baseMessages, chain: modelChain(ctx.task), hedgeAfterMs: input.hedgeAfterMs ?? 1500 },
     { ctx, input: verdict },
   )
   const { instructions: system, messages, chain, hedgeAfterMs } = req
