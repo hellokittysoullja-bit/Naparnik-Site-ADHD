@@ -263,7 +263,9 @@ export function SdvgTest() {
                 className="h-11 text-[15px] font-semibold text-primary"
                 onClick={() => {
                   const u = new URL(resume.url, window.location.origin)
-                  window.history.replaceState(null, '', resume.url)
+                  // адрес не трогаем: новую запись истории поставит эффект выше. Раньше вход здесь заменялся адресом
+                  // вопроса, а эффект добавлял тот же адрес ещё раз — первый «← Назад» возвращал на тот же вопрос
+                  // (кнопка выглядела мёртвой), второй выводил из теста совсем
                   setState(readState(u.search, u.hash))
                 }}
               >
