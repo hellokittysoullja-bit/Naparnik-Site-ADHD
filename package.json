@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "eval:ai": "vitest run --config vitest.eval.config.ts",
     "test:e2e": "playwright test",
     "check": "tsc --noEmit && eslint . && vitest run"
   },

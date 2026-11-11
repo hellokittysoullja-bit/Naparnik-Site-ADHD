@@ -9,7 +9,6 @@ import { MascotDoll as MascotSvg } from '@/components/mascot-doll'
 import { EmphasisText } from '@/components/emphasis-text'
 import { RevealIsland, type RevealNewItem } from '@/components/reveal-island'
 import { ChevronRight, Sparkles } from 'lucide-react'
-import { getAudience } from '@/lib/audience'
 import {
   addFind,
   clearActiveSession,
@@ -100,7 +99,7 @@ async function fetchVoice(moment: Moment, task: string, minutes: number): Promis
     const res = await fetch('/api/session-voice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ moment, task, minutes, audience: getAudience() }),
+      body: JSON.stringify({ moment, task, minutes }),
     })
     if (!res.ok) return fallbackVoice[moment]
     const data = (await res.json()) as { text: string | null }
@@ -197,7 +196,7 @@ export function FocusSession() {
       const res = await fetch('/api/breakdown', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: task.trim(), audience: getAudience() }),
+        body: JSON.stringify({ task: task.trim() }),
       })
       if (res.ok) {
         const data = (await res.json()) as { steps: string[] | null; reply?: string }

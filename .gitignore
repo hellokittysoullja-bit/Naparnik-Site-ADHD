@@ -18,3 +18,4 @@ __pycache__/
 # отчёты тестов
 test-results/
 e2e-report/
+evals/last-run.md

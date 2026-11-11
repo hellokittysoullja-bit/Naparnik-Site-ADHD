@@ -13,7 +13,6 @@ import { notebookPage, notesOf } from '@/lib/sdvg-notebook'
 import { withAttribution } from '@/lib/visitor'
 import { trackEvent } from '@/lib/events'
 import { MASCOT_POSTER_INLINE } from "@/components/mascot-poster-inline"
-import { setAudience } from '@/lib/audience'
 import {
   EMPTY,
   SPHERES,
@@ -289,8 +288,8 @@ export function SdvgTest() {
           <Head cat={cat}>
             <h2 className="text-[22px] font-bold leading-snug">{copy.age.question}</h2>
           </Head>
-          <Choice onClick={() => { setAudience(true); go({ adult: true }) }}>{copy.age.yes}</Choice>
-          <Choice onClick={() => { setAudience(false); go({ adult: false }) }}>{copy.age.no}</Choice>
+          <Choice onClick={() => go({ adult: true })}>{copy.age.yes}</Choice>
+          <Choice onClick={() => go({ adult: false })}>{copy.age.no}</Choice>
         </Screen>
       )}
 

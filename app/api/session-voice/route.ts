@@ -25,7 +25,6 @@ const Body = z.object({
   moment: z.enum(['start', 'middle', 'late', 'done', 'early-exit']),
   task: z.string().trim().min(1).transform((s) => s.slice(0, 300)),
   minutes: z.number().int().min(1).max(240).optional(),
-  audience: z.enum(['adult', 'minor']).optional(),
 })
 
 const SYSTEM =
@@ -36,7 +35,7 @@ export const POST = handle(async (req) => {
   rateLimit(req, 'session-voice', 30)
   const parsed = Body.safeParse(await readJsonBody(req, 4 * 1024))
   if (!parsed.success) return Response.json({ text: null }, { status: 400 })
-  const { moment, task, minutes, audience } = parsed.data
+  const { moment, task, minutes } = parsed.data
   const preset = () => {
     const presets = sessionVoicePresets[moment]
     return presets ? presets[task.length % presets.length] : null
@@ -49,8 +48,8 @@ export const POST = handle(async (req) => {
     data: dataMessage({ 'Дело': task, 'Длина сессии, минут': minutes }),
     prompt: momentPrompts[moment],
     userTexts: [task],
-    audience,
-    timeoutMs: 4000,
+    timeoutMs: 6000,
+    hedgeAfterMs: 1500,
     maxOutputTokens: 120,
     maxChars: 220,
     parse: (text) => text,

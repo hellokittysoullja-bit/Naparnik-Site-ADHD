@@ -13,7 +13,6 @@ export const maxDuration = 15
 // дело длиннее 300 символов обрезаем, а не отклоняем: человек не должен получить отказ за подробность
 const Body = z.object({
   task: z.string().trim().min(3).transform((s) => s.slice(0, 300)),
-  audience: z.enum(['adult', 'minor']).optional(),
 })
 
 const SYSTEM = `Режим: ДРОБЛЕНИЕ ЗАДАЧИ. Человек назвал дело (оно в блоке данных), которое его пугает своим размером. Разбей его на РОВНО 3 крошечных первых шага. Правила:
@@ -46,15 +45,15 @@ export const POST = handle(async (req) => {
   rateLimit(req, 'breakdown', 10)
   const parsed = Body.safeParse(await readJsonBody(req, 4 * 1024))
   if (!parsed.success) return Response.json({ steps: null }, { status: 400 })
-  const { task, audience } = parsed.data
+  const { task } = parsed.data
   const { value } = await runTurn<{ steps: string[] } | { reply: string }>({
     task: 'breakdown',
     system: SYSTEM,
     data: dataMessage({ 'Дело': task }),
     prompt: 'Три шага для этого дела.',
     userTexts: [task],
-    audience,
-    timeoutMs: 6000,
+    timeoutMs: 8000,
+    hedgeAfterMs: 2000,
     maxOutputTokens: 160,
     maxChars: 300,
     parse: (text) => {

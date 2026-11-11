@@ -5,7 +5,6 @@
  */
 export type TraceEvent = {
   task: string
-  audience: string
   outcome: 'model' | 'fallback' | 'crisis' | 'budget'
   model?: string
   ms: number
