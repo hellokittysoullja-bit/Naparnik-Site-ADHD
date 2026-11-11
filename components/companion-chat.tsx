@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { useRouter } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from 'ai'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, motion, motionValue, useReducedMotion, type MotionValue } from 'motion/react'
 import { Button } from '@/components/ui/button'
 import { MascotDoll as MascotSvg } from '@/components/mascot-doll';
 import { type MascotAction, type MascotExpression } from '@/components/mascot-doll'
@@ -127,11 +127,14 @@ function inferExpression(text: string, hasStartCard: boolean): MascotExpression 
   return 'calm'
 }
 
+// Один форматтер на модуль: toLocaleTimeString создаёт его заново на каждый вызов — по разу на каждое сообщение на
+// каждый рендер ленты (MDN советует Intl.DateTimeFormat для повторного форматирования; аудит архитектуры 11.11).
+// Вывод тот же: те же локаль и опции.
+const CLOCK = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' })
+const DAY_MONTH = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' })
+
 function formatClock(iso: string): string {
-  return new Date(iso).toLocaleTimeString('ru-RU', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return CLOCK.format(new Date(iso))
 }
 
 /**
@@ -194,7 +197,7 @@ function formatDayLabel(iso: string): string {
   const yesterday = new Date()
   yesterday.setDate(yesterday.getDate() - 1)
   if (key === todayKey(yesterday)) return 'Вчера'
-  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+  return DAY_MONTH.format(d)
 }
 
 export function CompanionChat({
@@ -587,7 +590,9 @@ export function CompanionChat({
    * зависит от положения относительно контейнера, а контейнер — не сам
    * документ. rAF-троттлинг: один пересчёт на кадр максимум.
    */
-  const [depths, setDepths] = useState<Record<string, number>>({})
+  // глубина каждой реплики — MotionValue: пересчёт на кадре прокрутки пишет прямо в стиль пузыря, без setState и
+  // без рендера всей ленты (раньше — новый объект состояния на каждом кадре; аудит архитектуры 11.11)
+  const [depths] = useState(() => new Map<string, MotionValue<number>>())
   const rowsRef = useRef<Map<string, HTMLDivElement>>(new Map())
   const rafRef = useRef<number | null>(null)
 
@@ -598,7 +603,6 @@ export function CompanionChat({
     const recompute = () => {
       rafRef.current = null
       const box = el.getBoundingClientRect()
-      const next: Record<string, number> = {}
       for (const [id, node] of rowsRef.current) {
         if (!node.isConnected) continue
         const r = node.getBoundingClientRect()
@@ -606,9 +610,10 @@ export function CompanionChat({
         // 220px ≈ две-три реплики: столько нужно, чтобы отъезд читался
         // постепенным, а не мгновенным переключением состояния.
         const past = box.top - r.bottom
-        next[id] = Math.max(0, Math.min(1, past / 220))
+        const d = Math.max(0, Math.min(1, past / 220))
+        const mv = depths.get(id)
+        if (mv && mv.get() !== d) mv.set(d)
       }
-      setDepths(next)
     }
 
     const onScroll = () => {
@@ -623,10 +628,15 @@ export function CompanionChat({
       el.removeEventListener('scroll', onScroll)
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
     }
-  }, [messages.length])
+  }, [messages.length, depths])
 
-  function depthOf(id: string): number {
-    return depths[id] ?? 0
+  function depthOf(id: string): MotionValue<number> {
+    let mv = depths.get(id)
+    if (!mv) {
+      mv = motionValue(0)
+      depths.set(id, mv)
+    }
+    return mv
   }
 
   // #11 · Реакции на реплику. Ключ — `${messageId}-${partIndex}`.

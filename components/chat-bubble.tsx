@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion, useMotionValue, useTransform } from 'motion/react'
+import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'motion/react'
 import { Check, Copy, Heart, PawPrint, Reply, Sparkle } from 'lucide-react'
 import { SPRING_GESTURE, SPRING_SNAPPY } from '@/lib/motion'
 import { hapticDone, hapticReaction, hapticThreshold } from '@/lib/haptics'
@@ -76,8 +76,9 @@ type ChatBubbleProps = {
   text: string
   isUser: boolean
   isFirstOfGroup: boolean
-  /** 0 — свежая реплика у низа, 1 — уехала далеко вверх (#13) */
-  depth: number
+  /** 0 — свежая реплика у низа, 1 — уехала далеко вверх (#13). MotionValue, а не число: лента меняет глубину на
+   *  каждом кадре прокрутки, и через состояние это перерисовывало весь чат (аудит архитектуры 11.11: −67 % работы) */
+  depth: MotionValue<number>
   reaction?: Reaction | null
   onReact: (r: Reaction | null) => void
   onReply: () => void
@@ -161,9 +162,12 @@ export function ChatBubble({
    * до 0.975 и прозрачность до 0.78. История остаётся фоном, но не становится
    * недоступной: переписка — память, а не декоративная глубина сцены.
    */
-  const depthScale = reduceMotion ? 1 : 1 - depth * 0.025
-  const depthOpacity = reduceMotion ? 1 : 1 - depth * 0.22
-  const depthSaturate = reduceMotion ? 1 : 1 - depth * 0.25
+  // Те же формулы, но значения идут прямо в стиль узла, минуя рендер React. Нажатие (прежний whileTap: глубина × 0,98)
+  // — отдельное значение с той же пружиной, иначе анимация нажатия спорила бы с глубиной за один и тот же scale.
+  const press = useMotionValue(1)
+  const depthScale = useTransform(() => (reduceMotion ? 1 : 1 - depth.get() * 0.025) * press.get())
+  const depthOpacity = useTransform(() => (reduceMotion ? 1 : 1 - depth.get() * 0.22))
+  const depthFilter = useTransform(() => `saturate(${reduceMotion ? 1 : 1 - depth.get() * 0.25})`)
 
   /*
    * Типографика: раньше вся речь напарника шла шрифтом Caveat целиком —
@@ -192,7 +196,7 @@ export function ChatBubble({
           x,
           scale: depthScale,
           opacity: depthOpacity,
-          filter: `saturate(${depthSaturate})`,
+          filter: depthFilter,
           transformOrigin: isUser ? 'right center' : 'left center',
           // Переменные для SVG-хвостика: он всегда совпадает с пузырём.
           // Значение должно зеркалить заливку .chat-bubble-cat в globals.css —
@@ -232,7 +236,15 @@ export function ChatBubble({
           if (Math.abs(info.offset.x) > 44) onReply()
         }}
         transition={SPRING_GESTURE}
-        whileTap={{ scale: depthScale * 0.98 }}
+        onTapStart={() => {
+          animate(press, 0.98, SPRING_GESTURE)
+        }}
+        onTap={() => {
+          animate(press, 1, SPRING_GESTURE)
+        }}
+        onTapCancel={() => {
+          animate(press, 1, SPRING_GESTURE)
+        }}
         onPointerDown={startLongPress}
         onPointerUp={cancelLongPress}
         onPointerLeave={cancelLongPress}
