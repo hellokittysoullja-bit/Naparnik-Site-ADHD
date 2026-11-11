@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
 import { DollAnimator, drawDollFx, drawDollShadow, setDollFxColor, type DollAction, type DollExpression } from "@/lib/rig/doll";
-import { loadRigImages, RigRenderer } from "@/lib/rig/renderer";
+import { loadRigImages, preloadRigImages, RigRenderer } from "@/lib/rig/renderer";
+import { DOLL_LAYERS } from "@/lib/rig/doll-layers";
 import { asset } from "@/lib/asset-versions";
 import type { RigData } from "@/lib/rig/types";
 
@@ -35,6 +36,8 @@ let loading: Promise<Rig | null> | null = null;
 /** Риг и декодированные слои — один раз на страницу; WebGL-контекст у каждого экземпляра свой (lib/rig/renderer). */
 export function loadDoll(): Promise<Rig | null> {
   if (!loading) {
+    // слои — сразу, вместе с rig.json: раньше 13 запросов ждали, пока он (350 КБ) придёт и разберётся целиком
+    preloadRigImages(DOLL_LAYERS, BASE);
     loading = (async () => {
       try {
         const rig = (await (await fetch(asset(BASE + "rig.json"))).json()) as Rig;
