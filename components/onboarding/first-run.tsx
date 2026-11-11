@@ -153,9 +153,16 @@ export function FirstRun() {
   const clientMount = useClientMount()
   const [returning] = useState(() => clientMount && peekStarts().length > 0)
   const [state, setState] = useState<OnboardingState>(EMPTY_ONBOARDING)
+  // Шаг ещё не прочитан из адреса: пузырь и варианты не показываем. Иначе при открытии ссылки на середине (перезагрузка,
+  // «Открыть в Safari») на миг мелькал первый вопрос и уезжал, уступая нужному
+  const [ready, setReady] = useState(false)
   const [nudge, setNudge] = useState(false)
   const [custom, setCustom] = useState('')
   const [customOpen, setCustomOpen] = useState(false)
+  // человек сам нажал на шаг (а не оставил предвыбранный) — кот откликается
+  // «Сколько висит?»: после ответа с пояснением список свёрнут до выбранного; «Другой ответ» — снова весь список
+  const [hangOpen, setHangOpen] = useState(false)
+  const [pickedStep, setPickedStep] = useState(false)
   const [leaving, setLeaving] = useState(false)
   // Кот отзывается на каждое «Продолжить» (Duolingo: сова жмурится и искрит на каждый шаг)
   const [hop, setHop] = useState(false)
@@ -203,6 +210,7 @@ export function FirstRun() {
       urlStepRef.current = initial.step
       window.history.replaceState(null, '', onboardingUrl(initial))
       setState(initial)
+      setReady(true)
     })
     return () => {
       alive = false
@@ -308,7 +316,8 @@ export function FirstRun() {
       return
     }
     // на выборе дела предвыбран самый маленький шаг (с поправкой на помеху); ответы могли смениться — старый выбор сбрасывается
-    if (step === STEP_FIGURE && (!state.firstStep || !steps.includes(state.firstStep))) {
+    const toFirst = step === STEP_FIGURE || (step === STEP_COST && !cost?.monthly)
+    if (toFirst && (!state.firstStep || !steps.includes(state.firstStep))) {
       update({ firstStep: defaultStep(state.sphere, state.blocker) })
     }
     if (step === STEP_FIRST && customOpen && custom.trim()) {
@@ -318,6 +327,13 @@ export function FirstRun() {
     setHop(true)
     window.clearTimeout(hopTimer.current)
     hopTimer.current = window.setTimeout(() => setHop(false), 900)
+    // без числа («весь день фоном», «не могу сказать») экрана «твоя цифра» нет: кот уже сказал своё на этом вопросе
+    if (step === STEP_COST && !cost?.monthly) {
+      setPickedStep(false)
+      go(STEP_FIRST)
+      return
+    }
+    if (step === STEP_FIGURE) setPickedStep(false)
     if (step === STEP_FIRST) {
       // «Собираю твой план» (2,5 с): три строки отмечаются по одной — план собран из его ответов, а не шаблон
       setBuilding(true)
@@ -402,19 +418,25 @@ export function FirstRun() {
   } else if (step === STEP_COST) {
     line = nudge
       ? 'Примерно — *этого хватит*.'
-      : 'Честно: сколько в день уходит на то, чтобы думать об этом, откладывать, снова вспоминать?'
-    face = 'listening'
+      : cost
+        ? cost.monthly
+          ? 'Записал. Сейчас *посчитаю*.'
+          : cost.figure
+        : 'Честно: сколько в день уходит на то, чтобы думать об этом, откладывать, снова вспоминать?'
+    face = cost ? 'happy' : 'calm'
   } else if (step === STEP_FIGURE) {
     line = cost?.figure ?? ''
-    face = cost?.key === 'allday' ? 'listening' : 'calm'
+    face = 'calm'
   } else if (step === STEP_FIRST && building) {
     line = 'Секунду, собираю…'
     face = 'calm'
   } else if (step === STEP_FIRST) {
     line = nudge
       ? 'Напиши хоть одно слово — *этого хватит*.'
-      : `Давай найдём самый маленький кусочек. Такой, чтобы на него хватило ${FIRST_MINUTES} минут. Выбери или напиши свой.`
-    face = 'calm'
+      : pickedStep && !customOpen && state.firstStep
+        ? `Беру: «${state.firstStep}». *${FIRST_MINUTES} минут* хватит.`
+        : `Давай найдём самый маленький кусочек. Такой, чтобы на него хватило ${FIRST_MINUTES} минут. Выбери или напиши свой.${state.blocker === 'tired' ? ' Можно ещё меньше.' : ''}`
+    face = pickedStep ? 'happy' : 'calm'
   } else if (step === STEP_PLAN) {
     line = 'Это не план «стать продуктивным». Это план начать. Начинать — это и есть навык.'
     face = 'happy'
@@ -500,11 +522,14 @@ export function FirstRun() {
         <span className="size-11 shrink-0" />
       </div>
 
-      <section className="flex min-h-0 flex-1 flex-col pb-[calc(6rem+env(safe-area-inset-bottom))]">
+      {/* Ничего не прокручивается: на iPhone в Safari (видимая высота ≈ 650 px) раньше список вариантов прокручивался под
+          пузырём и резался жёсткой линией. Размеры кота, пузыря и вариантов те же — на низких экранах (≤ 700 px) сжаты
+          только отступы, и всё помещается. Запасной случай (экраны ниже 600 px) — весь блок целиком, не вложенный список */}
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pb-[calc(6rem+env(safe-area-inset-bottom))] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [@media(max-height:700px)]:pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
       {/* Кот — один на всё знакомство (одна кукла, не пересоздаётся): на вопросах слева от пузыря, на договоре
           переезжает в центр и растёт. Уходящие ответы закреплены внутри этого же блока — не прыгают, когда
           меняется шапка */}
-      <div className={`relative flex min-h-0 flex-1 flex-col ${step === LAST_STEP ? 'justify-center' : ''}`}>
+      <div className={`relative flex min-h-full shrink-0 flex-col ${step === LAST_STEP ? 'justify-center' : ''}`}>
       {step >= 1 && step <= LAST_STEP && (
         <CatAsks
           line={line}
@@ -515,20 +540,16 @@ export function FirstRun() {
           think={building}
           step={building ? step + 0.5 : step}
           commit={step === LAST_STEP}
+          hideBubble={!ready}
         />
       )}
+      {/* до чтения адреса вариантов нет вовсе — иначе на ссылке на середину на кадр мелькал первый вопрос */}
+      {ready && (
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.div
           key={building ? 'build' : step}
           {...(step === LAST_STEP ? commitMotion : listMotion)}
-          // план на низком экране длиннее места: прокручивается весь блок (полоса скрыта), а не карточка внутри себя
-          className={
-            step === LAST_STEP
-              ? 'flex flex-col'
-              : step === STEP_PLAN
-                ? 'flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-width:none]'
-                : 'flex min-h-0 flex-1 flex-col'
-          }
+          className="flex flex-col"
         >
           {building && (
             <BuildList
@@ -546,7 +567,7 @@ export function FirstRun() {
           {!building && ((step >= STEP_SPHERE && step <= STEP_COST) || step === STEP_FIRST) && (
             <>
               <div
-                className="mt-5 flex flex-col gap-2.5 overflow-y-auto pb-2"
+                className="mt-5 flex flex-col gap-2.5 pb-2 [@media(max-height:700px)]:mt-3 [@media(max-height:700px)]:gap-1.5"
                 role="radiogroup"
                 aria-label={
                   step === STEP_SPHERE
@@ -584,7 +605,10 @@ export function FirstRun() {
                     />
                   ))}
                 {step === STEP_HANGING &&
-                  HANGING.map((h, i) => (
+                  // ответ с пояснением («месяц и дольше», «не помню»): остальные варианты уходят, на их месте — пояснение
+                  // кота (ответ → объяснение, как в квизах). Так всё помещается без прокрутки и без уменьшения размеров;
+                  // «Другой ответ» возвращает список
+                  HANGING.filter((h) => !hanging?.insert || hangOpen || h.key === hanging.key).map((h, i) => (
                     <Option
                       key={h.key}
                       firstTab={i === 0 && !state.hanging}
@@ -602,13 +626,23 @@ export function FirstRun() {
                           else catReact('calm', 'think')
                         }
                         setNudge(false)
+                        setHangOpen(false)
                         update({ hanging: h.key })
                       }}
                     />
                   ))}
-                {step === STEP_HANGING && hanging?.insert && (
-                  // вина — с характера на механизм: только для «месяц и дольше» и «не помню», остальным не тратим секунды
-                  <p className="glass-hearthside mt-1 rounded-2xl px-4 py-3 text-[15px] leading-snug text-foreground/90">{hanging.insert}</p>
+                {step === STEP_HANGING && hanging?.insert && !hangOpen && (
+                  <>
+                    {/* вина — с характера на механизм: только для «месяц и дольше» и «не помню», остальным не тратим секунды */}
+                    <p className="glass-hearthside mt-1 rounded-2xl px-4 py-3 text-[15px] leading-snug text-foreground/90">{hanging.insert}</p>
+                    <button
+                      type="button"
+                      onClick={() => setHangOpen(true)}
+                      className="press min-h-11 self-start rounded-full px-3 text-[15px] font-semibold text-muted-foreground"
+                    >
+                      Другой ответ
+                    </button>
+                  </>
                 )}
                 {step === STEP_BLOCKER &&
                   BLOCKERS.map((b, i) => (
@@ -666,7 +700,7 @@ export function FirstRun() {
                       onSelect={() => {
                         if (state.cost !== c.key) {
                           hapticThreshold()
-                          catReact(c.key === 'allday' ? 'sleepy' : 'listening', 'idle')
+                          catReact('listening', 'idle')
                         }
                         setNudge(false)
                         update({ cost: c.key })
@@ -690,6 +724,7 @@ export function FirstRun() {
                           }
                           setNudge(false)
                           setCustomOpen(false)
+                          setPickedStep(true)
                           update({ firstStep: s })
                         }}
                       />
@@ -722,13 +757,14 @@ export function FirstRun() {
                         }}
                       />
                     )}
-                    {/* «Подскажи» (как «перемешать» у Finch): не застрять на пустом поле */}
+                    {/* «Подскажи» (как «перемешать» у Finch): под полем «Своё…», чтобы не застрять на пустом */}
+                    {customOpen && (
                     <button
                       type="button"
                       onClick={() => {
                         hapticThreshold()
                         catReact('happy', 'wave', 700)
-                        setCustom(suggestStep(state.sphere, state.blocker, customOpen ? custom.trim() : state.firstStep))
+                        setCustom(suggestStep(state.sphere, state.blocker, (customOpen && custom.trim()) || state.firstStep))
                         setCustomOpen(true)
                         setNudge(false)
                       }}
@@ -737,8 +773,6 @@ export function FirstRun() {
                       <Dices className="size-[18px]" aria-hidden="true" />
                       Подскажи
                     </button>
-                    {state.blocker === 'tired' && (
-                      <p className="px-1 text-[13px] leading-snug text-muted-foreground">Можно ещё меньше.</p>
                     )}
                   </>
                 )}
@@ -757,6 +791,7 @@ export function FirstRun() {
           )}
         </motion.div>
       </AnimatePresence>
+      )}
       </div>
       </section>
 
@@ -796,7 +831,9 @@ export function CatAsks({
   action,
   step,
   commit,
+  hideBubble = false,
 }: {
+  hideBubble?: boolean
   line: string
   face: MascotExpression
   nudge: boolean
@@ -809,7 +846,7 @@ export function CatAsks({
   const reduce = useReducedMotion()
   const move = { layout: { duration: reduce ? 0 : 0.6, ease: [0.65, 0, 0.35, 1] as const } }
   return (
-    <div className={commit ? 'flex flex-col items-center pb-4' : 'flex items-end gap-3 pt-2'}>
+    <div className={commit ? 'flex flex-col items-center pb-4' : 'flex items-end gap-3 pt-2 [@media(max-height:700px)]:pt-0'}>
       <motion.div
         layout
         className="vt-cat relative z-10 shrink-0"
@@ -829,7 +866,7 @@ export function CatAsks({
       <motion.div
         key="bubble"
         exit={{ opacity: 0, transition: { duration: 0.14 } }}
-        className="relative mb-3 min-h-[3.5rem] flex-1"
+        className={`relative mb-3 min-h-[3.5rem] flex-1 [@media(max-height:700px)]:mb-1 ${hideBubble ? 'invisible' : ''}`}
       >
         {/* новый вопрос — новый пузырь: старый гаснет, новый «выпрыгивает» от кота, как у Duolingo */}
         <AnimatePresence mode="popLayout" initial={false}>
@@ -840,7 +877,7 @@ export function CatAsks({
           exit={{ opacity: 0, transition: { duration: 0.12 } }}
           transition={reduce ? { duration: 0.15 } : { type: 'spring', stiffness: 520, damping: 30, delay: 0.12 }}
           style={{ transformOrigin: '0% 100%' }}
-          className="glass-hearthside min-h-[3.5rem] rounded-2xl rounded-bl-sm px-4 py-3"
+          className="glass-hearthside min-h-[3.5rem] rounded-2xl rounded-bl-sm px-4 py-3 [@media(max-height:700px)]:py-2"
         >
         <AnimatePresence mode="wait" initial={false}>
           <motion.p
@@ -899,7 +936,7 @@ export function Option({
       onClick={onSelect}
       onTouchStart={() => {}}
       data-selected={selected ? '' : undefined}
-      className="option-card flex min-h-14 w-full items-center gap-3 rounded-2xl px-4 py-3 text-left"
+      className="option-card flex min-h-14 w-full shrink-0 items-center gap-3 rounded-2xl px-4 py-3 text-left"
     >
       {/* плитка 32×32 своего оттенка; у выбранного цвет ярче и плотнее */}
       <span
@@ -984,11 +1021,11 @@ function PlanCard({ state, step }: { state: OnboardingState; step: string }) {
     ['Неделя', plan.week],
   ]
   return (
-    <div className="glass-hearthside mt-5 shrink-0 rounded-2xl px-4 py-4">
+    <div className="glass-hearthside mt-5 shrink-0 rounded-2xl px-4 py-4 [@media(max-height:700px)]:mt-3 [@media(max-height:700px)]:py-3">
       <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
         {plan.title}
       </p>
-      <ul className="mt-3 flex flex-col gap-2.5">
+      <ul className="mt-3 flex flex-col gap-2.5 [@media(max-height:700px)]:mt-2 [@media(max-height:700px)]:gap-2">
         {rows
           .filter(([, v]) => !!v)
           .map(([k, v]) => (
@@ -1001,7 +1038,7 @@ function PlanCard({ state, step }: { state: OnboardingState; step: string }) {
           ))}
       </ul>
       {plan.future && (
-        <p className="mt-3.5 border-t border-white/10 pt-3 text-[15px] leading-snug">
+        <p className="mt-3.5 border-t border-white/10 pt-3 text-[15px] leading-snug [@media(max-height:700px)]:mt-2.5 [@media(max-height:700px)]:pt-2">
           <span className="font-semibold">Ты через 7 дней:</span> <span className="font-hand text-[19px]">«{plan.future}»</span>
         </p>
       )}
