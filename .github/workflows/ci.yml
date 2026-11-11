@@ -18,7 +18,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       # Действия закреплены по коммиту (тег можно перевесить на чужой код); обновляет Dependabot.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -36,7 +36,13 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
-      - run: pnpm exec playwright install --with-deps chromium
+      # --with-deps доставляет через apt девять пакетов запасных шрифтов (CJK, тайский, X11); всё остальное в образе
+      # раннера уже есть. 11.11 зеркало apt не отвечало, шаг падал через 10 минут таймаутов, и e2e на main не запускались
+      # вовсе (два прогона подряд). Короткий таймаут apt и запасной путь без этих пакетов: сайт рисует своими шрифтами.
+      - name: Install Chromium
+        run: |
+          echo 'Acquire::Retries "1"; Acquire::http::Timeout "15"; Acquire::https::Timeout "15";' | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts
+          pnpm exec playwright install --with-deps chromium || pnpm exec playwright install chromium
       - run: pnpm test:e2e
       - if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

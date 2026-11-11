@@ -11,7 +11,15 @@ import { HOME_COOKIE, NID_COOKIE, isNid } from '@/lib/visitor'
 export const dynamic = 'force-dynamic'
 
 export const GET = handle(async (req) => {
-  rateLimit(req, 'handoff', 30)
+  // Сюда приходит СТРАНИЦА (redirect из next.config.ts), а не запрос скрипта: отказ 429 был бы пустым белым экраном у
+  // человека за общим IP оператора (CGNAT). Поэтому лимит режет только подпись (её и стоит беречь), а переезд идёт
+  // всегда — сверх лимита без переноса ID, как без секрета.
+  let limited = false
+  try {
+    rateLimit(req, 'handoff', 30)
+  } catch {
+    limited = true
+  }
   const target = process.env.CANONICAL_HOST?.trim().toLowerCase()
   const url = new URL(req.url)
   if (!target || url.hostname === target) return new Response(null, { status: 404 })
@@ -31,7 +39,7 @@ export const GET = handle(async (req) => {
   const nid = cookies.get(NID_COOKIE)
   const home = cookies.get(HOME_COOKIE) === '1'
   const secret = process.env.VISIT_SECRET
-  if (usableSecret(secret) && (isNid(nid) || home)) {
+  if (!limited && usableSecret(secret) && (isNid(nid) || home)) {
     const token = await signHandoff(
       { nid: isNid(nid) ? nid : null, home, host: target, exp: Date.now() + HANDOFF_TTL_MS },
       secret,

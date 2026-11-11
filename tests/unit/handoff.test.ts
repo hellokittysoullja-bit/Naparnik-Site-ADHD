@@ -83,4 +83,20 @@ describe('перенос ID на свой домен: только подпис�
     )
     expect(new URL(res.headers.get('location')!).searchParams.has('_t')).toBe(false)
   })
+
+  it('сверх лимита с одного IP человек всё равно переезжает (без переноса ID), а не видит пустой экран 429', async () => {
+    const hit = () =>
+      handoff(
+        new Request('https://adhd-naparnik.vercel.app/api/handoff?to=/app', {
+          headers: { cookie: `nid=${NID}`, 'x-real-ip': '203.0.113.77' },
+        }),
+      )
+    let last = await hit()
+    for (let i = 0; i < 40; i++) last = await hit()
+    expect(last.status).toBe(307)
+    const loc = new URL(last.headers.get('location')!)
+    expect(loc.host).toBe(NEW)
+    expect(loc.pathname).toBe('/app')
+    expect(loc.searchParams.has('_t')).toBe(false)
+  })
 })
