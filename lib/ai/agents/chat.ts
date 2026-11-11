@@ -5,6 +5,8 @@ import type { TurnContext } from '../core/turn'
 import type { MemoryProvider, MemoryWrite } from '../memory/provider'
 import { renderMemory } from '../memory/render'
 import { assemble } from '../prompt/assemble'
+import { KNOWLEDGE } from '../knowledge/catalog'
+import { renderKnowledge, selectKnowledge } from '../knowledge/select'
 import { fitConversation } from '../prompt/context-budget'
 import { CHAT_SYSTEM, FOCUS_CHAT_SYSTEM, situation } from '../prompt/tasks/chat'
 import { rememberFactInput, savePlanInput, tools } from '../tools/catalog'
@@ -50,6 +52,8 @@ export async function chatTurn(input: {
     taskSystem: input.mode === 'focus' ? FOCUS_CHAT_SYSTEM : CHAT_SYSTEM,
     memory: renderMemory(snapshot),
     situation: situation(input.clientHour),
+    // знания под реплику (каталог пуст до утверждения владельцем — тогда блока нет)
+    knowledge: renderKnowledge(selectKnowledge(KNOWLEDGE, [input.userTexts.at(-1) ?? ''])),
     // бюджет истории (prompt/context-budget.ts): сайт укладывается и так, боту с длинной историей — обязательно
     conversation: fitConversation(input.conversation, HISTORY_TOKENS),
   })

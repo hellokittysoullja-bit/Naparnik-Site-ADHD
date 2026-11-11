@@ -21,6 +21,8 @@ export type AssembleInput = {
   memory?: string
   /** ярус 3 */
   situation?: string
+  /** знания под этот ход (knowledge/select.ts) — рядом с ситуацией, перед последней репликой человека */
+  knowledge?: string
   /** история разговора (уже очищенная) или одно задание */
   conversation: ModelMessage[]
 }
@@ -42,10 +44,11 @@ export function assemble(input: AssembleInput): Assembled {
       break
     }
   }
+  const volatile = [input.knowledge, input.situation].filter((x): x is string => !!x)
   conv.forEach((m, i) => {
-    if (i === lastUser && input.situation) messages.push({ role: 'user', content: input.situation })
+    if (i === lastUser) for (const v of volatile) messages.push({ role: 'user', content: v })
     messages.push(m)
   })
-  if (lastUser === -1 && input.situation) messages.push({ role: 'user', content: input.situation })
+  if (lastUser === -1) for (const v of volatile) messages.push({ role: 'user', content: v })
   return { instructions: systemFor(input.taskSystem), messages }
 }
