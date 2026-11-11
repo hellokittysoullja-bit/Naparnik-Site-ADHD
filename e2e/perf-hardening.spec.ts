@@ -21,3 +21,26 @@ test('слои кота грузятся параллельно с rig.json, а 
   // параллельно — первые слои ушли, пока rig.json ещё «в пути» (с запасом 0,5 с от его 1,5 с)
   expect(Math.min(...layerAt) - rigAsked).toBeLessThan(1000)
 })
+
+test('полевые Web Vitals уходят в аналитику только с путём без параметров', async ({ page }) => {
+  await page.goto('/app/start?step=1&utm_source=tiktok#a=1,2')
+  await page.getByRole('radio').first().click() // взаимодействие — для INP
+  await page.waitForTimeout(1500)
+  // вкладка уходит в фон — web-vitals отдаёт LCP/CLS/INP
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await page.waitForTimeout(300)
+  const sent = await page.evaluate(() =>
+    ((window as unknown as { vaq?: unknown[][] }).vaq ?? [])
+      .filter((c) => c[0] === 'event')
+      .map((c) => c[1] as { name: string; data: Record<string, unknown> })
+      .filter((e) => e.name.startsWith('vital_')),
+  )
+  expect(sent.map((e) => e.name)).toEqual(expect.arrayContaining(['vital_TTFB', 'vital_FCP']))
+  for (const e of sent) {
+    expect(e.data.path).toBe('/app/start')
+    expect(Object.keys(e.data).sort()).toEqual(['path', 'rating', 'value'])
+  }
+})

@@ -1,6 +1,8 @@
 'use client'
 
 import { Analytics, type BeforeSendEvent } from '@vercel/analytics/next'
+import { useReportWebVitals } from 'next/web-vitals'
+import { trackVital } from '@/lib/events'
 
 /**
  * Обезличенная статистика Vercel. В аналитику уходит только путь: без параметров и без фрагмента адреса — там шаги и
@@ -17,5 +19,8 @@ function pathOnly(event: BeforeSendEvent): BeforeSendEvent {
 }
 
 export function SiteAnalytics() {
+  // Web Vitals с настоящих телефонов (в т. ч. iPhone: Safari 26.2+ отдаёт LCP и INP) — библиотека web-vitals, которая
+  // уже есть внутри Next (next/web-vitals), без новой зависимости; что именно уходит — lib/events.ts, vitalPayload
+  useReportWebVitals(trackVital)
   return <Analytics beforeSend={pathOnly} />
 }
