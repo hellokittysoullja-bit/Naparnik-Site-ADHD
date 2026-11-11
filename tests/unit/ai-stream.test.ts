@@ -203,3 +203,21 @@ describe('реестр инструментов', () => {
     expect(Object.keys(tools.forTask('session-voice'))).toEqual([])
   })
 })
+
+describe('обрыв по лимиту длины', () => {
+  it('недописанное предложение не показывается, проверенные — остаются', async () => {
+    chain.steps = [
+      {
+        id: 'a',
+        model: streaming([
+          { type: 'text-start', id: 't' },
+          { type: 'text-delta', id: 't', delta: 'Понимаю. Бывает, что всё валится. Если сил нет, давай посмотрим, что' },
+          { type: 'text-end', id: 't' },
+          { type: 'finish', finishReason: { unified: 'length', raw: 'length' }, usage },
+        ]),
+      },
+    ]
+    const r = await collect(run())
+    expect(r.shown).toBe('Понимаю. Бывает, что всё валится.')
+  })
+})

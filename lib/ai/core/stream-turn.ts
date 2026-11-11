@@ -85,6 +85,8 @@ class Attempt {
   openText: string | null = null
   toolCalled = false
   usage: { in?: number; out?: number } = {}
+  /** text-end, отложенный до причины остановки */
+  endedText: Part | null = null
 
   constructor(
     readonly step: ModelStep,
@@ -114,18 +116,15 @@ class Attempt {
         }
         return { out }
       }
-      case 'text-end': {
-        const s = this.guard.end()
-        if (s.kind === 'violation') {
-          // пустой текст рядом с вызовом инструмента — нормально (кот молча показал кнопку)
-          if (!(s.reason === 'empty' && this.toolCalled)) return { out, fail: s.reason }
-        }
-        if (s.kind === 'release') {
-          out.push({ type: 'text-delta', id: part.id, text: s.text } as Part)
-          this.committed = true
-        }
-        out.push(part)
-        this.openText = null
+      case 'text-end':
+        // остаток текста выпускаем, только когда известна причина остановки (finish-step): обрыв по лимиту длины
+        // оставил бы на экране недописанное предложение
+        this.endedText = part
+        return { out }
+      case 'finish-step': {
+        const closed = this.closeText(part.finishReason === 'length')
+        if (closed.fail) return closed
+        out.push(...closed.out, part)
         return { out }
       }
       case 'tool-call': {
@@ -142,15 +141,40 @@ class Attempt {
         return { out, fail: 'error' }
       case 'abort':
         return { out, fail: 'timeout' }
-      case 'finish':
+      case 'finish': {
         this.usage = { in: part.totalUsage?.inputTokens, out: part.totalUsage?.outputTokens }
+        const closed = this.closeText(part.finishReason === 'length') // если finish-step не пришёл
+        if (closed.fail) return closed
+        out.push(...closed.out)
         if (!this.committed) return { out, fail: 'empty' }
         out.push(part)
         return { out, done: true }
+      }
       default:
         out.push(part)
         return { out }
     }
+  }
+
+  /** закрыть отложенный текст: выпустить остаток (или отбросить недописанное при обрыве по длине) */
+  closeText(truncated: boolean): { out: Part[]; fail?: AttemptResult } {
+    const end = this.endedText
+    if (!end) return { out: [] }
+    this.endedText = null
+    if (truncated) this.guard.dropUnfinished()
+    const out: Part[] = []
+    const s = this.guard.end()
+    if (s.kind === 'violation') {
+      // пустой текст рядом с вызовом инструмента — нормально (кот молча показал кнопку)
+      if (!(s.reason === 'empty' && this.toolCalled)) return { out, fail: s.reason }
+    }
+    if (s.kind === 'release') {
+      out.push({ type: 'text-delta', id: (end as { id: string }).id, text: s.text } as Part)
+      this.committed = true
+    }
+    out.push(end)
+    this.openText = null
+    return { out }
   }
 
   /** обрезка после фиксации: закрыть открытый текст и завершить поток так, чтобы клиент не ждал */

@@ -267,14 +267,13 @@ describe('запись в память (R6, Hermes memory_tool_store: строг
 })
 
 describe('маршруты задач (Hermes: свой маршрут у каждой задачи)', () => {
-  it('у каждой задачи есть цепочка, у запасной — пометка устойчивости', async () => {
+  it('у каждой задачи есть цепочка из двух разных моделей (выбор владельца: Gemini 2.5 Flash → DeepSeek)', async () => {
     vi.stubEnv('ANYMODEL_API_KEY', 'test-key')
     const { modelChain, resetModelsForTests } = await vi.importActual<typeof import('@/lib/ai/models')>('@/lib/ai/models')
     resetModelsForTests()
     for (const task of ['chat', 'session-voice', 'breakdown', 'onboarding-first-step']) {
       const c = modelChain(task)
-      expect(c.length).toBeGreaterThanOrEqual(2)
-      expect(c.some((s) => s.robust)).toBe(true)
+      expect(c.map((s) => s.id)).toEqual(['gc/gemini-2.5-flash', 'ds/deepseek-v4-flash'])
     }
     vi.unstubAllEnvs()
     resetModelsForTests()
@@ -289,10 +288,11 @@ describe('чужая личность (провайдер подмешал св�
     'Я всего лишь ИИ, но давай попробуем.',
     'Меня сделали в DeepSeek.',
     'Я работаю как ИИ-ассистент.',
+    'Я всего лишь приложение для фокуса.',
   ])('«%s» — не показывается', (t) => {
     expect(checkOutput(t, { maxChars: 300, echo: new Set(['claude']) })).toMatchObject({ ok: false, reason: 'identity' })
   })
-  it.each(['Я Уголёк, твой напарник с острова.', 'Я кот, лапами Notion не открою.', 'Давай начнём с одного шага.'])('«%s» — можно', (t) => {
+  it.each(['Я Уголёк, твой напарник с острова.', 'Я кот, лапами Notion не открою.', 'Давай начнём с одного шага.', 'Я не нейросеть, я кот с острова.', 'Нет, я не Клод, я Уголёк.'])('«%s» — можно', (t) => {
     expect(checkOutput(t, { maxChars: 300, echo: new Set(['notion']) }).ok).toBe(true)
   })
 })
@@ -320,4 +320,15 @@ describe('находки независимой проверки', () => {
     off()
     expect(out.messages[0].content).toBe('привет')
   })
+})
+
+describe('номера: только 112 (решение владельца 11.11)', () => {
+  it.each(['Позвони в 103, там помогут.', 'Телефон доверия 051 работает круглосуточно.', 'Набери 8 800 2000 122.', 'Есть линия 8-800-333-44-34.'])(
+    '«%s» — не показывается',
+    (t) => expect(checkOutput(t, { maxChars: 300 })).toMatchObject({ ok: false, reason: 'phone' }),
+  )
+  it.each(['Если совсем тяжело — звони 112.', 'Давай 25 минут, а потом позвонишь маме.', 'Начни с 3 шагов, номер один — открыть файл.', 'Встреча в 10:30.'])(
+    '«%s» — можно',
+    (t) => expect(checkOutput(t, { maxChars: 300 }).ok).toBe(true),
+  )
 })

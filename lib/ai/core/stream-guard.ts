@@ -53,6 +53,11 @@ export class SentenceGuard {
     return this.release(cut, false)
   }
 
+  /** модель упёрлась в лимит длины: недописанное предложение не показываем (сравнение 11.11: «…давай посмотрим, что») */
+  dropUnfinished(): void {
+    this.pending = ''
+  }
+
   /** конец текста: выпускаем остаток (с проверкой на пустоту — у всего ответа) */
   end(): GuardStep {
     return this.release(this.pending.length, true)

@@ -13,7 +13,8 @@ export function renderMemory(m: MemorySnapshot | null): string {
   if (!m) return dataBlock('memory', { 'первый разговор': true })
   const p = m.patterns
   return dataBlock('memory', {
-    'имя, которое человек дал тебе': m.companionName ?? undefined,
+    // подпись однозначная: в сравнении 11.11 модель называла этим именем самого человека («Эй, Уголёк, бывает»)
+    'твоё имя (так человек назвал ТЕБЯ, кота; это не имя человека)': m.companionName ?? undefined,
     'план на завтра': m.plan
       ? { дата: m.plan.forDate, дело: m.plan.task, 'первый шаг': m.plan.firstStep, время: m.plan.startTime }
       : 'нет',

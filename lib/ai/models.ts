@@ -43,13 +43,20 @@ function anyModel() {
  */
 type Profile = { id: string; robust?: boolean }
 
-/** Основная модель — выбор владельца (11.11); запасная — по замеру: тёплый тон, 2,5–4 с через тот же ключ */
-export const PRIMARY_MODEL = 'ds/deepseek-v4-flash'
-export const FALLBACK_MODEL = 'cc/claude-haiku-5-5'
+/**
+ * Выбор владельца 11.11 по замеру (5 запросов на модель, настоящая инструкция кота, research/20-ai-harness/proof.md §4):
+ *  - основная Gemini 2.5 Flash через AnyModel: первое слово 3,3 с в среднем (1,9–6,8), $0.03 за 1 млн токенов, без
+ *    чужой системной инструкции (у маршрутов cc/ внутри промпт Claude Code);
+ *  - страхует DeepSeek V4 Flash: медиана 4,4 с, но выбросы до 21 с; самая дешёвая ($0.0125).
+ * Пометку robust не ставим ни одной: устойчивость к взлому у этой пары не замерена — звено «устойчивая первой»
+ * просто ничего не меняет, пока замер (evals/ai-attacks.eval.ts) не покажет разницу.
+ */
+export const PRIMARY_MODEL = 'gc/gemini-2.5-flash'
+export const FALLBACK_MODEL = 'ds/deepseek-v4-flash'
 
 const PROFILES: Record<string, Profile> = {
   primary: { id: PRIMARY_MODEL },
-  fallback: { id: FALLBACK_MODEL, robust: true },
+  fallback: { id: FALLBACK_MODEL },
 }
 
 /**

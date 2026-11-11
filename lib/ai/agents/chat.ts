@@ -18,8 +18,9 @@ export const CHAT_LIMITS = {
   commitTimeoutMs: 12_000,
   totalTimeoutMs: 25_000, // < maxDuration маршрута (30 с)
   hedgeAfterMs: 2_000,
-  // реплика 1–3 предложения; запас на вызов инструмента с аргументами
-  maxOutputTokens: 600,
+  // реплика 1–3 предложения; запас на вызов инструмента и на модели, у которых рассуждение не выключается целиком
+  // (сравнение 11.11: при 600 Gemini обрывалась на полуслове)
+  maxOutputTokens: 1024,
   maxChars: 700,
 } as const
 
