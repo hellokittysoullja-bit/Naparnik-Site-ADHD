@@ -148,3 +148,49 @@
 
 ## Скрипты замеров (scratchpad сеанса 11.11, стираются)
 `resweight.mjs` (вес ресурсов по маршрутам), `aa/aa.mjs` + `aa/cat-true.png`/`cat-false.png` (MSAA до/после), `pm-main-1.json` (LoAF пути на CPU ×4 + 3G), `perfwalk.mjs`, `gpucost.mjs`, `blurdiff.mjs`.
+
+## §5 Внедрено 11.11 (ветка `claude/perf-security-hardening`)
+
+Замеры — прод-сборка (`next start`) в песочнице, Chromium, «слабый телефон» = CPU ×4 + 3G (1,6 Мбит/с, 150 мс).
+«До» — `main` на 97174ad (или та же ветка без правки), «после» — ветка; прогоны чередовались. Скрипты замеров —
+`research/19-perf-security/scripts/`. Каждая правка закрыта тестом, который на старой сборке падает (проверено).
+
+| # | Что | Итог | До → после | Тест |
+|---|---|---|---|---|
+| 1 | CI и зависимости | сделано | действия на тегах `@v4` → на коммитах; токен CI без прав записи; Dependabot раз в неделю; версии пакетов младше суток не ставятся (проверено: `next@canary` 13-часовой давности не встал, взялся предыдущий) | конфигурация (CI сам проверит) |
+| 2 | Защита AI-маршрутов | сделано | не-JSON → 415; бесконечное тело без длины: старая проверка читала его 37 с в память → новая режет на потолке (413); Safari до 16.4 без Sec-Fetch-Site: чужой Origin проходил → 403 | `tests/unit/api.test.ts` (3 новых) |
+| 2б | BotID | **не внедрено** | клиент 2,4 КБ gzip, но перед первым защищённым запросом качает скрипт проверки с Vercel — это ровно старт сессии (`/api/session-voice`), реплика кота пришла бы позже; ложные «боты» во встроенных браузерах Instagram/TikTok не проверить; подменяет глобальный `fetch` | — |
+| 3 | `antialias: false` у кота | **не внедрено** | 399 поз × 3 размера: средняя разница 0,001–0,05/255, но максимум 132–179 на отдельных пикселях краёв и до 12 % пикселей у аватара 60 px (аудит мерил 1 позу: максимум 2, 0,31 %) — это видимая «лесенка» | — |
+| 4 | Слои кота параллельно с `rig.json` | сделано | «кот ожил» (WebGL-кадр, постер убран): лендинг 5,85 → 5,16 с (медиана, 7 и 4 прогона); `/app/start` 5,97 → 5,76 с; картинка та же до бита (0 отличающихся каналов на лендинге и в знакомстве) | `e2e/perf-hardening.spec.ts`, `tests/unit/doll-layers.test.ts` |
+| 4б | Сетки кота бинарно | не делалось | после пункта 4 `rig.json` уже не на критическом пути; второй формат сеток рядом с `doll_build.py` не стоит остатка выигрыша | — |
+| 5 | React Compiler | **откатан** | perfwalk 3 + 3 прогона: блокировка главного потока знакомства 251 → 303 мс (медианы), сессии 177 → 249, лендинга 267 → 227 — разброс прогонов больше разницы, выигрыша нет | — |
+| 6 | `proxy.ts` с первого визита | сделано | HTML первого визита: функция + Set-Cookie → прямой статический ответ без cookie (функций на первой странице 1 → 0); локально TTFB 1,9 → 1,7 мс (на `next start` proxy в том же процессе — настоящий выигрыш на Vercel, аудит: −15 мс медианы и выбросы до +270 мс); `nid` ставит `POST /api/visit` после загрузки; +1 КБ JS | `e2e/school1-foundation.spec.ts` (1-й тест переписан), `tests/unit/visit.test.ts` |
+| 6б | Чужой ID по ссылке (security-audit §2.2) | сделано | `/?_nid=ЧУЖОЙ&_home=1` ставил чужой ID на год → игнорируется; перенос при переезде — только подписанный жетон на 5 минут, только на `CANONICAL_HOST` | `tests/unit/handoff.test.ts`, e2e «чужая ссылка…» |
+| 7 | Полевые Web Vitals | сделано | `useReportWebVitals` (web-vitals внутри Next) → `lib/events.ts`: имя, число, оценка, путь без параметров; +4 КБ JS gzip, после загрузки | `tests/unit/vitals.test.ts`, e2e «полевые Web Vitals…» |
+| — | `regions: ["fra1"]` | **шаг владельца** | Германия в списке Gemini API, но бесплатный уровень Gemini в ЕС исторически ограничивали: сменить регион функций — в Vercel → Settings → Functions, проверив, что ИИ отвечает | — |
+
+**Шаги владельца после мержа.**
+1. В Vercel добавить переменную `VISIT_SECRET` (случайная строка ≥ 32 символов, Sensitive) — до включения `CANONICAL_HOST`.
+   Без неё переезд пройдёт без переноса анонимного ID.
+2. Полевые Web Vitals попадают в панель Vercel только на тарифе Pro (custom events); на Hobby вызовы молча не
+   записываются — тогда Speed Insights или Pro.
+3. Регион функций — см. строку `regions` выше. Остальное из §3.2 (потолок Gemini, Rate Limit в Firewall) — без изменений.
+
+**Как делают другие (источники).**
+- Действия по коммиту, минимальные права токена: GitHub, [Security hardening for GitHub Actions](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions)
+  («Pin actions to a full-length commit SHA», «least privilege»); GitHub CLI сам перевёл свои действия на SHA
+  ([cli/oauth#125](https://github.com/cli/oauth/pull/125), [cli/go-gh#243](https://github.com/cli/go-gh/pull/243));
+  cal.com ставит `permissions: contents: read` в [pr.yml](https://github.com/calcom/cal.com/blob/main/.github/workflows/pr.yml).
+  GitHub умеет требовать SHA политикой ([changelog 15.08.2025](https://github.blog/changelog/2025-08-15-github-actions-policy-now-supports-blocking-and-sha-pinning-actions/)).
+- Задержка свежих версий: pnpm, [Supply-chain security](https://pnpm.io/supply-chain-security) (`minimumReleaseAge`, сутки).
+- Content-Type и Origin: OWASP, [CSRF Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
+  («disallow simple content types»; проверка Origin обязательна как запасная к Fetch Metadata); сам Next.js сверяет
+  Origin с Host у Server Actions ([Data Security → Allowed origins](https://nextjs.org/docs/app/guides/data-security)).
+- Статические rewrites вместо proxy: Next.js, [rewrites (`has`, `beforeFiles`)](https://nextjs.org/docs/app/api-reference/config/next-config-js/rewrites)
+  и [Proxy](https://nextjs.org/docs/app/getting-started/proxy) — «для простых случаев сначала `next.config`».
+- Подписанный короткоживущий жетон вместо голого ID в адресе: OWASP — фиксация сессии (тот же Cheat Sheet, login CSRF).
+- Цепочки запросов: Chrome, [Avoid chaining critical requests](https://developer.chrome.com/docs/lighthouse/performance/critical-request-chains).
+- Web Vitals: Next.js, [useReportWebVitals](https://nextjs.org/docs/app/api-reference/functions/use-report-web-vitals)
+  (отправка во внешнюю аналитику, CLS ×1000 в целые); Vercel, [custom events](https://vercel.com/docs/analytics/custom-events) (Pro).
+- BotID: Vercel, [Get started](https://vercel.com/docs/botid/get-started), [защита AI-маршрутов](https://vercel.com/kb/guide/protect-ai-endpoints-with-vercel-botid).
+- Регионы Gemini: [Available regions](https://aistudio.google.com/docs/available-regions) (Германия, Швеция — есть).

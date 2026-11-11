@@ -343,6 +343,12 @@ squash) хвоста ветки, и следующий PR из-за этого �
   /start, /plan, /session, /save, /today, /login, /v; короткие ссылки `/test` → знакомство, `/razbit` → Фокус (308).
   Тесты — `e2e/school1-foundation.spec.ts`, `tests/unit/visitor.test.ts`. Не сделано: текст задачи ещё уходит в адрес
   сессии (`/app/session?step=…`) — уйдёт с планом на сервере (фаза 5, нужна база).
+  **Изменено 11.11 (research/19 §5):** (1) и (5) больше не через proxy — первый визит идёт прямо из CDN: `nid` и
+  источник ставит `POST /api/visit` после загрузки (`components/visit-beacon.tsx`), `?src=` — статические rewrites в
+  `next.config.ts` (бывший `.mjs`, теперь импортирует список роликов); `x-nid` не передаётся никому, ID — только из
+  cookie. (3) Перенос ID при переезде — только подписанным жетоном `_t` (HMAC, `VISIT_SECRET` ≥ 32 символов, 5 минут,
+  только на `CANONICAL_HOST`; `app/api/handoff` на старом адресе, `lib/handoff.ts`); голые `_nid`/`_home` игнорируются
+  (подстановка чужого ID, security-audit §2.2). Без `VISIT_SECRET` переезд идёт без переноса ID.
 - **Тест `/sdvg-test` (08.11, 1:1 по `research/14-lead-magnets/owner-asrs-bridge.md`; `/test` → сюда).** Возраст 18+ → 6
   пунктов ASRS v1.1 (тексты дословно из `6Q_Russian_final.pdf` NYU — копия `research/14-lead-magnets/ASRS-v1.1-6Q-Russian-NYU.pdf`,
   в `content/asrs-ru.json`; НЕ ПРАВИТЬ — лицензия запрещает изменения) → разделитель → 4 вопроса типа + сфера + имя (по желанию, только на устройстве) → «Напарник
