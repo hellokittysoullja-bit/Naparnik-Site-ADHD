@@ -3,16 +3,29 @@ import { seedStarts } from './helpers'
 
 // План «школа 1», фазы 0–2: анонимный ID, источник, адреса и правила, вернувшийся, заголовок под ролик.
 
-test('новому посетителю сервер ставит nid: httpOnly, на год; повторный визит его не меняет', async ({ page, context }) => {
+test('первый визит — HTML без функции и без cookie; nid ставит сервер после отрисовки: httpOnly, на год', async ({
+  page,
+  context,
+}) => {
+  // research/19 §1.3: ответ на саму страницу больше не идёт через proxy — прямой статический HTML из CDN
   const first = await page.request.get('/', { maxRedirects: 0 })
-  const set = first.headers()['set-cookie'] ?? ''
+  expect(first.status()).toBe(200)
+  expect(first.headers()['set-cookie']).toBeUndefined()
+  const variant = await page.request.get('/?src=reel-phone', { maxRedirects: 0 })
+  expect(variant.headers()['set-cookie']).toBeUndefined()
+
+  const visit = page.waitForResponse((r) => r.url().endsWith('/api/visit'))
+  await page.goto('/')
+  const res = await visit
+  expect(res.status()).toBe(204)
+  const set = (await res.headerValue('set-cookie')) ?? ''
   expect(set).toMatch(/nid=[A-Za-z0-9_-]{22};/)
   expect(set).toMatch(/HttpOnly/i)
   expect(set).toMatch(/Max-Age=31536000/)
-  await page.goto('/')
   const nid = (await context.cookies()).find((c) => c.name === 'nid')
   expect(nid?.httpOnly).toBe(true)
   await page.goto('/app/start')
+  await page.waitForTimeout(1500)
   expect((await context.cookies()).find((c) => c.name === 'nid')?.value).toBe(nid?.value)
 })
 
@@ -20,12 +33,16 @@ test('заголовок под ролик: ?src= известного роли�
   await page.goto('/?src=reel-phone')
   await expect(page.locator('h1')).toContainText('Без ленты')
   await expect(page).toHaveURL(/\/\?src=reel-phone$/)
+  await page.goto('/?src=REEL-FEAR')
+  await expect(page.locator('h1')).toContainText('Можно криво')
   await page.goto('/?src=reel-unknown')
   await expect(page.locator('h1')).toContainText('Сдвинем твоё')
 })
 
 test('метка ролика доходит до знакомства и запоминается первым и последним входом', async ({ page, context }) => {
+  const visit = page.waitForResponse((r) => r.url().endsWith('/api/visit'))
   await page.goto('/?src=reel-where&utm_source=tiktok')
+  await visit
   const cta = page.getByRole('link', { name: /Давай/ }).first()
   await expect(cta).toHaveAttribute('href', /\/app\/start\?utm_source=tiktok&src=reel-where/)
   const names = (await context.cookies()).map((c) => c.name)

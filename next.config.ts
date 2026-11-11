@@ -1,3 +1,6 @@
+import type { NextConfig } from 'next'
+import { ENTRY_VARIANTS } from './content/entry-variants'
+
 // Content-Security-Policy: скрипты, стили, картинки, шрифты и запросы — только со своего домена. Чужой скрипт
 // (внедрённый через уязвимость или расширение-«помощник») не загрузится и не отправит данные наружу.
 // 'unsafe-inline' для скриптов — осознанно: nonce требует динамического рендера каждой страницы и стоил бы
@@ -6,6 +9,7 @@
 const isDev = process.env.NODE_ENV !== 'production'
 const isPreview = process.env.VERCEL_ENV === 'preview'
 const live = isPreview ? ' https://vercel.live' : ''
+
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}${live}`,
@@ -31,11 +35,11 @@ const LEGACY_HOST = 'adhd-naparnik.vercel.app'
 function moveToCanonicalHost() {
   const target = process.env.CANONICAL_HOST?.trim().toLowerCase()
   if (!target || target === LEGACY_HOST) return []
-  const legacy = { type: 'host', value: LEGACY_HOST }
-  const nid = { type: 'cookie', key: 'nid', value: '(?<nid>[A-Za-z0-9_-]{22})' }
-  const home = { type: 'cookie', key: 'naparnik_home', value: '1' }
+  const legacy = { type: 'host' as const, value: LEGACY_HOST }
+  const nid = { type: 'cookie' as const, key: 'nid', value: '(?<nid>[A-Za-z0-9_-]{22})' }
+  const home = { type: 'cookie' as const, key: 'naparnik_home', value: '1' }
   const source = '/:path((?!api/).*)'
-  const to = (q) => `https://${target}/:path${q}`
+  const to = (q: string) => `https://${target}/:path${q}`
   return [
     { source, has: [legacy, nid, home], destination: to('?_nid=:nid&_home=1'), permanent: true },
     { source, has: [legacy, nid], destination: to('?_nid=:nid'), permanent: true },
@@ -44,12 +48,21 @@ function moveToCanonicalHost() {
   ]
 }
 
+/** `?src=reel-phone` → /v/reel-phone. Ключ без учёта регистра и пробелов по краям — как entryVariantKey. */
+export function entryVariantRewrites() {
+  const anyCase = (key: string) => key.replace(/[a-z]/g, (c) => `[${c}${c.toUpperCase()}]`)
+  return Object.keys(ENTRY_VARIANTS).map((key) => ({
+    source: '/',
+    has: [{ type: 'query' as const, key: 'src', value: `\\s*${anyCase(key)}\\s*` }],
+    destination: `/v/${key}`,
+  }))
+}
+
 // Экраны, которым не место в поиске (план «школа 1», фаза 1): приложение, воронка, личные страницы.
 // В индексе остаются лендинг и публичные страницы.
 const NOINDEX = ['/app', '/app/:path*', '/start', '/plan/:path*', '/session/:path*', '/save', '/today', '/login', '/v/:path*']
 
-/** @type {import('next').NextConfig} */
-const nextConfig = {
+const nextConfig: NextConfig = {
   poweredByHeader: false,
   // Проверка типов — часть сборки: ошибка типа больше не уезжает в прод молча (раньше стоял ignoreBuildErrors).
   images: {
@@ -64,8 +77,8 @@ const nextConfig = {
   // Редирект на уровне маршрутизации Vercel: без функции и без задержки; ?intro=1 — посмотреть лендинг всё равно
   // (именно со значением: пустой ?intro маршрутизатор считает отсутствующим).
   async redirects() {
-    const home = [{ type: 'cookie', key: 'naparnik_home', value: '1' }]
-    const intro = [{ type: 'query', key: 'intro' }]
+    const home = [{ type: 'cookie' as const, key: 'naparnik_home', value: '1' }]
+    const intro = [{ type: 'query' as const, key: 'intro' }]
     return [
       ...moveToCanonicalHost(),
       { source: '/', has: home, missing: intro, destination: '/app', permanent: false },
@@ -76,12 +89,18 @@ const nextConfig = {
       { source: '/razbit', destination: '/app/session', permanent: true },
     ]
   },
+  // Лендинг под ролик (`/?src=<ключ>`, content/entry-variants.ts): статический HTML варианта прямо из CDN, адрес не
+  // меняется. Раньше подставлял proxy.ts — функция на первом визите каждого нового посетителя (research/19 §1.3).
+  // beforeFiles: `/` — сама страница, обычные rewrites после файлов её бы не перехватили.
+  async rewrites() {
+    return { beforeFiles: entryVariantRewrites(), afterFiles: [], fallback: [] }
+  },
   async headers() {
     // Своя статика с версией содержимого в адресе (?v=хэш, scripts/asset-versions.mjs): шрифты и кот кэшируются
     // на год без перепроверки — повторный визит не переспрашивает сервер про ~20 файлов. Адреса без ?v не затронуты.
-    const immutable = (source) => ({
+    const immutable = (source: string) => ({
       source,
-      has: [{ type: 'query', key: 'v' }],
+      has: [{ type: 'query' as const, key: 'v' }],
       headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
     })
     return [

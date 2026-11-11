@@ -1,7 +1,7 @@
 // Версии в адресах своей статики: шрифтов (public/fonts), кота (public/mascot/poster, public/mascot/doll) и ночной сцены (public/scene).
 // Запускается в prebuild (и вручную после пересборки шрифтов или куклы): считает короткий хэш содержимого каждого файла,
 // пишет lib/asset-versions.ts и проставляет ?v=хэш в url() шрифтов app/fonts.css. Адреса с ?v отдаются с годовым
-// кэшем (next.config.mjs): изменился файл — изменилась ссылка, старая версия застрять не может; без ?v — как раньше.
+// кэшем (next.config.ts): изменился файл — изменилась ссылка, старая версия застрять не может; без ?v — как раньше.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -21,7 +21,7 @@ for (const d of dirs) {
 const ts = `// Сгенерировано scripts/asset-versions.mjs (prebuild) — не править руками.
 export const ASSET_VERSIONS: Record<string, string> = ${JSON.stringify(versions, null, 2)};
 
-/** Адрес своей статики с версией содержимого: такой адрес кэшируется на год (next.config.mjs). */
+/** Адрес своей статики с версией содержимого: такой адрес кэшируется на год (next.config.ts). */
 export function asset(p: string): string {
   const v = ASSET_VERSIONS[p];
   return v ? \`\${p}?v=\${v}\` : p;
