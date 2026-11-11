@@ -164,33 +164,52 @@ class Attempt {
 
 export function streamTurn(input: StreamTurnInput): ReadableStream<Part> {
   const { ctx } = input
+  // потребитель отменил поток (вкладка закрыта, обрыв): start() кладёт сюда остановку всех попыток
+  let onCancel = () => {}
   return new ReadableStream<Part>({
+    cancel() {
+      onCancel()
+    },
     start(controller) {
       let closed = false
       let detach = () => {}
       // таймеры объявлены до close(): кризисный путь закрывает поток раньше, чем они заведены
       const timers: { hedge?: ReturnType<typeof setTimeout>; commit?: ReturnType<typeof setTimeout> } = {}
+      // запись и закрытие не бросают: поток мог быть отменён потребителем раньше, чем дошёл сигнал отмены, —
+      // иначе ошибка уходила в необработанные (найдено независимой проверкой: reader.cancel() → ERR_INVALID_STATE)
       const write = (parts: Part[]) => {
         if (closed) return
-        for (const p of parts) controller.enqueue(p)
+        try {
+          for (const p of parts) controller.enqueue(p)
+        } catch {
+          closed = true
+        }
       }
       const close = () => {
-        if (closed) return
-        closed = true
         detach()
         clearTimeout(timers.hedge)
         clearTimeout(timers.commit)
-        controller.close()
+        if (closed) return
+        closed = true
+        try {
+          controller.close()
+        } catch {
+          /* уже закрыт или отменён */
+        }
       }
 
       emit({ type: 'turn.start' }, ctx)
       const verdict = checkInput(input.userTexts)
       emit({ type: 'guard.input', crisis: verdict.crisis, injection: verdict.injection }, ctx)
-      const endTurn = (outcome: 'model' | 'fallback' | 'crisis' | 'aborted', a?: Attempt) =>
+      let turnEnded = false
+      const endTurn = (outcome: 'model' | 'fallback' | 'crisis' | 'aborted', a?: Attempt) => {
+        if (turnEnded) return
+        turnEnded = true
         emit(
           { type: 'turn.end', outcome, model: a?.step.id, ms: Date.now() - ctx.startedAt, inTokens: a?.usage.in, outTokens: a?.usage.out },
           ctx,
         )
+      }
 
       if (verdict.crisis) {
         write(cannedStream(CRISIS_REPLY))
@@ -250,11 +269,25 @@ export function streamTurn(input: StreamTurnInput): ReadableStream<Part> {
 
       const onAbort = () => {
         if (winner && !winner.dead) {
-          endAttempt(winner, 'timeout')
+          const byPerson = input.signal?.aborted === true
+          endAttempt(winner, byPerson ? 'cancelled' : 'timeout')
           write(winner.cutParts())
-          endTurn('model', winner)
+          endTurn(byPerson ? 'aborted' : 'model', winner)
+          settled = true
           close()
         } else giveUp()
+      }
+      onCancel = () => {
+        closed = true // писать больше некуда
+        settled = true
+        for (const a of attempts) endAttempt(a, 'cancelled')
+        endTurn('aborted', winner ?? undefined)
+        close()
+      }
+      // уже отменённый сигнал событие 'abort' не пошлёт — проверяем сразу (иначе ход висел до таймера)
+      if (all.aborted) {
+        giveUp()
+        return
       }
       all.addEventListener('abort', onAbort, { once: true })
       detach = () => all.removeEventListener('abort', onAbort)

@@ -49,16 +49,28 @@ export function echoWords(texts: readonly string[]): ReadonlySet<string> {
 
 // Ссылки и упоминания: вывод кота никогда не становится адресом (security-ai.md R1/R7 — у бота превью ссылок
 // превратило бы ответ в запрос наружу, «смертельная тройка» Willison)
-const LINK = new RegExp(String.raw`https?:\/\/|www\.|(?<![\p{L}\d])[a-z0-9-]+\.(?:ru|com|org|net|io|me|рф|su|app|dev)(?![\p{L}\d])|t\.me\/|(?<![\p{L}\d])@[a-z0-9_]{4,}`, 'iu')
+const LINK = new RegExp(String.raw`https?:\/\/|www\.|(?<![\p{L}\d])[\p{L}\d-]+\.(?:ru|com|org|net|io|me|рф|su|app|dev|онлайн|рус|москва)(?![\p{L}\d])|t\.me\/|(?<![\p{L}\d])@[a-z0-9_]{4,}`, 'iu')
 // Телефоны: модель не диктует номера сама — придуманный «телефон доверия» хуже никакого. Разрешён только 112
 // (кризисный ответ — проверенный текст из crisis.ts, он проверку выхода не проходит вовсе).
 // ≥ 10 цифр в одной последовательности: российский номер — 10–11, а даты («2026-11-11») и время — меньше
 const PHONE_RUN = /\+?\d[\d\s()‐-]{6,}\d/gu
 const isPhone = (t: string) => [...t.matchAll(PHONE_RUN)].some((m) => (m[0].match(/\d/g) ?? []).length >= 10)
 
+// Чужая личность: провайдер может подмешать свою инструкцию (замер 11.11: маршрут cc/ у AnyModel несёт системный
+// промпт Claude Code — модель без нашей обвязки отвечала «I'm Claude Code»). Кот никогда не называет себя моделью,
+// ассистентом или чужим продуктом — такой ответ не показывается, ход уходит следующей модели или в заготовку.
+const IDENTITY = new RegExp(
+  [
+    String.raw`(?<!\p{L})(?:claude|клод\p{L}*|anthropic|антропик\p{L}*|openai|chatgpt|чатгпт|gpt-?\d|deepseek|дипсик\p{L}*|gemini|гемини|qwen|llama)(?!\p{L})`,
+    String.raw`(?:языков\p{L}*|нейросетев\p{L}*|ии|ai)[\s-]+(?:модел\p{L}*|ассистент\p{L}*|помощник\p{L}*)`,
+    String.raw`(?<!\p{L})я\s+(?:—\s+|-\s+)?(?:всего\s+лишь\s+|просто\s+)?(?:ии|бот|нейросеть|программа|ассистент|чат-?бот)(?!\p{L})`,
+  ].join('|'),
+  'iu',
+)
+
 const NO_ECHO: ReadonlySet<string> = new Set()
 
-export type OutputViolation = 'shame' | 'medical' | 'language' | 'empty' | 'length' | 'link' | 'phone' | 'leak'
+export type OutputViolation = 'shame' | 'medical' | 'language' | 'empty' | 'length' | 'link' | 'phone' | 'leak' | 'identity'
 export type OutputVerdict = { ok: true } | { ok: false; reason: OutputViolation }
 
 export type OutputOpts = {
@@ -75,6 +87,7 @@ export function checkOutput(text: string, opts: OutputOpts): OutputVerdict {
   if (raw.length > opts.maxChars) return { ok: false, reason: 'length' }
   const vs = matchVariants(raw)
   const hit = (test: (t: string) => boolean) => vs.some(test)
+  if (hit((t) => IDENTITY.test(t))) return { ok: false, reason: 'identity' }
   if (hit((t) => LINK.test(t))) return { ok: false, reason: 'link' }
   if (hit(isPhone)) return { ok: false, reason: 'phone' }
   if (hit((t) => MEDICAL.some((r) => r.test(t)))) return { ok: false, reason: 'medical' }

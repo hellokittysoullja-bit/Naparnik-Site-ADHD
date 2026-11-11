@@ -12,7 +12,11 @@ import { checkOutput, type OutputOpts, type OutputViolation } from '../guards/ou
  *    показываем никогда).
  * Цена — задержка в одно предложение (реплики кота 1–3 предложения, первое ≈ 0,3–1 с генерации).
  */
-const SENTENCE_END = /[.!?…](?=\s|$)|\n/g
+// конец предложения или строки — но не строка, оканчивающаяся двоеточием: «Вот что я умею:» без следующей строки —
+// обрывок (замер 11.11: следующую строку отрезала проверка, и человек видел висящий заголовок)
+const SENTENCE_END = /[.!?…](?=\s|$)|(?<!:\s*)\n/g
+const OPEN_QUOTE = /^\s*["«„]/
+const CLOSE_QUOTE = /["»“]\s*$/
 
 export type GuardStep =
   | { kind: 'release'; text: string }
@@ -33,6 +37,11 @@ export class SentenceGuard {
 
   push(delta: string): GuardStep {
     this.pending += delta
+    // реплика начинается с кавычки: обёртка это («Привет!») или цитата («Открыть файл» — хороший шаг), станет ясно
+    // только в конце — держим целиком (реплики короткие) и решаем в end()
+    if (!this.opened && OPEN_QUOTE.test(this.pending)) {
+      return this.pending.length > this.opts.maxChars ? { kind: 'violation', reason: 'length' } : { kind: 'hold' }
+    }
     let cut = -1
     for (const m of this.pending.matchAll(SENTENCE_END)) cut = (m.index ?? 0) + m[0].length
     if (cut <= 0) {
@@ -51,8 +60,11 @@ export class SentenceGuard {
 
   private release(cut: number, final: boolean): GuardStep {
     let chunk = this.pending.slice(0, cut).replace(/\*\*/g, '*')
-    if (!this.opened) chunk = chunk.replace(/^\s*["«„]/, '') // кавычка-обёртка в начале всей реплики
-    if (final) chunk = chunk.replace(/["»“]\s*$/, '')
+    // кавычки-обёртки снимаются, только если обёрнута ВСЯ реплика (её начало ещё не показано — см. push)
+    if (final && !this.opened && OPEN_QUOTE.test(chunk) && CLOSE_QUOTE.test(chunk)) {
+      chunk = chunk.replace(OPEN_QUOTE, '').replace(CLOSE_QUOTE, '')
+    }
+    if (final) chunk = chunk.trimEnd()
     const candidate = (this.released + chunk).trim()
     if (!final && !candidate) {
       this.pending = this.pending.slice(cut)

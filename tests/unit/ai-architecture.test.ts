@@ -27,7 +27,7 @@ const baseReq = (): TurnRequest => ({
   chain: [model('primary'), { ...model('robust'), robust: true }],
   hedgeAfterMs: 1000,
 })
-const info = (injection = false) => ({ ctx: newTurn({ task: 't' }), input: { crisis: false, injection } })
+const info = (injection = false) => ({ ctx: newTurn({ task: 't' }) as ReturnType<typeof newTurn>, input: { crisis: false, injection } })
 
 beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -71,6 +71,11 @@ describe('адаптивная страховка (наблюдатель + midd
     const ctx = newTurn({ task: 't' })
     for (let i = 0; i < 3; i++) emit({ type: 'model.commit', model: 'primary', ms: 9000 }, ctx)
     expect(applyRequestMiddleware(baseReq(), info()).hedgeAfterMs).toBe(0)
+    // задержка другой задачи не влияет (у чата фиксация — первое предложение, у разовых — весь ответ)
+    expect(applyRequestMiddleware(baseReq(), { ...info(), ctx: newTurn({ task: 'other' }) }).hedgeAfterMs).toBe(1000)
+    // каждый 8-й ход — проба с обычной задержкой
+    const seen = Array.from({ length: 8 }, () => applyRequestMiddleware(baseReq(), info()).hedgeAfterMs)
+    expect(seen).toContain(1000)
     resetLatencyForTests()
     for (let i = 0; i < 3; i++) emit({ type: 'model.commit', model: 'primary', ms: 900 }, ctx)
     expect(applyRequestMiddleware(baseReq(), info()).hedgeAfterMs).toBe(1000)
@@ -78,7 +83,7 @@ describe('адаптивная страховка (наблюдатель + midd
   it('проигранная гонка без истории не делает модель «быстрой»', () => {
     resetLatencyForTests()
     emit({ type: 'model.end', model: 'primary', ms: 300, result: 'cancelled' }, newTurn({ task: 't' }))
-    expect(latencyOf('primary')).toBeUndefined()
+    expect(latencyOf('t', 'primary')).toBeUndefined()
   })
 })
 
@@ -127,6 +132,9 @@ describe('нормализация и проверки (security-ai.md R4/R7)', 
     expect(checkInput(['нe хочу жить']).crisis).toBe(true) // латинская e
     expect(checkInput(['хочу​умереть']).crisis).toBe(true) // нулевой пробел
     expect(forMatching('20мг')).toBe('20мг') // цифры у единиц не превращаются в буквы
+    // находки независимой проверки: слово целиком из двойников, однобуквенное слово, знаки ударения
+    for (const t of ['HE ХОЧУ ЖИТЬ', 'покончить c собой', 'хочу умере\u0301ть', 'не хо\u0301чу жить']) expect(checkInput([t]).crisis, t).toBe(true)
+    expect(forMatching('йод и ёлка')).toBe('йод и елка') // й не теряет кратку
   })
   it('ссылки, телефоны, дозы цифрой — мимо; 112 и бренды человека — можно', () => {
     expect(checkOutput('Загляни на evil.ru за советом.', { maxChars: 200 })).toEqual({ ok: false, reason: 'link' })
@@ -181,6 +189,14 @@ describe('веб-канал: история от браузера — недов
     ])
     expect(r?.autoRounds).toBe(2)
     expect(r?.userTexts).toEqual(['давай'])
+  })
+  it('автокруги внутри ОДНОГО сообщения кота тоже считаются (так их пишет AI SDK)', async () => {
+    const tool = (id: string) => ({ type: 'tool-startFocus', toolCallId: id, state: 'output-available', input: { firstStep: 'открыть файл' }, output: 'x' })
+    const r = await fromWeb([
+      { id: 'u', role: 'user', parts: [{ type: 'text', text: 'давай' }] },
+      { id: 'a', role: 'assistant', parts: [{ type: 'step-start' }, tool('c1'), { type: 'step-start' }, tool('c2'), { type: 'step-start' }, tool('c3')] },
+    ])
+    expect(r?.autoRounds).toBe(3)
   })
 })
 
@@ -262,5 +278,46 @@ describe('маршруты задач (Hermes: свой маршрут у каж
     }
     vi.unstubAllEnvs()
     resetModelsForTests()
+  })
+})
+
+describe('чужая личность (провайдер подмешал свою инструкцию)', () => {
+  it.each([
+    "I'm Claude Code, Anthropic's official CLI",
+    'Я Клод, ассистент компании Антропик.',
+    'Я языковая модель и не могу открыть приложения.',
+    'Я всего лишь ИИ, но давай попробуем.',
+    'Меня сделали в DeepSeek.',
+    'Я работаю как ИИ-ассистент.',
+  ])('«%s» — не показывается', (t) => {
+    expect(checkOutput(t, { maxChars: 300, echo: new Set(['claude']) })).toMatchObject({ ok: false, reason: 'identity' })
+  })
+  it.each(['Я Уголёк, твой напарник с острова.', 'Я кот, лапами Notion не открою.', 'Давай начнём с одного шага.'])('«%s» — можно', (t) => {
+    expect(checkOutput(t, { maxChars: 300, echo: new Set(['notion']) }).ok).toBe(true)
+  })
+})
+
+describe('находки независимой проверки', () => {
+  it('отказ устройства доходит до модели как отказ, а не «Запомнил.»', () => {
+    const out = sanitizeUIMessages([
+      { id: 'u', role: 'user', parts: [{ type: 'text', text: 'x' }] },
+      { id: 'a', role: 'assistant', parts: [{ type: 'tool-rememberFact', toolCallId: 'c', state: 'output-available', input: { fact: 'пишет диплом' }, output: 'Не сохранил.' }] },
+    ])
+    expect((out[1].parts[0] as { output: string }).output).toMatch(/^Не сохранено/)
+  })
+  it('кириллический домен — тоже ссылка', () => {
+    expect(checkOutput('Зайди на госуслуги.рф и запишись.', { maxChars: 200 })).toMatchObject({ ok: false, reason: 'link' })
+  })
+  it('упавшее звено не оставляет правку вложенного содержимого', () => {
+    const off = registerRequestMiddleware({
+      name: 'deep-mutator',
+      onRequest(r) {
+        ;(r.messages[0] as { content: unknown }).content = [{ type: 'text', text: 'подмена' }]
+        throw new Error('после правки')
+      },
+    })
+    const out = applyRequestMiddleware(baseReq(), info())
+    off()
+    expect(out.messages[0].content).toBe('привет')
   })
 })

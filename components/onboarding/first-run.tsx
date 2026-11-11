@@ -189,6 +189,16 @@ export function FirstRun() {
   const [careReply, setCareReply] = useState<string | null>(null)
   const suggestAbort = useRef<AbortController | null>(null)
   useEffect(() => () => suggestAbort.current?.abort(), [])
+  // текущее значение поля для ответа, пришедшего после ожидания (замыкание suggest видит старое)
+  const customRef = useRef(custom)
+  useEffect(() => {
+    customRef.current = custom
+  }, [custom])
+  function cancelSuggest() {
+    suggestAbort.current?.abort()
+    setThinking(false)
+    setCareReply(null)
+  }
   async function suggest() {
     hapticThreshold()
     setNudge(false)
@@ -213,6 +223,8 @@ export function FirstRun() {
     if (ctrl.signal.aborted) return
     setThinking(false)
     setReact(null)
+    // человек за время ожидания поменял поле или ушёл с шага — его текст важнее подсказки
+    if (customRef.current.trim() !== typed) return
     if (answer?.kind === 'care') {
       setCareReply(answer.reply)
       return
@@ -352,6 +364,7 @@ export function FirstRun() {
   const lastGoRef = useRef(0)
   function next() {
     if (building || clock() - lastGoRef.current < 400) return
+    if (thinking) cancelSuggest() // ушли с шага — поздняя подсказка ничего не перезапишет
     if (!canContinue) {
       // Не немая кнопка: кот мягко подсказывает, что сделать
       setNudge(true)
@@ -779,6 +792,7 @@ export function FirstRun() {
                         autoFocus
                         value={custom}
                         onChange={(e) => {
+                          if (thinking || careReply) cancelSuggest()
                           setCustom(e.target.value)
                           setNudge(false)
                         }}

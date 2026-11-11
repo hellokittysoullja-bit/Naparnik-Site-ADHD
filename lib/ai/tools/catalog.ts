@@ -47,6 +47,12 @@ export const startFocusInput = z.object({
     .describe('Рекомендуемая длительность: 15, 25 или 45 минут. По умолчанию 15.'),
 })
 
+/**
+ * Ответ устройства, если оно отказалось исполнять вызов (схема не прошла). Сервер узнаёт его в истории и передаёт
+ * модели свой текст отказа, а не clientResult — иначе модель считала бы, что запомнила
+ */
+export const TOOL_REFUSED = 'Не сохранил.'
+
 export const tools = new ToolRegistry()
   .register({
     name: 'savePlan',

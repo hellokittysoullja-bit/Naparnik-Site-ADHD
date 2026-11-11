@@ -21,9 +21,14 @@ const HOMO: Readonly<Record<string, string>> = {
 // «20мг» стало бы «2омг» и обошло правило о дозах
 const MIXED = /[a-z]+(?=\p{Script=Cyrillic})|(?<=\p{Script=Cyrillic})[a-z]+|(?<=\p{Script=Cyrillic})[036]+(?=\p{Script=Cyrillic})/gu
 
+// знаки ударения и прочие комбинируемые (категория Mn) — «умере́ть» должно совпасть с «умереть». После NFKC «й» и
+// «ё» уже собраны в одну букву, поэтому снятие Mn их не портит
+const COMBINING = /\p{Mn}/gu
+
 export function forMatching(s: string, invisibleAs = ''): string {
   return s
     .normalize('NFKC')
+    .replace(COMBINING, '')
     .replace(INVISIBLE, invisibleAs)
     .toLowerCase()
     .replace(/ё/g, 'е')
@@ -37,6 +42,10 @@ export function forMatching(s: string, invisibleAs = ''): string {
  */
 export function matchVariants(s: string): string[] {
   const glued = forMatching(s)
-  const spaced = forMatching(s, ' ')
-  return glued === spaced ? [glued] : [glued, spaced]
+  const out = new Set([glued, forMatching(s, ' ')])
+  // слова целиком из латинских двойников («HE ХОЧУ ЖИТЬ», «покончить c собой» с латинской c): если в тексте есть
+  // кириллица — ещё одно прочтение, где ВСЕ двойники стали кириллицей. Английские правила (ignore previous…) от
+  // этого не страдают: они совпадают с другими прочтениями
+  if (/\p{Script=Cyrillic}/u.test(glued)) out.add(glued.replace(/[a-z]/g, (ch) => HOMO[ch] ?? ch))
+  return [...out]
 }

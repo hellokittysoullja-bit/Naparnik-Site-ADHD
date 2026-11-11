@@ -73,10 +73,24 @@ describe('проверка по предложениям', () => {
     expect(g.push(' с файла. Отк')).toEqual({ kind: 'release', text: 'Давай начнём с файла.' })
     expect(g.end()).toEqual({ kind: 'release', text: ' Отк' })
   })
-  it('не выпускает предложение со стыдом и снимает кавычки-обёртки и двойные звёздочки', () => {
+  it('не выпускает предложение со стыдом и меняет двойные звёздочки на одиночные', () => {
     const g = new SentenceGuard({ maxChars: 200 })
-    expect(g.push('«Это **первый шаг**. ')).toEqual({ kind: 'release', text: 'Это *первый шаг*.' })
+    expect(g.push('Это **первый шаг**. ')).toEqual({ kind: 'release', text: 'Это *первый шаг*.' })
     expect(g.push('Соберись уже. ').kind).toBe('violation')
+  })
+  it('кавычки снимает, только если обёрнута вся реплика; цитата в начале остаётся', () => {
+    const wrapped = new SentenceGuard({ maxChars: 200 })
+    expect(wrapped.push('«Привет! Начнём.').kind).toBe('hold')
+    expect(wrapped.push('»').kind).toBe('hold')
+    expect(wrapped.end()).toEqual({ kind: 'release', text: 'Привет! Начнём.' })
+    const quoted = new SentenceGuard({ maxChars: 200 })
+    quoted.push('«Открыть файл» — хороший шаг. ')
+    expect(quoted.end()).toEqual({ kind: 'release', text: '«Открыть файл» — хороший шаг.' })
+  })
+  it('строка с двоеточием не уходит без следующей строки', () => {
+    const g = new SentenceGuard({ maxChars: 200 })
+    expect(g.push('Вот что я умею:\n').kind).toBe('hold')
+    expect(g.push('Дробить дела на шаги.\n')).toEqual({ kind: 'release', text: 'Вот что я умею:\nДробить дела на шаги.\n' })
   })
   it('латинские слова человека разрешены, чужие — нет', () => {
     const g = new SentenceGuard({ maxChars: 200, echo: new Set(['notion']) })

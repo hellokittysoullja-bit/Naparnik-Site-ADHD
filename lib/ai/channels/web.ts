@@ -1,6 +1,6 @@
 import { convertToModelMessages, validateUIMessages, type ModelMessage, type UIMessage } from 'ai'
 import { clean } from '../context'
-import { tools } from '../tools/catalog'
+import { TOOL_REFUSED, tools } from '../tools/catalog'
 
 /**
  * Веб-канал (Hermes gateway/platforms: адаптер нормализует сообщения платформы и доставляет ответ). Здесь —
@@ -25,7 +25,10 @@ function sanitizeToolPart(p: Part & { type: `tool-${string}` }): Part | null {
   if (!input.success) return null
   // незавершённый вызов (результата нет) в историю модели не нужен — модель увидела бы «висящий» вызов
   if (x.state !== 'output-available') return null
-  return { type: p.type, toolCallId: x.toolCallId, state: 'output-available', input: input.data, output: spec.clientResult } as Part
+  // браузер шлёт один из двух наших ответов; модели уходит наш же текст, а не присланный
+  const refused = (p as { output?: unknown }).output === TOOL_REFUSED
+  const output = refused ? 'Не сохранено: устройство отклонило запись.' : spec.clientResult
+  return { type: p.type, toolCallId: x.toolCallId, state: 'output-available', input: input.data, output } as Part
 }
 
 function sanitizePart(p: unknown, role: 'user' | 'assistant'): Part | null {
@@ -55,7 +58,7 @@ export function sanitizeUIMessages(raw: unknown[]): UIMessage[] {
 export type WebConversation = {
   conversation: ModelMessage[]
   userTexts: string[]
-  /** сколько ответов кота подряд после последней реплики человека (автоповтор после инструмента) */
+  /** сколько вызовов инструментов кот сделал после последней реплики человека (каждый = автокруг клиента) */
   autoRounds: number
 }
 
@@ -78,7 +81,11 @@ export async function fromWeb(raw: unknown[]): Promise<WebConversation | null> {
         .trim(),
     )
     .filter(Boolean)
+  // AI SDK дописывает каждый автокруг в ТО ЖЕ сообщение кота (createStreamingUIMessageState берёт последнее
+  // assistant-сообщение), поэтому считаем не сообщения, а завершённые вызовы инструментов после реплики человека
   let autoRounds = 0
-  for (let i = messages.length - 1; i >= 0 && messages[i].role === 'assistant'; i--) autoRounds++
+  for (let i = messages.length - 1; i >= 0 && messages[i].role === 'assistant'; i--) {
+    autoRounds += messages[i].parts.filter((p) => p.type.startsWith('tool-')).length
+  }
   return { conversation: await convertToModelMessages(messages), userTexts, autoRounds }
 }

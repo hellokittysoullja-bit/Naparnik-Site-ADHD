@@ -58,10 +58,12 @@ export function registerExecutionMiddleware(mw: ExecutionMiddleware): () => void
   return () => void executionChain.splice(executionChain.indexOf(mw) >>> 0, 1)
 }
 
+// глубокая копия сообщений: звено, поправившее вложенное содержимое и упавшее, не оставляет правку в запросе.
+// Модели (ModelStep.model) — объекты провайдера, их не клонируем: звенья меняют порядок цепочки, а не модели
 const copy = (r: TurnRequest): TurnRequest => ({
   instructions: r.instructions,
-  messages: r.messages.map((m) => ({ ...m }) as ModelMessage),
-  chain: [...r.chain],
+  messages: structuredClone(r.messages) as ModelMessage[],
+  chain: r.chain.map((s) => ({ ...s })),
   tools: r.tools ? { ...r.tools } : undefined,
   hedgeAfterMs: r.hedgeAfterMs,
 })
@@ -81,8 +83,9 @@ export function applyRequestMiddleware(req: TurnRequest, info: RequestInfo): Tur
 
 /** Сбой звена до next — звено пропускается; next одноразовый; ошибки ниже по цепочке — как есть */
 function failSafe(mw: ExecutionMiddleware): LanguageModelMiddleware {
-  const { wrapGenerate, wrapStream, transformParams } = mw.wrap
+  const { wrapGenerate, wrapStream, transformParams, ...rest } = mw.wrap
   return {
+    ...rest, // overrideProvider / overrideModelId / overrideSupportedUrls — как у звена
     specificationVersion: 'v4',
     transformParams: transformParams
       ? async (opts) => {

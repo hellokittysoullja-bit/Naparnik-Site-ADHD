@@ -143,9 +143,10 @@ export async function runTurn<T>(input: TurnInput<T>): Promise<TurnResult<T>> {
         })
       if (started < chain.length) hedgeTimer = setTimeout(launchNext, hedgeAfterMs)
     }
+    // уже отменённый сигнал событие 'abort' не пошлёт — без этой проверки ход висел до maxDuration маршрута
+    if (all.aborted || chain.length === 0) return finish()
     all.addEventListener('abort', finish, { once: true })
-    if (chain.length === 0) finish()
-    else launchNext()
+    launchNext()
   })
 
   if (winner) {

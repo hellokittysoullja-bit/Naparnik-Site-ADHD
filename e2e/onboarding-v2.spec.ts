@@ -88,6 +88,20 @@ test('«Подскажи» со своим делом — первый шаг о
   await page.getByRole('button', { name: 'Подскажи' }).click()
   await expect(field).not.toHaveValue('сдать курсовую')
   await expect(field).not.toHaveValue('Открыть то, что нужно для дела')
+  // поздний ответ не перезаписывает то, что человек успел поменять (находка независимой проверки)
+  let release: () => void = () => {}
+  await page.unroute('**/api/breakdown')
+  await page.route('**/api/breakdown', async (route) => {
+    await new Promise<void>((r) => (release = r))
+    await route.fulfill({ json: { steps: ['Открыть файл курсовой', 'b', 'c'], source: 'model' } }).catch(() => {})
+  })
+  await field.fill('сдать курсовую')
+  await page.getByRole('button', { name: 'Подскажи' }).click()
+  await expect(page.getByRole('button', { name: 'Думаю…' })).toBeVisible()
+  await field.fill('моё своё')
+  release()
+  await page.waitForTimeout(400)
+  await expect(field).toHaveValue('моё своё')
 })
 
 test('после первой сессии: «Как было?» → сохранить остров (честно) → «Когда завтра?» → прогноз → календарь → Дом', async ({ page }) => {

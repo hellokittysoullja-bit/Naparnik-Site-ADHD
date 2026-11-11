@@ -44,7 +44,7 @@ import {
   type MemoryContext,
 } from '@/lib/memory'
 import { scriptedReply } from '@/lib/scripted-companion'
-import { rememberFactInput, savePlanInput } from '@/lib/ai/tools/catalog'
+import { TOOL_REFUSED, rememberFactInput, savePlanInput } from '@/lib/ai/tools/catalog'
 import { useClientMount } from '@/hooks/use-client-mount'
 import type { UIMessage } from 'ai'
 
@@ -342,7 +342,7 @@ export function CompanionChat({
       // (lib/ai/tools/catalog.ts; security-ai.md R5, «complete mediation»). Негодный вызов не пишет в память, но
       // ответ инструменту даётся всегда — иначе чат ждал бы его вечно.
       const refuse = (tool: 'savePlan' | 'rememberFact'): void => {
-        void addToolOutput({ tool, toolCallId: toolCall.toolCallId, output: 'Не сохранил.' })
+        void addToolOutput({ tool, toolCallId: toolCall.toolCallId, output: TOOL_REFUSED })
       }
 
       if (toolCall.toolName === 'savePlan') {
