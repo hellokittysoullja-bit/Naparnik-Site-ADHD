@@ -155,6 +155,9 @@ class Attempt {
       else if (part.type === 'abort') return { out, fail: 'timeout' }
       else if (part.type === 'finish') {
         this.usage = usageOf(part)
+        // оборванный по длине ответ не принимается: «Ты уже начал, и это главное, давай теперь» нельзя показывать
+        // (самопроверка 12.11: у чата такая защита была, у разовых задач — нет)
+        if (part.finishReason === 'length') return { out, fail: 'length' }
         return this.finishWhole(part)
       }
       return { out }

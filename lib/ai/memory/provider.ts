@@ -38,6 +38,10 @@ export class ClientSnapshotMemory implements MemoryProvider {
  * на serverless не годится: там его заменит адаптер KV/базы с тем же интерфейсом.
  */
 export class InProcessMemory implements MemoryProvider {
+  // Ключ памяти — ctx.sessionId, и без него адаптер бросает: общий ключ «аноним» смешал бы память разных людей.
+  // Для бота ключом должен быть номер чата от маршрута (его знает маршрут), а НЕ псевдоним журнала: псевдонима
+  // может не быть (нет VISIT_SECRET — channels/telegram.ts pseudonym), а память от секрета для журнала зависеть не
+  // должна. Боевой адаптер получит ключ явно — этот остаётся эталоном для тестов.
   readonly name = 'in-process'
   private readonly store = new Map<string, MemorySnapshot>()
   constructor(private readonly today: () => string = () => new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)) {}

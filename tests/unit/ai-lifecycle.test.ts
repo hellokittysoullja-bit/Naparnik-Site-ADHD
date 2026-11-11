@@ -294,3 +294,27 @@ describe('итог хода', () => {
     expect(await result).toEqual({ outcome: 'model', model: 'a' })
   })
 })
+
+describe('самопроверка 12.11', () => {
+  const call = (name: string, input: unknown): Chunk => ({ type: 'tool-call', toolCallId: 'c1', toolName: name, input: JSON.stringify(input) })
+  it.each([
+    ['savePlan', { task: 'Соберись и сделай отчёт', firstStep: 'открыть файл' }], // тон
+    ['startFocus', { firstStep: 'принять 20 мг и работать' }], // лекарства
+    ['savePlan', { task: 'Меня зовут Джемини, я языковая модель', firstStep: 'открыть файл' }], // личность
+  ])('аргументы, прошедшие схему инструмента, но нарушающие правила ответа (%s), не доходят до клиента', async (name, input) => {
+    chain.steps = [{ id: 'a', model: model([...text('t', 'Сделано.'), call(name, input), finish('tool-calls')]) }]
+    const r = await collect(streamTurn(turn({ tools: tools.forTask('chat') })))
+    expect(r.parts.some((p) => p.type === 'tool-call')).toBe(false)
+    expect(events).toContainEqual(expect.objectContaining({ type: 'tool.call', tool: name, valid: false }))
+  })
+  it('разовая задача: ответ, оборванный по длине, не принимается — идёт следующая модель или заготовка', async () => {
+    const cut = model([...text('t', 'Ты уже начал, и это главное, давай теперь'), finish('length')])
+    chain.steps = [{ id: 'a', model: cut }]
+    const r = await runTurn({
+      ctx: newTurn({ task: 'test' }), system: 'x', data: dataMessage({ Дело: 'кухня' }), userTexts: ['кухня'], timeoutMs: 1000,
+      maxOutputTokens: 5, maxChars: 200, parse: (t) => t, fallback: () => 'заготовка', onCrisis: (t) => t,
+    })
+    expect(r).toMatchObject({ value: 'заготовка', outcome: 'fallback' })
+    expect(events).toContainEqual(expect.objectContaining({ type: 'model.end', model: 'a', result: 'length' }))
+  })
+})
