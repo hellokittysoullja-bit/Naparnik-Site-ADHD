@@ -495,7 +495,15 @@ export function FirstRun() {
               if (step === 1) router.push(withAttribution('/', window.location.search))
               // предыдущий вопрос уже есть в истории — уходим на него, а не плодим новую запись
               else if (pushedRef.current > 0) window.history.back()
-              else go(step - 1)
+              else {
+                // Предыдущего вопроса в истории нет (страницу перезагрузили или открыли ссылкой). Идём назад заменой
+                // записи, а не новой: иначе следующий «Назад» делал history.back() и возвращал на этот же вопрос —
+                // человек бесконечно ходил между двумя шагами и не мог дойти до ранних ответов.
+                // «Твоя цифра» без числа — пустой экран: его пропускаем и по пути назад.
+                const prev = step - 1 === STEP_FIGURE && !cost?.monthly ? STEP_COST : step - 1
+                fromPopRef.current = true
+                go(prev)
+              }
             }}
             aria-label="Назад"
             className="press -ml-2 inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"

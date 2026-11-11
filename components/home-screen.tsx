@@ -486,6 +486,9 @@ export function HomeScreen() {
     // Тихо ставим service worker и узнаём, доступны ли весточки
     void registerServiceWorker();
     void getCheckinState().then(setCheckinState);
+    // Только при открытии. refresh создаётся заново на каждом рендере: в зависимостях эффект регистрировал бы
+    // сервис-воркер и перечитывал состояние на каждый рендер.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function startNow(step: string) {

@@ -11,7 +11,15 @@ import { HOME_COOKIE, NID_COOKIE, isNid } from '@/lib/visitor'
 export const dynamic = 'force-dynamic'
 
 export const GET = handle(async (req) => {
-  rateLimit(req, 'handoff', 30)
+  // Сюда приходит СТРАНИЦА (redirect из next.config.ts), а не запрос скрипта: отказ 429 был бы пустым белым экраном у
+  // человека за общим IP оператора (CGNAT). Поэтому лимит режет только подпись (её и стоит беречь), а переезд идёт
+  // всегда — сверх лимита без переноса ID, как без секрета.
+  let limited = false
+  try {
+    rateLimit(req, 'handoff', 30)
+  } catch {
+    limited = true
+  }
   const target = process.env.CANONICAL_HOST?.trim().toLowerCase()
   const url = new URL(req.url)
   if (!target || url.hostname === target) return new Response(null, { status: 404 })
@@ -19,19 +27,24 @@ export const GET = handle(async (req) => {
   // только свой путь: «//evil.com» или «/\evil.com» браузер понял бы как чужой адрес
   const to = url.searchParams.get('to') ?? '/'
   const path = /^\/(?![/\\])/.test(to) ? to : '/'
-  const dest = new URL(path, `https://${target}`)
+  let dest = new URL(path, `https://${target}`)
+  // Проверка первой строкой смотрит только на второй символ, а разбор адреса сначала выбрасывает табуляцию и переносы
+  // строк: «/<TAB>/evil.example» проходил её и уводил на чужой сайт — вместе с подписанным жетоном человека.
+  // Решает итог разбора: домен назначения обязан быть нашим.
+  if (dest.host !== target) dest = new URL('/', `https://${target}`)
   for (const [k, v] of url.searchParams) if (k !== 'to' && !k.startsWith('_')) dest.searchParams.append(k, v)
 
   const cookies = new Map(
     (req.headers.get('cookie') ?? '').split(';').map((p) => {
       const i = p.indexOf('=')
-      return [p.slice(0, i).trim(), p.slice(i + 1).trim()] as [string, string]
+      // кусок без «=» — не cookie: раньше из него получался ключ без последней буквы
+      return (i > 0 ? [p.slice(0, i).trim(), p.slice(i + 1).trim()] : ['', '']) as [string, string]
     }),
   )
   const nid = cookies.get(NID_COOKIE)
   const home = cookies.get(HOME_COOKIE) === '1'
   const secret = process.env.VISIT_SECRET
-  if (usableSecret(secret) && (isNid(nid) || home)) {
+  if (!limited && usableSecret(secret) && (isNid(nid) || home)) {
     const token = await signHandoff(
       { nid: isNid(nid) ? nid : null, home, host: target, exp: Date.now() + HANDOFF_TTL_MS },
       secret,

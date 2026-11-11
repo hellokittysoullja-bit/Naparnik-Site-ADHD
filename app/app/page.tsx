@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 export default function AppHomePage() {
   preloadFonts("caveat-400-cyr"); // рукопись в чате на первом экране
   return (
-    <main className="app-page-enter flex h-dvh flex-col overflow-hidden pb-20">
+    <main className="app-page-enter relative flex h-dvh flex-col overflow-hidden pb-20">
       <HomeScreen />
     </main>
   );

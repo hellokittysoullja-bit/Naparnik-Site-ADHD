@@ -12,6 +12,7 @@ import { isNid } from '@/lib/visitor'
 
 export const HANDOFF_TOKEN = '_t'
 export const HANDOFF_TTL_MS = 5 * 60_000
+const CLOCK_SKEW_MS = 60_000
 
 export type Handoff = { nid: string | null; home: boolean; host: string; exp: number }
 
@@ -55,7 +56,9 @@ export async function verifyHandoff(
     const ok = await crypto.subtle.verify('HMAC', await key(secret), fromB64url(sig), enc.encode(body))
     if (!ok) return null
     const o = JSON.parse(new TextDecoder().decode(fromB64url(body))) as { n?: unknown; h?: unknown; d?: unknown; e?: unknown }
-    if (typeof o.e !== 'number' || o.e < now || o.e > now + HANDOFF_TTL_MS) return null
+    // жетон подписывает одна машина, проверяет другая: минута запаса на расхождение часов, иначе при отставании
+    // часов проверяющей свежий жетон считался бы «из будущего» и человек молча терял ID
+    if (typeof o.e !== 'number' || o.e < now || o.e > now + HANDOFF_TTL_MS + CLOCK_SKEW_MS) return null
     if (typeof o.d !== 'string' || o.d !== host.toLowerCase()) return null
     const nid = isNid(o.n as string) ? (o.n as string) : null
     return { nid, home: o.h === 1, host: o.d, exp: o.e }
