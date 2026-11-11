@@ -120,9 +120,14 @@ export async function telegramTurn(
   return toSendMessage(inb.chatId, await collectReply(stream), deps.siteOrigin, deps.fallbackText)
 }
 
-/** HMAC с секретом сервера: номера чатов перебираемы, простой хэш по ним обратим (VISIT_SECRET уже есть для переезда) */
-function pseudonym(chatId: number): string {
-  const key = process.env.VISIT_SECRET ?? 'naparnik-dev-only'
+/**
+ * Псевдоним чата для журнала: HMAC с секретом сервера (номера чатов перебираемы — простой хэш или общеизвестный
+ * ключ по ним обратим). Без секрета нужной длины псевдонима нет вовсе: ход идёт без sessionId, а не с обратимым
+ * идентификатором (аудит 12.11). Ключ выводится отдельно от жетонов переезда (lib/handoff.ts) — у каждого своя метка.
+ */
+export function pseudonym(chatId: number, secret = process.env.VISIT_SECRET): string | undefined {
+  if (!secret || secret.length < 32) return undefined
+  const key = createHmac('sha256', secret).update('tg-pseudonym-v1').digest()
   return 'tg:' + createHmac('sha256', key).update(String(chatId)).digest('base64url').slice(0, 16)
 }
 

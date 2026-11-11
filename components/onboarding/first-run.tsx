@@ -199,7 +199,18 @@ export function FirstRun() {
     setThinking(false)
     setCareReply(null)
   }
+  // любой уход с шага («Назад», «Продолжить», кнопка браузера) отменяет подсказку и убирает бережный ответ:
+  // поздний ответ не должен прийти на другой шаг, а ответ на кризисный текст — висеть при возврате
+  const suggestStepRef = useRef(state.step)
+  useEffect(() => {
+    if (suggestStepRef.current === state.step) return
+    suggestStepRef.current = state.step
+    suggestAbort.current?.abort()
+    setThinking(false)
+    setCareReply(null)
+  }, [state.step])
   async function suggest() {
+    if (thinking) return // кнопка остаётся доступной (фокус клавиатуры не теряется), повторное нажатие не шлёт запрос
     hapticThreshold()
     setNudge(false)
     setCareReply(null)
@@ -227,6 +238,7 @@ export function FirstRun() {
     if (customRef.current.trim() !== typed) return
     if (answer?.kind === 'care') {
       setCareReply(answer.reply)
+      setCustom('') // кризисный текст не становится подписью сессии и плана
       return
     }
     catReact('happy', 'wave', 700)
@@ -820,20 +832,18 @@ export function FirstRun() {
                     {customOpen && (
                     <button
                       type="button"
-                      disabled={thinking}
-                      aria-busy={thinking}
+                      aria-disabled={thinking}
                       onClick={suggest}
-                      className="press flex min-h-11 items-center gap-2 self-start rounded-full px-3 text-[15px] font-semibold text-muted-foreground disabled:opacity-70"
+                      className="press flex min-h-11 items-center gap-2 self-start rounded-full px-3 text-[15px] font-semibold text-muted-foreground aria-disabled:opacity-70"
                     >
                       <Dices className="size-[18px]" aria-hidden="true" />
                       {thinking ? 'Думаю…' : 'Подскажи'}
                     </button>
                     )}
-                    {careReply && (
-                      <p role="status" className="text-[15px] leading-snug text-foreground/90">
-                        {careReply}
-                      </p>
-                    )}
+                    {/* живая область стоит в разметке всегда: экранный диктор читает и «Думаю…», и бережный ответ */}
+                    <p role="status" className={careReply ? 'text-[15px] leading-snug text-foreground/90' : 'sr-only'}>
+                      {careReply ?? (thinking ? 'Думаю…' : '')}
+                    </p>
                   </>
                 )}
               </div>

@@ -1,5 +1,5 @@
 import type { ModelMessage } from 'ai'
-import { personaBase } from '@/lib/companion'
+import { personaBase } from './persona'
 
 /**
  * Сборка промпта ярусами (Hermes agent/system_prompt.py: stable → context → volatile; правило «системный промпт

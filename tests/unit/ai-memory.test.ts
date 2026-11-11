@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream } from 'ai'
 import { applyWrites, factKey } from '@/lib/ai/memory/policy'
@@ -38,12 +38,14 @@ async function drain(s: ReadableStream<unknown>) {
 }
 
 let events: HarnessEvent[] = []
+let off = () => {}
 beforeEach(() => {
   chain.steps = []
   events = []
   vi.spyOn(console, 'info').mockImplementation(() => {})
-  observe((e) => events.push(e))
+  off = observe((e) => events.push(e))
 })
+afterEach(() => off()) // наблюдатели не копятся между тестами
 
 describe('правила записи памяти (Hermes memory_tool_store, mem0 dedupe, Letta блок фиксированного размера)', () => {
   it('повтор того же факта иначе написанным не записывается', () => {
@@ -88,7 +90,7 @@ describe('жизненный цикл памяти через агента (pref
       )
     chain.steps = [{ id: 'm', model: scripted(remember('Пишет диплом по экономике'), seen) }]
     await turn('я пишу диплом по экономике')
-    expect(events).toContainEqual(expect.objectContaining({ type: 'memory.write', kind: 'fact', accepted: true }))
+    expect(events).toContainEqual(expect.objectContaining({ type: 'memory.proposed', kind: 'fact' }))
     chain.steps = [{ id: 'm', model: scripted(say('Как диплом?'), seen) }]
     await turn('привет')
     expect(seen[0]).not.toContain('Пишет диплом по экономике')

@@ -3,7 +3,8 @@ import { applyWrites } from './policy'
 import { parseSnapshot, type MemorySnapshot } from './schema'
 
 /**
- * Поставщик памяти (Hermes agent/memory_provider.py: prefetch → sync turn → on_session_end; Mastra Memory:
+ * Поставщик памяти (Hermes agent/memory_provider.py: prefetch → sync turn; конец разговора (on_session_end) появится вместе с
+ * серверным хранилищем; Mastra Memory:
  * thread/resource). Ядро зависит только от этого интерфейса, хранилище подставляется адаптером:
  *  - сейчас — ClientSnapshotMemory: снимок присылает устройство, записи исполняет устройство (инструмент rememberFact);
  *  - позже — серверное хранилище (база, бот): тот же интерфейс, ядро и маршруты не меняются.
@@ -14,8 +15,6 @@ export interface MemoryProvider {
   prefetch(ctx: TurnContext): Promise<MemorySnapshot | null>
   /** после хода: принять предложенные моделью записи (уже проверенные ядром) */
   onTurnEnd?(ctx: TurnContext, writes: readonly MemoryWrite[]): Promise<void>
-  /** конец разговора: свёртка, напоминания (бот) */
-  onSessionEnd?(ctx: TurnContext): Promise<void>
 }
 
 /** Запись, которую предложила модель: схема инструмента (tools/catalog.ts) → правила записи (memory/policy.ts) */

@@ -62,11 +62,20 @@ export function registerExecutionMiddleware(mw: ExecutionMiddleware): () => void
 // Модели (ModelStep.model) — объекты провайдера, их не клонируем: звенья меняют порядок цепочки, а не модели
 const copy = (r: TurnRequest): TurnRequest => ({
   instructions: r.instructions,
-  messages: structuredClone(r.messages) as ModelMessage[],
+  messages: cloneMessages(r.messages),
   chain: r.chain.map((s) => ({ ...s })),
   tools: r.tools ? { ...r.tools } : undefined,
   hedgeAfterMs: r.hedgeAfterMs,
 })
+
+/** глубокая копия; содержимое, которое нельзя клонировать (URL, поток), копируется по ссылке — ход не падает */
+function cloneMessages(messages: ModelMessage[]): ModelMessage[] {
+  try {
+    return structuredClone(messages)
+  } catch {
+    return messages.map((m) => ({ ...m }) as ModelMessage)
+  }
+}
 
 export function applyRequestMiddleware(req: TurnRequest, info: RequestInfo): TurnRequest {
   let cur = copy(req)
@@ -81,7 +90,13 @@ export function applyRequestMiddleware(req: TurnRequest, info: RequestInfo): Tur
   return cur
 }
 
-/** Сбой звена до next — звено пропускается; next одноразовый; ошибки ниже по цепочке — как есть */
+/**
+ * Семантика отказа как у Hermes (_run_execution_chain, hermes_cli/middleware.py:162-216):
+ *  - сбой звена ДО next — звено пропускается, вызов идёт дальше;
+ *  - ошибка ниже по цепочке (модель, сеть) — пробрасывается как есть;
+ *  - сбой звена ПОСЛЕ успешного next — результат next возвращается (ответ модели не теряется из-за звена);
+ *  - next одноразовый.
+ */
 function failSafe(mw: ExecutionMiddleware): LanguageModelMiddleware {
   const { wrapGenerate, wrapStream, transformParams, ...rest } = mw.wrap
   return {
@@ -99,39 +114,60 @@ function failSafe(mw: ExecutionMiddleware): LanguageModelMiddleware {
       : undefined,
     wrapGenerate: wrapGenerate
       ? async (opts) => {
-          let called = false
-          const doGenerate = () => {
-            if (called) throw new Error(`middleware ${mw.name}: next called twice`)
-            called = true
-            return opts.doGenerate()
-          }
+          const next = once(mw.name, opts.doGenerate)
           try {
-            return await wrapGenerate({ ...opts, doGenerate })
+            return await wrapGenerate({ ...opts, doGenerate: next.call })
           } catch (e) {
-            if (called) throw e
-            warnOnce(mw.name, 'wrapGenerate')
-            return opts.doGenerate()
+            return recover(mw.name, 'wrapGenerate', next, e, opts.doGenerate)
           }
         }
       : undefined,
     wrapStream: wrapStream
       ? async (opts) => {
-          let called = false
-          const doStream = () => {
-            if (called) throw new Error(`middleware ${mw.name}: next called twice`)
-            called = true
-            return opts.doStream()
-          }
+          const next = once(mw.name, opts.doStream)
           try {
-            return await wrapStream({ ...opts, doStream })
+            return await wrapStream({ ...opts, doStream: next.call })
           } catch (e) {
-            if (called) throw e
-            warnOnce(mw.name, 'wrapStream')
-            return opts.doStream()
+            return recover(mw.name, 'wrapStream', next, e, opts.doStream)
           }
         }
       : undefined,
   } as LanguageModelMiddleware
+}
+
+type Once<R> = { call: () => PromiseLike<R>; called: boolean; settled?: { ok: true; value: R } | { ok: false; error: unknown } }
+
+function once<R>(name: string, fn: () => PromiseLike<R>): Once<R> {
+  const state: Once<R> = {
+    called: false,
+    call: () => {
+      if (state.called) throw new Error(`middleware ${name}: next called twice`)
+      state.called = true
+      return Promise.resolve(fn()).then(
+        (value) => {
+          state.settled = { ok: true, value }
+          return value
+        },
+        (error) => {
+          state.settled = { ok: false, error }
+          throw error
+        },
+      )
+    },
+  }
+  return state
+}
+
+function recover<R>(name: string, phase: string, next: Once<R>, error: unknown, fn: () => PromiseLike<R>): PromiseLike<R> | R {
+  if (!next.called) {
+    warnOnce(name, phase)
+    return fn() // звено упало до next — пропускаем его
+  }
+  if (next.settled?.ok) {
+    warnOnce(name, phase)
+    return next.settled.value // звено упало после успешного next — ответ модели сохраняем
+  }
+  throw error // упала модель (или звено вызвало next дважды) — как есть
 }
 
 /** Модель, обёрнутая всеми execution-звеньями (без звеньев — та же модель, без лишнего слоя) */
@@ -144,7 +180,9 @@ export function withExecutionMiddleware(model: LanguageModel): LanguageModel {
 
 /**
  * Подозрение на взлом промпта → цепочка начинается с более устойчивой модели (security-ai.md R9). Флаг injection
- * раньше только писался в журнал; теперь он меняет ход. Цепочку задают модели (models.ts: robust).
+ * раньше только писался в журнал; звено готово менять ход. ВНИМАНИЕ: сейчас ни у одной модели в models.ts нет
+ * пометки robust (устойчивость выбранной пары не замерена), поэтому в продакшене звено ничего не делает — оно
+ * начнёт работать, когда замер атак покажет, какая модель устойчивее, и ей поставят пометку.
  */
 registerRequestMiddleware({
   name: 'robust-first-on-injection',

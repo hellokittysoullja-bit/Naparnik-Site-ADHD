@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream, type TextStreamPart, type ToolSet } from 'ai'
 import { SentenceGuard } from '@/lib/ai/core/stream-guard'
@@ -59,12 +59,14 @@ function run(over: Partial<Parameters<typeof streamTurn>[0]> = {}) {
 }
 
 let events: HarnessEvent[] = []
+let off = () => {}
 beforeEach(() => {
   chain.steps = []
   events = []
   vi.spyOn(console, 'info').mockImplementation(() => {})
-  observe((e) => events.push(e))
+  off = observe((e) => events.push(e))
 })
+afterEach(() => off()) // наблюдатели не копятся между тестами
 
 describe('проверка по предложениям', () => {
   it('держит текст до конца предложения и выпускает проверенное', () => {

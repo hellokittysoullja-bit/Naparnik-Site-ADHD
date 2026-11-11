@@ -10,7 +10,7 @@ import type { TurnContext } from './turn'
  */
 /** cancelled — попытку отменили, потому что другая модель уже ответила (не сбой) */
 export type AttemptResult = 'ok' | 'parse' | 'timeout' | 'cancelled' | 'error' | OutputViolation
-export type TurnOutcome = 'model' | 'fallback' | 'crisis' | 'budget' | 'aborted'
+export type TurnOutcome = 'model' | 'fallback' | 'crisis' | 'aborted'
 
 export type HarnessEvent =
   | { type: 'turn.start' }
@@ -18,8 +18,16 @@ export type HarnessEvent =
   | { type: 'model.start'; model: string; hedge: boolean }
   /** первый годный кусок ответа (точка фиксации) — по нему считается задержка модели (core/latency.ts) */
   | { type: 'model.commit'; model: string; ms: number }
-  | { type: 'model.end'; model: string; ms: number; result: AttemptResult; inTokens?: number; outTokens?: number }
+  /** committed — попытка успела пройти точку фиксации (тогда ms — длительность всего потока, а не задержка) */
+  /** status — HTTP-код ошибки провайдера (429, 5xx…): по нему видно, что именно случилось, без тела ответа */
+  | {
+      type: 'model.end'; model: string; ms: number; result: AttemptResult; committed?: boolean; status?: number
+      inTokens?: number; outTokens?: number; cachedTokens?: number
+    }
   | { type: 'tool.call'; tool: string; executor: 'client' | 'server'; valid: boolean }
+  /** модель предложила запись в память (до конца хода) */
+  | { type: 'memory.proposed'; kind: string }
+  /** итог записи серверным хранилищем: сейчас только сбой (accepted: false) */
   | { type: 'memory.write'; kind: string; accepted: boolean }
   | { type: 'turn.end'; outcome: TurnOutcome; model?: string; ms: number; inTokens?: number; outTokens?: number }
 
@@ -44,11 +52,11 @@ export function emit(event: HarnessEvent, ctx: TurnContext): void {
 }
 
 /**
- * Журнал по умолчанию: одна JSON-строка на ход (итог + попытки), как было в trace.ts, теперь собирается из
+ * Журнал по умолчанию: одна JSON-строка на ход (итог + попытки), теперь собирается из
  * событий. Подключается один раз при загрузке модуля ядра.
  */
 export function createTurnLogger(write: (line: string) => void = (l) => console.info(l)): Observer {
-  const open = new Map<string, { attempts: Array<{ model: string; ms: number; result: AttemptResult }>; injection?: boolean }>()
+  const open = new Map<string, { attempts: Array<{ model: string; ms: number; result: AttemptResult; status?: number; cached?: number }>; injection?: boolean }>()
   return (e, ctx) => {
     if (e.type === 'turn.start') {
       // ход без turn.end (сбой процесса посреди потока) не должен копиться вечно в тёплом экземпляре
@@ -58,7 +66,7 @@ export function createTurnLogger(write: (line: string) => void = (l) => console.
     const acc = open.get(ctx.turnId)
     if (!acc) return
     if (e.type === 'guard.input' && e.injection) acc.injection = true
-    if (e.type === 'model.end') acc.attempts.push({ model: e.model, ms: e.ms, result: e.result })
+    if (e.type === 'model.end') acc.attempts.push({ model: e.model, ms: e.ms, result: e.result, status: e.status, cached: e.cachedTokens })
     if (e.type === 'turn.end') {
       open.delete(ctx.turnId)
       write(

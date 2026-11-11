@@ -5,6 +5,9 @@
  */
 export type Channel = 'web' | 'telegram' | 'eval'
 
+/** Задачи обвязки. Опечатка в имени — ошибка компиляции, а не молчаливый маршрут по умолчанию (аудит 12.11) */
+export type TaskName = 'chat' | 'session-voice' | 'breakdown' | 'onboarding-first-step' | 'test'
+
 export type TurnContext = {
   /** уникален на ход: связывает все события журнала одного ответа */
   readonly turnId: string
@@ -12,11 +15,11 @@ export type TurnContext = {
   readonly sessionId?: string
   readonly channel: Channel
   /** имя задачи: chat, session-voice, breakdown, onboarding-suggest… */
-  readonly task: string
+  readonly task: TaskName
   readonly startedAt: number
 }
 
-export function newTurn(init: { task: string; channel?: Channel; sessionId?: string; now?: number }): TurnContext {
+export function newTurn(init: { task: TaskName; channel?: Channel; sessionId?: string; now?: number }): TurnContext {
   return Object.freeze({
     turnId: crypto.randomUUID(),
     sessionId: init.sessionId,

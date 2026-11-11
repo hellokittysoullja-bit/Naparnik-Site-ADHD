@@ -55,6 +55,28 @@ export function sanitizeUIMessages(raw: unknown[]): UIMessage[] {
   return out.slice(-WEB_LIMITS.messages)
 }
 
+/**
+ * Сколько вызовов инструментов кот сделал после последней реплики человека. Считаем по СЫРОЙ истории, до очистки:
+ * вызов с ошибкой (негодный ввод) очистка выбрасывает, но клиент AI SDK считает его завершённым и шлёт историю
+ * заново — именно такие круги и надо видеть (аудит 12.11). AI SDK дописывает каждый круг в то же сообщение кота,
+ * поэтому считаются части, а не сообщения. Потолок ограничивает честного клиента; от подделанной истории защищает
+ * лимит запросов (lib/api-guard.ts).
+ */
+export function countAutoRounds(raw: unknown[]): number {
+  let n = 0
+  for (let i = raw.length - 1; i >= 0; i--) {
+    const m = raw[i] as { role?: unknown; parts?: unknown } | null
+    if (!m || m.role !== 'assistant') break
+    if (Array.isArray(m.parts)) {
+      n += m.parts.filter((p) => {
+        const type = (p as { type?: unknown } | null)?.type
+        return typeof type === 'string' && (type.startsWith('tool-') || type === 'dynamic-tool')
+      }).length
+    }
+  }
+  return n
+}
+
 export type WebConversation = {
   conversation: ModelMessage[]
   userTexts: string[]
@@ -64,6 +86,7 @@ export type WebConversation = {
 
 /** Браузерная история → вход агента. null — после очистки нечего отвечать (400) */
 export async function fromWeb(raw: unknown[]): Promise<WebConversation | null> {
+  const autoRounds = countAutoRounds(raw)
   const clean = sanitizeUIMessages(raw)
   if (clean.length === 0) return null
   let messages: UIMessage[]
@@ -81,11 +104,5 @@ export async function fromWeb(raw: unknown[]): Promise<WebConversation | null> {
         .trim(),
     )
     .filter(Boolean)
-  // AI SDK дописывает каждый автокруг в ТО ЖЕ сообщение кота (createStreamingUIMessageState берёт последнее
-  // assistant-сообщение), поэтому считаем не сообщения, а завершённые вызовы инструментов после реплики человека
-  let autoRounds = 0
-  for (let i = messages.length - 1; i >= 0 && messages[i].role === 'assistant'; i--) {
-    autoRounds += messages[i].parts.filter((p) => p.type.startsWith('tool-')).length
-  }
   return { conversation: await convertToModelMessages(messages), userTexts, autoRounds }
 }

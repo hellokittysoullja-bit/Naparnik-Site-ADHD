@@ -27,7 +27,7 @@ const baseReq = (): TurnRequest => ({
   chain: [model('primary'), { ...model('robust'), robust: true }],
   hedgeAfterMs: 1000,
 })
-const info = (injection = false) => ({ ctx: newTurn({ task: 't' }) as ReturnType<typeof newTurn>, input: { crisis: false, injection } })
+const info = (injection = false) => ({ ctx: newTurn({ task: 'test' }) as ReturnType<typeof newTurn>, input: { crisis: false, injection } })
 
 beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -68,11 +68,11 @@ describe('middleware запроса (Hermes llm_request)', () => {
 describe('адаптивная страховка (наблюдатель + middleware)', () => {
   it('основная стабильно медленная → запасная стартует сразу; быстрая — обычная задержка', () => {
     resetLatencyForTests()
-    const ctx = newTurn({ task: 't' })
+    const ctx = newTurn({ task: 'test' })
     for (let i = 0; i < 3; i++) emit({ type: 'model.commit', model: 'primary', ms: 9000 }, ctx)
     expect(applyRequestMiddleware(baseReq(), info()).hedgeAfterMs).toBe(0)
     // задержка другой задачи не влияет (у чата фиксация — первое предложение, у разовых — весь ответ)
-    expect(applyRequestMiddleware(baseReq(), { ...info(), ctx: newTurn({ task: 'other' }) }).hedgeAfterMs).toBe(1000)
+    expect(applyRequestMiddleware(baseReq(), { ...info(), ctx: newTurn({ task: 'chat' }) }).hedgeAfterMs).toBe(1000)
     // каждый 8-й ход — проба с обычной задержкой
     const seen = Array.from({ length: 8 }, () => applyRequestMiddleware(baseReq(), info()).hedgeAfterMs)
     expect(seen).toContain(1000)
@@ -82,8 +82,8 @@ describe('адаптивная страховка (наблюдатель + midd
   })
   it('проигранная гонка без истории не делает модель «быстрой»', () => {
     resetLatencyForTests()
-    emit({ type: 'model.end', model: 'primary', ms: 300, result: 'cancelled' }, newTurn({ task: 't' }))
-    expect(latencyOf('t', 'primary')).toBeUndefined()
+    emit({ type: 'model.end', model: 'primary', ms: 300, result: 'cancelled' }, newTurn({ task: 'test' }))
+    expect(latencyOf('test', 'primary')).toBeUndefined()
   })
 })
 
@@ -115,15 +115,24 @@ describe('middleware исполнения (Hermes llm_execution)', () => {
     await expect(call(withExecutionMiddleware(failing))).rejects.toThrow('провайдер упал')
     off()
   })
-  it('next вызывается не больше одного раза', async () => {
+  it('next одноразовый: второй вызов — сбой звена, модель вызвана один раз, её ответ сохранён', async () => {
     const off = registerExecutionMiddleware({
       name: 'twice',
       wrap: { wrapStream: async ({ doStream }) => { await doStream(); return doStream() } },
     })
     const base = streamOk()
-    await expect(call(withExecutionMiddleware(base))).rejects.toThrow(/twice/)
+    await expect(call(withExecutionMiddleware(base))).resolves.toBeTruthy()
     off()
     expect(base.doStreamCalls).toHaveLength(1)
+  })
+  it('звено упало после успешного next — ответ модели не теряется (Hermes _run_execution_chain)', async () => {
+    const off = registerExecutionMiddleware({
+      name: 'late-fail',
+      wrap: { wrapStream: async ({ doStream }) => { await doStream(); throw new Error('после next') } },
+    })
+    const base = streamOk()
+    await expect(call(withExecutionMiddleware(base))).resolves.toHaveProperty('stream')
+    off()
   })
 })
 
@@ -271,7 +280,7 @@ describe('маршруты задач (Hermes: свой маршрут у каж
     vi.stubEnv('ANYMODEL_API_KEY', 'test-key')
     const { modelChain, resetModelsForTests } = await vi.importActual<typeof import('@/lib/ai/models')>('@/lib/ai/models')
     resetModelsForTests()
-    for (const task of ['chat', 'session-voice', 'breakdown', 'onboarding-first-step']) {
+    for (const task of ['chat', 'session-voice', 'breakdown', 'onboarding-first-step'] as const) {
       const c = modelChain(task)
       expect(c.map((s) => s.id)).toEqual(['gc/gemini-2.5-flash', 'ds/deepseek-v4-flash'])
     }

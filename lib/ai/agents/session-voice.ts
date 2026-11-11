@@ -1,6 +1,6 @@
 import { dataMessage } from '../context'
-import type { TurnContext } from '../core/turn'
-import { runTurn } from '../harness'
+import { newTurn, type TurnContext } from '../core/turn'
+import { runTurn } from '../core/run-turn'
 import { sessionVoicePresets } from '@/lib/scripted-companion'
 
 /**
@@ -36,8 +36,7 @@ export async function sessionVoice(input: {
     return presets ? presets[input.task.length % presets.length] : null
   }
   const { value } = await runTurn<string | null>({
-    task: 'session-voice',
-    ctx: input.ctx,
+    ctx: input.ctx ?? newTurn({ task: 'session-voice' }),
     system: sessionVoiceSystem(input.moment),
     data: dataMessage({ Дело: input.task, 'Длина сессии, минут': input.minutes }),
     userTexts: [input.task],

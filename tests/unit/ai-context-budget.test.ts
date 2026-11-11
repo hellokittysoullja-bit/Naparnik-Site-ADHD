@@ -24,13 +24,13 @@ describe('бюджет контекста (Hermes context_compressor: подре
     expect(JSON.stringify(out[5])).toContain('Запомнил')
   })
   it('отрезает начало по репликам человека: хвост целиком, пары вызов/результат не рвутся', () => {
-    const ms = [user(long(300)), cat(long(300)), user('дело'), call('9'), result('9'), cat('ок'), user('что дальше?')]
-    const out = fitConversation(ms, 150)
-    expect(out[0].role).toBe('user')
-    expect(out.at(-1)).toEqual(user('что дальше?'))
+    const tail = [user('дело'), call('9'), result('9', 'Запомнил.'), cat('ок'), user('что дальше?')]
+    const ms = [user(long(300)), cat(long(300)), ...tail]
+    const budget = tail.reduce((n, m) => n + estimateTokens(m), 0) + 5 // ровно хвост влезает, начало — нет
+    const out = fitConversation(ms, budget)
+    expect(out).toEqual(tail)
     const roles = out.map((m) => m.role)
-    const toolAt = roles.indexOf('tool')
-    if (toolAt >= 0) expect(roles[toolAt - 1]).toBe('assistant') // результат не без своего вызова
+    expect(roles[roles.indexOf('tool') - 1]).toBe('assistant') // результат стоит сразу за своим вызовом
   })
   it('даже огромная последняя реплика человека остаётся', () => {
     const ms = [user('старое'), cat('ответ'), user(long(5000))]

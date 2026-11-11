@@ -29,18 +29,21 @@ const config = [
   {
     // Единственный вход к модели — обвязка lib/ai (research/20-ai-harness/security-ai.md R2): прямой вызов
     // модели из маршрута или экрана обходит кризисный ответ, проверку выхода, страховку моделей и журнал.
-    files: ["app/**", "components/**", "lib/**", "hooks/**"],
-    ignores: ["lib/ai/**"],
+    files: ["**/*.{ts,tsx,mjs}"],
+    ignores: ["lib/ai/**", "evals/**", "tests/**", "e2e/**", "design/**", "scripts/**"],
     rules: {
       "no-restricted-imports": [
         "error",
         {
           paths: [
-            { name: "ai", importNames: ["generateText", "streamText", "generateObject", "streamObject", "ToolLoopAgent"], message: "Модель — только через lib/ai (runTurn/chatTurn)." },
-            { name: "@ai-sdk/google", message: "Провайдеры — только в lib/ai/models.ts." },
-            { name: "@ai-sdk/openai-compatible", message: "Провайдеры — только в lib/ai/models.ts." },
-            { name: "@ai-sdk/gateway", message: "Провайдеры — только в lib/ai/models.ts." },
+            {
+              name: "ai",
+              importNames: ["generateText", "streamText", "generateObject", "streamObject", "ToolLoopAgent", "Experimental_Agent", "embed", "embedMany", "wrapLanguageModel"],
+              message: "Модель — только через lib/ai (runTurn/chatTurn).",
+            },
           ],
+          // любой провайдер, включая ещё не установленные (@ai-sdk/anthropic, @ai-sdk/openai…)
+          patterns: [{ group: ["@ai-sdk/*", "!@ai-sdk/react"], message: "Провайдеры — только в lib/ai/models.ts." }],
         },
       ],
     },

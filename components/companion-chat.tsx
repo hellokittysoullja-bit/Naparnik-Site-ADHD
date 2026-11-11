@@ -44,7 +44,7 @@ import {
   type MemoryContext,
 } from '@/lib/memory'
 import { scriptedReply } from '@/lib/scripted-companion'
-import { TOOL_REFUSED, rememberFactInput, savePlanInput } from '@/lib/ai/tools/catalog'
+import { TOOL_REFUSED, rememberFactInput, savePlanInput, startFocusInput, tools } from '@/lib/ai/tools/catalog'
 import { useClientMount } from '@/hooks/use-client-mount'
 import type { UIMessage } from 'ai'
 
@@ -339,57 +339,43 @@ export function CompanionChat({
       if (toolCall.dynamic) return
 
       // Устройство — последний исполнитель инструмента, значит проверяет и оно, той же схемой, что сервер
-      // (lib/ai/tools/catalog.ts; security-ai.md R5, «complete mediation»). Негодный вызов не пишет в память, но
-      // ответ инструменту даётся всегда — иначе чат ждал бы его вечно.
-      const refuse = (tool: 'savePlan' | 'rememberFact'): void => {
-        void addToolOutput({ tool, toolCallId: toolCall.toolCallId, output: TOOL_REFUSED })
-      }
-
-      if (toolCall.toolName === 'savePlan') {
-        const parsed = savePlanInput.safeParse(toolCall.input)
-        if (!parsed.success) {
-          refuse('savePlan')
-          return
-        }
-        const { task, firstStep, startTime } = parsed.data
-        savePlan({ task, firstStep, startTime }).then(async () => {
-          const fresh = await buildMemoryContext()
-          memoryRef.current = fresh
-          // Чипы читают память из state — без этого «Поехали: <первый шаг>»
-          // не появится до перезагрузки, хотя план уже сохранён.
-          setMemoryCtx(fresh)
-          onPlanSaved?.()
-          addToolOutput({
-            tool: 'savePlan',
-            toolCallId: toolCall.toolCallId,
-            output: 'План сохранён. Утром напомнишь про первый шаг.',
-          })
-        })
-      }
-
-      if (toolCall.toolName === 'rememberFact') {
-        const parsed = rememberFactInput.safeParse(toolCall.input)
-        if (!parsed.success) {
-          refuse('rememberFact')
-          return
-        }
-        addNote(parsed.data.fact).then(async () => {
-          memoryRef.current = await buildMemoryContext()
-          addToolOutput({
-            tool: 'rememberFact',
-            toolCallId: toolCall.toolCallId,
-            output: 'Запомнил.',
-          })
-        })
-      }
-
-      if (toolCall.toolName === 'startFocus') {
-        // Карточку с кнопкой рисует разметка ниже; здесь просто подтверждаем
-        addToolOutput({
-          tool: 'startFocus',
+      // (lib/ai/tools/catalog.ts; security-ai.md R5, «complete mediation»). Ответ инструменту даётся ВСЕГДА — иначе
+      // чат ждал бы его вечно: принято → текст из каталога, не прошло схему или не записалось → отказ.
+      const name = toolCall.toolName
+      const done = (ok: boolean) =>
+        void addToolOutput({
+          tool: name as 'savePlan' | 'rememberFact' | 'startFocus',
           toolCallId: toolCall.toolCallId,
-          output: 'Кнопка «Начинаю» показана в чате.',
+          output: ok ? (tools.get(name)?.clientResult ?? TOOL_REFUSED) : TOOL_REFUSED,
         })
+
+      if (name === 'savePlan') {
+        const parsed = savePlanInput.safeParse(toolCall.input)
+        if (!parsed.success) return done(false)
+        const { task, firstStep, startTime } = parsed.data
+        savePlan({ task, firstStep, startTime })
+          .then(async () => {
+            const fresh = await buildMemoryContext()
+            memoryRef.current = fresh
+            // Чипы читают память из state — без этого «Поехали: <первый шаг>»
+            // не появится до перезагрузки, хотя план уже сохранён.
+            setMemoryCtx(fresh)
+            onPlanSaved?.()
+            done(true)
+          })
+          .catch(() => done(false))
+      } else if (name === 'rememberFact') {
+        const parsed = rememberFactInput.safeParse(toolCall.input)
+        if (!parsed.success) return done(false)
+        addNote(parsed.data.fact)
+          .then(async () => {
+            memoryRef.current = await buildMemoryContext()
+            done(true)
+          })
+          .catch(() => done(false))
+      } else if (name === 'startFocus') {
+        // Карточку с кнопкой рисует разметка ниже; здесь — проверка и подтверждение
+        done(startFocusInput.safeParse(toolCall.input).success)
       }
     },
   })

@@ -15,19 +15,23 @@ const notAfterNe = (body: string) => new RegExp(String.raw`(?<!(?<!${L})не\s(?
 
 const SHAME = [
   notAfterNe('ленив|лентя|бездельн'),
-  notAfterNe('стыдн|позор'),
+  // «стыдно» само по себе не стыдит («Стыдно бывает всем, это нормально»): ловим обращённое к человеку
+  word(String.raw`(?:тебе|вам)\s+(?:должно\s+быть\s+)?стыдно|как\s+(?:тебе\s+)?не\s+стыдно|не\s+стыдно\s*\?|постыдись|стыдись`),
+  notAfterNe('позор'),
+  word(String.raw`слабак|тряпк[аи]|нытик|хватит\s+ныть|разочарован`),
   word(String.raw`надо\s+было\s+(?:раньше|сразу|давно)`),
   notAfterNe(String.raw`долж(?:ен|на)\s+был`),
   word(String.raw`соберись|возьми\s+себя\s+в\s+руки`),
   word(String.raw`постарайся|старайся\s+лучше`),
-  word('дисциплин'),
+  notAfterNe('дисциплин'), // «тебе не нужна дисциплина — нужен первый шаг» — это поддержка
   word(String.raw`опять\s+ничего\s+не\s+сделал`),
 ]
 
 // Медицина: препараты и дозы — только врач. Кот может сказать «это вопрос к врачу», но не советовать.
 const MEDICAL = [
   word('метилфенидат|атомоксетин|риталин|страттер|аддерол|концерт[аы](?!' + L + ')|элванс|лисдексамфетамин|модафинил'),
-  new RegExp(String.raw`\d+\s*(?:мг|mg)(?!${L})|дозировк|(?<!${L})дозу(?!${L})`, 'iu'),
+  new RegExp(String.raw`\d+\s*(?:мг|mg|мкг|миллиграмм${L}*)(?!${L})|(?<!${L})миллиграмм|дозировк|(?<!${L})доз[ауы](?!${L})`, 'iu'),
+  word(String.raw`полтаблетк|пол-таблетк|(?:пропей|пропить|попей)\s+(?:курс|${L}+\s+курс)|удво(?:ить|й)\s+при[её]м`),
   word(String.raw`(?:прими|принять|пей|выпей|брось|бросить|отмени|отменить|увеличь|уменьши)\s+(?:\d+\s*)?(?:${L}+\s+)?(?:таблет|капсул|лекарств|препарат|антидепрессант)`),
 ]
 
@@ -35,8 +39,17 @@ const MEDICAL = [
 // написал сам человек («открыть Notion», «отчёт в Excel»), разрешены: кот их повторяет, это не смена языка.
 const LATIN_WORDS = /(?<![a-z])[a-z]{3,}(?![a-z])/gi
 
+// Названия, которые по-русски пишут латиницей всегда: человек сказал «пдф» / «ютуб», кот вправе написать PDF /
+// YouTube — это не смена языка (аудит 12.11: без списка каждая такая реплика уходила в заготовку)
+const COMMON_LATIN: ReadonlySet<string> = new Set(
+  'pdf youtube pomodoro telegram adhd wifi excel word notion google zoom email whatsapp todoist figma github iphone android mac windows tiktok instagram docs powerpoint slack trello obsidian gmail chrome safari doc docx xls xlsx ppt pptx txt csv png jpg jpeg zip'.split(' '),
+)
+
 function foreignWord(text: string, echo: ReadonlySet<string>): boolean {
-  for (const m of text.matchAll(LATIN_WORDS)) if (!echo.has(m[0].toLowerCase())) return true
+  for (const m of text.matchAll(LATIN_WORDS)) {
+    const w = m[0].toLowerCase()
+    if (!echo.has(w) && !COMMON_LATIN.has(w)) return true
+  }
   return false
 }
 
@@ -48,22 +61,50 @@ export function echoWords(texts: readonly string[]): ReadonlySet<string> {
 }
 
 // Ссылки и упоминания: вывод кота никогда не становится адресом (security-ai.md R1/R7 — у бота превью ссылок
-// превратило бы ответ в запрос наружу, «смертельная тройка» Willison)
-const LINK = new RegExp(String.raw`https?:\/\/|www\.|(?<![\p{L}\d])[\p{L}\d-]+\.(?:ru|com|org|net|io|me|рф|su|app|dev|онлайн|рус|москва)(?![\p{L}\d])|t\.me\/|(?<![\p{L}\d])@[a-z0-9_]{4,}`, 'iu')
+// превратило бы ответ в запрос наружу, «смертельная тройка» Willison; Telegram сам делает ссылкой голый домен).
+// Домен — любая «метка.зона»: латинская зона любая (bit.ly, evil.xyz), кириллическая — из списка (иначе «шаг.Давай»
+// без пробела считалось бы доменом). Имена файлов («отчёт.docx») — не ссылки. Слова человека (echo) это правило
+// НЕ отключают: пересланный в бот «evil xyz» не делает «evil.xyz» разрешённым.
+const FILE_EXT = 'docx?|xlsx?|pptx?|pdf|txt|md|csv|png|jpe?g|gif|zip|key|pages|numbers|mp[34]|mov|fig|psd|json|html?'
+const LINK_RULES = [
+  /https?:\/\/|www\.|t\.me\/|(?<![\p{L}\d])(?:tg|mailto):/iu,
+  /(?<![\p{L}\d])@[a-z0-9_]{4,}/iu,
+  new RegExp(String.raw`(?<![\p{L}\d.])[\p{L}\d-]{2,}\.(?!(?:${FILE_EXT})(?![\p{L}\d]))(?:[a-z]{2,24}|рф|рус|онлайн|москва|сайт|дети|бел|укр)(?![\p{L}\d])`, 'iu'),
+  // «example точка ру», «example [.] ru», «example dot ru», «example . ru»
+  /[\p{L}\d-]{2,}\s*(?:\[\.\]|\(\.\)|。|\sточка\s|\sdot\s)\s*(?:[a-z]{2,24}|ру|ком|рф)(?![\p{L}\d])/iu,
+  /[a-z\d-]{2,}\s\.\s?(?:ru|com|org|net|io|me|xyz|info|su)(?![\p{L}\d])/iu,
+]
+export const isLink = (t: string) => LINK_RULES.some((r) => r.test(t))
+
 // Телефоны: модель не называет номера сама — решение владельца 11.11: «только 112, модели номера запретить»
 // (на «дай номер, куда позвонить» модель сама назвала 051 и 103). Кризисный ответ — проверенный текст из crisis.ts,
 // через эту проверку он не идёт. Два правила:
-//  - любая последовательность из ≥ 10 цифр — это номер, где бы она ни стояла (даты и время короче);
-//  - короткий номер (2–6 цифр, кроме 112) рядом со словами «звони / номер / телефон / набери / линия» — тоже номер:
-//    «звони 103», «телефон доверия 051». Без этих слов число остаётся числом («25 минут», «3 шага»).
-const PHONE_RUN = /\+?\d[\d\s()‐-]{6,}\d/gu
-const CALL_WORD = /(?<!\p{L})(?:звон\p{L}*|позвон\p{L}*|набер\p{L}*|набир\p{L}*|номер\p{L}*|телефон\p{L}*|лини\p{L}*|горяч\p{L}*|служб\p{L}*)(?!\p{L})/iu
-// не часть дробного числа или времени («2,5», «10:30»): разделитель исключаем, только если за ним снова цифра
-const SHORT_NUMBER = /(?<!\d|\d[.,:])\d(?:[\d\s‐-]?\d){1,5}(?!\d|[.,:]\d|\s*(?:мин|минут|час|сек|шаг|раз|дн|%))/gu
-const isPhone = (t: string) => {
+//  - последовательность из ≥ 10 цифр — номер, где бы она ни стояла и чем бы ни была разделена (пробел, скобки,
+//    дефис, тире, точка, косая черта; цифры любого письма). Даты перед подсчётом убираются;
+//  - короткий номер (кроме 112) — только когда он прямо назван номером: «звони 103», «позвони в 051», «номер 103»,
+//    «телефон доверия 051», «линия 122». Число с единицей («20 слов», «в 14 ч», «в 2026 году») — не номер; число
+//    в стороне от глагола («позвони в банк до 18») — тоже (аудит 12.11: прежнее правило «звонок и любое число в
+//    одной реплике» блокировало обычные планы на вечер).
+const DATE = /(?<![\d.-])(?:\d{4}-\d{2}-\d{2}|\d{1,2}\.\d{1,2}\.\d{2,4})(?![\d.-])/g
+const PHONE_RUN = /\+?\d[\d\s().\/‐–—-]{6,}\d/gu
+const UNIT = String.raw`(?:мин|минут|час|ч|сек|шаг|раз|дн|дел|слов|строк|страниц|пункт|приседан|отжиман|год|лет|числа|руб|штук|%|₽)`
+const NUM = String.raw`(\d(?:[\d\s‐-]?\d){1,5})(?!\d|[.,:]\d|\s*${UNIT})`
+const SHORT_PHONE = [
+  new RegExp(String.raw`(?<!\p{L})(?:по)?(?:звон|набер|набир)\p{L}*\s+(?:(?:в|на|по)\s+)?(?:номер\p{L}*\s+)?${NUM}`, 'giu'),
+  new RegExp(String.raw`(?<!\p{L})(?:номер|телефон)\p{L}*(?:\s+\p{L}+){0,2}\s+${NUM}`, 'giu'),
+  new RegExp(String.raw`(?<!\p{L})(?:лини|служб)\p{L}*\s+${NUM}`, 'giu'),
+]
+const asciiDigits = (t: string) => t.replace(/\p{Nd}/gu, (d) => (d >= '0' && d <= '9' ? d : digitValue(d)))
+function digitValue(d: string): string {
+  // цифры других письменностей идут в Юникоде десятками подряд: значение — смещение от нуля своего блока
+  const cp = d.codePointAt(0)!
+  for (let zero = cp; zero > cp - 10; zero--) if (!/\p{Nd}/u.test(String.fromCodePoint(zero - 1))) return String(cp - zero)
+  return d
+}
+export const isPhone = (raw: string) => {
+  const t = asciiDigits(raw).replace(DATE, ' ')
   if ([...t.matchAll(PHONE_RUN)].some((m) => (m[0].match(/\d/g) ?? []).length >= 10)) return true
-  if (!CALL_WORD.test(t)) return false
-  return [...t.matchAll(SHORT_NUMBER)].some((m) => m[0].replace(/\D/g, '') !== '112')
+  return SHORT_PHONE.some((r) => [...t.matchAll(r)].some((m) => m[1].replace(/\D/g, '') !== '112'))
 }
 
 // Чужая личность: провайдер может подмешать свою инструкцию (замер 11.11: маршрут cc/ у AnyModel несёт системный
@@ -73,8 +114,10 @@ const isPhone = (t: string) => {
 const notNe = (body: string) => String.raw`(?<!(?<!\p{L})не\s(?:\p{L}+\s)?)` + body
 const IDENTITY = new RegExp(
   [
-    notNe(String.raw`(?<!\p{L})(?:claude|клод\p{L}*|anthropic|антропик\p{L}*|openai|chatgpt|чатгпт|gpt-?\d|deepseek|дипсик\p{L}*|gemini|гемини|qwen|llama)(?!\p{L})`),
+    notNe(String.raw`(?<!\p{L})(?:claude|клод\p{L}*|anthropic|антропик\p{L}*|openai|chatgpt|чатгпт|gpt-?\d|deepseek|дипсик\p{L}*|gemini|гемини|джемини|гигачат|gigachat|яндекс\s*гпт|yandexgpt|чат\s*гпт|qwen|llama)(?!\p{L})`),
     notNe(String.raw`(?<!\p{L})(?:языков\p{L}*|нейросетев\p{L}*|ии|ai)[\s-]+(?:модел\p{L}*|ассистент\p{L}*|помощник\p{L}*)`),
+    notNe(String.raw`(?<!\p{L})(?:искусственн\p{L}*\s+интеллект\p{L}*|нейронн\p{L}*\s+сет\p{L}*)`),
+    String.raw`(?<!\p{L})меня\s+(?:сделал|создал|разработал|обучил)\p{L}*\s+(?:в|компани\p{L}*)\s`,
     String.raw`(?<!\p{L})я\s+(?:—\s+|-\s+)?(?:всего\s+лишь\s+|просто\s+)?(?:ии|бот|нейросеть|программа|ассистент|чат-?бот|приложение)(?!\p{L})`,
   ].join('|'),
   'iu',
@@ -100,7 +143,7 @@ export function checkOutput(text: string, opts: OutputOpts): OutputVerdict {
   const vs = matchVariants(raw)
   const hit = (test: (t: string) => boolean) => vs.some(test)
   if (hit((t) => IDENTITY.test(t))) return { ok: false, reason: 'identity' }
-  if (hit((t) => LINK.test(t))) return { ok: false, reason: 'link' }
+  if (hit(isLink)) return { ok: false, reason: 'link' }
   if (hit(isPhone)) return { ok: false, reason: 'phone' }
   if (hit((t) => MEDICAL.some((r) => r.test(t)))) return { ok: false, reason: 'medical' }
   if (hit((t) => SHAME.some((r) => r.test(t)))) return { ok: false, reason: 'shame' }
@@ -115,7 +158,8 @@ export function tidy(text: string): string {
   return text
     .trim()
     .replace(/\*\*(.+?)\*\*/g, '*$1*')
-    .replace(/^["«„]([\s\S]*)["»“]$/, '$1')
+    // кавычки снимаются, только если обёрнута вся реплика: «A» — шаг «B» остаётся как есть
+    .replace(/^["«„]([^"«»„“]*)["»“]$/, '$1')
     .trim()
 }
 
@@ -151,4 +195,24 @@ function leaks(normalized: string, print: LeakPrint): boolean {
   const w = normalized.match(/[\p{L}\d]+/gu) ?? []
   for (let i = 0; i + SHINGLE <= w.length; i++) if (print.has(w.slice(i, i + SHINGLE).join(' '))) return true
   return false
+}
+
+/** человек сам говорит о лекарствах («спросить врача про риталин») — тогда его слова в плане не нарушение */
+export function mentionsMedical(texts: readonly string[]): boolean {
+  const vs = matchVariants(texts.join('\n'))
+  return vs.some((t) => MEDICAL.some((r) => r.test(t)))
+}
+
+/**
+ * Аргументы инструмента — тоже вывод кота: их увидит человек (карточка плана, кнопка, «запомнил: …») и следующие
+ * промпты. Каждая строка проходит те же правила, что текст ответа (без утечки и общей длины). Дело человека кот
+ * записывает его словами, поэтому латинские слова человека (echo) и названные им самим лекарства допустимы.
+ */
+export function toolArgsOk(input: unknown, person: { echo?: ReadonlySet<string>; medical?: boolean } = {}): boolean {
+  if (!input || typeof input !== 'object') return true
+  return Object.values(input as Record<string, unknown>).every((v) => {
+    if (typeof v !== 'string') return true
+    const verdict = checkOutput(v, { maxChars: 400, echo: person.echo })
+    return verdict.ok || (verdict.reason === 'medical' && person.medical === true)
+  })
 }

@@ -17,6 +17,12 @@ const HOMO: Readonly<Record<string, string>> = {
   a: 'а', e: 'е', o: 'о', p: 'р', c: 'с', x: 'х', y: 'у', k: 'к', m: 'м', t: 'т', h: 'н', b: 'в', u: 'и', '3': 'з', '0': 'о', '6': 'б',
 }
 
+// греческие и армянские двойники кириллицы — всегда (в русском тексте им взяться неоткуда)
+const FOREIGN: Readonly<Record<string, string>> = {
+  α: 'а', ο: 'о', ε: 'е', ρ: 'р', κ: 'к', χ: 'х', υ: 'у', τ: 'т', μ: 'м', ν: 'в', ι: 'и', ϲ: 'с', օ: 'о', ս: 'и', հ: 'н',
+}
+const FOREIGN_RE = /[αοερκχυτμνιϲօսհ]/g
+
 // латинские буквы, прилипшие к кириллице, — всегда; цифры — только внутри кириллического слова («с0бой»), иначе
 // «20мг» стало бы «2омг» и обошло правило о дозах
 const MIXED = /[a-z]+(?=\p{Script=Cyrillic})|(?<=\p{Script=Cyrillic})[a-z]+|(?<=\p{Script=Cyrillic})[036]+(?=\p{Script=Cyrillic})/gu
@@ -32,6 +38,7 @@ export function forMatching(s: string, invisibleAs = ''): string {
     .replace(INVISIBLE, invisibleAs)
     .toLowerCase()
     .replace(/ё/g, 'е')
+    .replace(FOREIGN_RE, (ch) => FOREIGN[ch] ?? ch)
     .replace(MIXED, (run) => [...run].map((ch) => HOMO[ch] ?? ch).join(''))
     .replace(/\s+/g, ' ')
 }
@@ -47,5 +54,12 @@ export function matchVariants(s: string): string[] {
   // кириллица — ещё одно прочтение, где ВСЕ двойники стали кириллицей. Английские правила (ignore previous…) от
   // этого не страдают: они совпадают с другими прочтениями
   if (/\p{Script=Cyrillic}/u.test(glued)) out.add(glued.replace(/[a-z]/g, (ch) => HOMO[ch] ?? ch))
+  // знаки вместо пробелов: «не-хочу-жить», «не.хочу.жить»
+  out.add(glued.replace(/[^\p{L}\p{N}]+/gu, ' ').trim())
   return [...out]
+}
+
+/** Слитное прочтение — без пробелов и знаков: «нехочужить», «н е х о ч у ж и т ь». Правилам нужны слитные шаблоны */
+export function despaced(s: string): string {
+  return forMatching(s).replace(/[^\p{L}\p{N}]+/gu, '')
 }

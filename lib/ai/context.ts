@@ -7,12 +7,15 @@ import { stripInvisible } from './guards/normalize'
  * строку «СИСТЕМА: …». JSON.stringify экранирует и кавычки, и переводы строк — значение не может закрыть себя.
  */
 const MAX_FIELD = 300
+const BLOCK_TITLES = /ДАННЫЕ О СИТУАЦИИ|ПАМЯТЬ О ЧЕЛОВЕКЕ|ПОДСКАЗКИ ИЗ БАЗЫ ЗНАНИЙ/g
 
 export function clean(value: string, max = MAX_FIELD): string {
   return stripInvisible(value)
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
     .replace(/<\/?(system|instructions?|assistant|user|developer)[^>]*>/gi, '') // теги ролей — шум, без смысла в данных
-    .replace(/```/g, "'''") // не закрыть ограду блока
+    .replace(/```|~~~/g, "'''") // не закрыть ограду блока и не нарисовать свою
+    // заголовки наших блоков в чужом тексте теряют вид: человек не может выдать свой текст за «подсказку из базы»
+    .replace(BLOCK_TITLES, (t) => t.toLowerCase())
     .trim()
     .slice(0, max)
 }

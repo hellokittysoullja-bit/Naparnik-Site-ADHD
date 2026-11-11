@@ -13,7 +13,12 @@ export function selectKnowledge(catalog: readonly KnowledgeCard[], texts: readon
   if (catalog.length === 0) return []
   const hay = forMatching(texts.join('\n'))
   return catalog
-    .map((card, order) => ({ card, order, hits: card.cues.filter((c) => hay.includes(forMatching(c))).length }))
+    .map((card, order) => ({
+      card,
+      order,
+      // пустой сигнал совпадал бы с любой репликой — такие не считаются
+      hits: card.cues.map((c) => forMatching(c)).filter((c) => c.trim().length >= 2 && hay.includes(c)).length,
+    }))
     .filter((x) => x.hits > 0)
     .sort((a, b) => b.hits - a.hits || b.card.strength - a.card.strength || a.order - b.order)
     .slice(0, limit)

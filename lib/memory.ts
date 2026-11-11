@@ -489,7 +489,9 @@ export async function markWorldSeen(): Promise<void> {
 
 // ---------- Заметки напарника ----------
 
-const MAX_NOTES = 6
+// тот же потолок, что у правил памяти обвязки (lib/ai/memory/schema.ts MEMORY_LIMITS.notes; число продублировано,
+// чтобы не тянуть zod-схему в браузер, — равенство закреплено тестом tests/unit/ai-memory.test.ts)
+export const MAX_NOTES = 6
 
 export function peekNotes(): CompanionNote[] {
   return readList(KEYS.notes, isNote)

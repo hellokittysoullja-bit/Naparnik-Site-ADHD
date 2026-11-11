@@ -1,6 +1,6 @@
 import { dataMessage } from '../context'
-import type { TurnContext } from '../core/turn'
-import { runTurn } from '../harness'
+import { newTurn, type TurnContext } from '../core/turn'
+import { runTurn } from '../core/run-turn'
 
 /**
  * Дробление задачи на три крошечных шага (task initiation — главный барьер при СДВГ). Используется Фокусом
@@ -44,8 +44,7 @@ export async function breakdown(input: {
   signal?: AbortSignal
 }): Promise<BreakdownResult> {
   const { value, outcome } = await runTurn<BreakdownResult>({
-    task: 'breakdown',
-    ctx: input.ctx,
+    ctx: input.ctx ?? newTurn({ task: 'breakdown' }),
     system: BREAKDOWN_SYSTEM,
     data: dataMessage({ Дело: input.task, ...input.context }),
     userTexts: [input.task],

@@ -98,3 +98,15 @@ describe('memory: переписка', () => {
     expect(await memory.getChatMessages()).toEqual([ok])
   })
 })
+
+describe('memory: заметки кота без дублей (тот же ключ, что у правил памяти обвязки)', () => {
+  it('тот же факт иначе написанным не записывается второй раз; потолок — последние шесть', async () => {
+    await memory.addNote('Пишет диплом.')
+    await memory.addNote('пишет  ДИПЛОМ')
+    expect((await memory.getNotes()).map((n) => n.text)).toEqual(['Пишет диплом.'])
+    for (let i = 1; i <= 7; i++) await memory.addNote(`факт ${i}`)
+    const notes = (await memory.getNotes()).map((n) => n.text)
+    expect(notes).toHaveLength(memory.MAX_NOTES)
+    expect(notes.at(-1)).toBe('факт 7')
+  })
+})

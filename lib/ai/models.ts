@@ -1,6 +1,7 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { google } from '@ai-sdk/google'
 import type { LanguageModel } from 'ai'
+import type { TaskName } from './core/turn'
 
 /**
  * Реестр моделей обвязки (research/20-ai-harness/design.md §2, «провайдеры» Hermes): задача → цепочка моделей.
@@ -64,18 +65,18 @@ const PROFILES: Record<string, Profile> = {
  * всех задач одна цепочка — так решил владелец («одна модель везде»); таблица — место, где задаче дают свою
  * модель (например, дешёвую для фоновой выжимки памяти), не трогая ядро и маршруты.
  */
-export type TaskName = 'chat' | 'session-voice' | 'breakdown' | 'onboarding-first-step'
 const ROUTES: Record<TaskName, readonly (keyof typeof PROFILES)[]> = {
+  test: ['primary', 'fallback'],
   chat: ['primary', 'fallback'],
   'session-voice': ['primary', 'fallback'],
   breakdown: ['primary', 'fallback'],
   'onboarding-first-step': ['primary', 'fallback'],
 }
 
-export function modelChain(task?: string): ModelStep[] {
+export function modelChain(task: TaskName): ModelStep[] {
   const am = anyModel()
   if (am) {
-    const route = ROUTES[task as TaskName] ?? ROUTES.chat
+    const route = ROUTES[task]
     return route.map((k) => {
       const p = PROFILES[k]
       return { id: p.id, model: am.chatModel(p.id), robust: p.robust }

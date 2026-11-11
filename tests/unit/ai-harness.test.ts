@@ -5,15 +5,18 @@ import { checkOutput, tidy } from '@/lib/ai/guards/output'
 import { clean, dataMessage } from '@/lib/ai/context'
 import { systemFor } from '@/lib/ai/prompt/assemble'
 import { parseSteps } from '@/lib/ai/agents/breakdown'
-import { runTurn } from '@/lib/ai/harness'
+import { runTurn } from '@/lib/ai/core/run-turn'
+import { newTurn } from '@/lib/ai/core/turn'
+import { simulateReadableStream } from 'ai'
 
 // Цепочка моделей подменяется в каждом тесте: сеть и ключи не нужны
 const chain = vi.hoisted(() => ({ steps: [] as Array<{ id: string; model: unknown }> }))
 vi.mock('@/lib/ai/models', () => ({ modelChain: () => chain.steps }))
 
+/** модель, отвечающая одним текстом через delayMs; отмена честно обрывает ожидание */
 function reply(text: string, delayMs = 0) {
   return new MockLanguageModelV4({
-    doGenerate: async (opts) => {
+    doStream: async (opts) => {
       if (delayMs) {
         await new Promise<void>((ok, fail) => {
           const t = setTimeout(ok, delayMs)
@@ -24,22 +27,30 @@ function reply(text: string, delayMs = 0) {
         })
       }
       return {
-        content: [{ type: 'text', text }],
-        finishReason: { unified: 'stop', raw: 'stop' },
-        usage: {
-          inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
-          outputTokens: { total: 5, text: 5, reasoning: 0 },
-        },
-        warnings: [],
+        stream: simulateReadableStream({
+          chunks: [
+            { type: 'stream-start', warnings: [] },
+            { type: 'text-start', id: 't' },
+            { type: 'text-delta', id: 't', delta: text },
+            { type: 'text-end', id: 't' },
+            {
+              type: 'finish',
+              finishReason: { unified: 'stop', raw: 'stop' },
+              usage: { inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 5, text: 5, reasoning: 0 } },
+            },
+          ] as never[],
+        }),
       }
     },
   })
 }
 
 const base = {
-  task: 'test',
+  get ctx() {
+    return newTurn({ task: 'test' })
+  },
   system: 'Режим: тест.',
-  prompt: 'Скажи фразу.',
+  data: dataMessage({ Дело: 'убрать на кухне' }),
   userTexts: ['убрать на кухне'],
   timeoutMs: 300,
   maxOutputTokens: 50,
@@ -170,7 +181,7 @@ describe('ход обвязки', () => {
     const r = await runTurn({ ...base, userTexts: ['не хочу жить'] })
     expect(r.outcome).toBe('crisis')
     expect(r.value).toMatch(/112/)
-    expect(m.doGenerateCalls.length).toBe(0)
+    expect(m.doStreamCalls.length).toBe(0)
   })
   it('нет моделей (нет ключей) → заготовка', async () => {
     expect((await runTurn(base)).outcome).toBe('fallback')
@@ -179,8 +190,8 @@ describe('ход обвязки', () => {
     const m = reply('Я рядом.')
     chain.steps = [{ id: 'a', model: m }]
     await runTurn({ ...base, data: dataMessage({ 'Дело': 'секретное дело' }) })
-    const call = JSON.stringify(m.doGenerateCalls[0].prompt)
-    const system = m.doGenerateCalls[0].prompt.find((p) => p.role === 'system')
+    const call = JSON.stringify(m.doStreamCalls[0].prompt)
+    const system = m.doStreamCalls[0].prompt.find((p) => p.role === 'system')
     expect(JSON.stringify(system)).not.toMatch(/секретное дело/)
     expect(call).toMatch(/секретное дело/)
   })
