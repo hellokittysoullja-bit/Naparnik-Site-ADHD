@@ -64,6 +64,46 @@ test('шаги: «не знаю, с чего» — первым «Выписат
   await expect(page.getByRole('textbox', { name: 'Свой первый шаг' })).toHaveValue('Собрать 10 вещей на место')
 })
 
+test('«Подскажи» со своим делом — первый шаг от обвязки; без ответа — подсказка сферы', async ({ page }) => {
+  const calls: unknown[] = []
+  let answer: object = { steps: ['Открыть файл диплома', 'Написать заголовок главы', 'Сохранить'], source: 'model' }
+  await page.route('**/api/breakdown', async (route) => {
+    calls.push(route.request().postDataJSON())
+    await route.fulfill({ json: answer })
+  })
+  await page.goto('/app/start?step=6&s=study&h=week&b=where&m=relief&c=hour')
+  await expect(page.getByText('Это твоя оценка, не наша.')).toBeVisible()
+  await page.waitForTimeout(600)
+  await page.getByRole('button', { name: 'Продолжить' }).click()
+  await page.getByRole('radio', { name: 'Своё дело…' }).click()
+  const field = page.getByRole('textbox', { name: 'Свой первый шаг' })
+  await field.fill('написать диплом')
+  await page.getByRole('button', { name: 'Подскажи' }).click()
+  await expect(field).toHaveValue('Открыть файл диплома')
+  // дело человека и контекст знакомства ушли в обвязку (сфера и помеха — подписи ответов, не ключи)
+  expect(calls[0]).toMatchObject({ task: 'написать диплом', context: { sphere: expect.any(String), blocker: expect.any(String) } })
+  // обвязка вернула заготовку — экран берёт свою подсказку сферы, а не «Открыть то, что нужно для дела»
+  answer = { steps: ['Открыть то, что нужно для дела', 'x', 'y'], source: 'fallback' }
+  await field.fill('сдать курсовую')
+  await page.getByRole('button', { name: 'Подскажи' }).click()
+  await expect(field).not.toHaveValue('сдать курсовую')
+  await expect(field).not.toHaveValue('Открыть то, что нужно для дела')
+  // поздний ответ не перезаписывает то, что человек успел поменять (находка независимой проверки)
+  let release: () => void = () => {}
+  await page.unroute('**/api/breakdown')
+  await page.route('**/api/breakdown', async (route) => {
+    await new Promise<void>((r) => (release = r))
+    await route.fulfill({ json: { steps: ['Открыть файл курсовой', 'b', 'c'], source: 'model' } }).catch(() => {})
+  })
+  await field.fill('сдать курсовую')
+  await page.getByRole('button', { name: 'Подскажи' }).click()
+  await expect(page.getByRole('button', { name: 'Думаю…' })).toBeVisible()
+  await field.fill('моё своё')
+  release()
+  await page.waitForTimeout(400)
+  await expect(field).toHaveValue('моё своё')
+})
+
 test('после первой сессии: «Как было?» → сохранить остров (честно) → «Когда завтра?» → прогноз → календарь → Дом', async ({ page }) => {
   await page.goto('/app/start/after?m=relief&b=fear&s=work')
   await expect(page.getByText('Ты начал(а). Это самое трудное — и это уже позади. Как было?')).toBeVisible()

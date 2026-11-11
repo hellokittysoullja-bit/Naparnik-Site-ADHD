@@ -5,6 +5,7 @@
  * Интерфейс намеренно асинхронный: замена на базу данных позже —
  * это замена реализации, а не рефакторинг всех вызовов.
  */
+import { factKey } from '@/lib/ai/memory/fact-key'
 
 export type Plan = {
   /** Дата, на которую положен план, YYYY-MM-DD */
@@ -495,7 +496,9 @@ export async function markWorldSeen(): Promise<void> {
 
 // ---------- Заметки напарника ----------
 
-const MAX_NOTES = 6
+// тот же потолок, что у правил памяти обвязки (lib/ai/memory/schema.ts MEMORY_LIMITS.notes; число продублировано,
+// чтобы не тянуть zod-схему в браузер, — равенство закреплено тестом tests/unit/ai-memory.test.ts)
+export const MAX_NOTES = 6
 
 export function peekNotes(): CompanionNote[] {
   return readList(KEYS.notes, isNote)
@@ -510,7 +513,10 @@ export async function addNote(text: string): Promise<void> {
   // потолок как у сервера (MemorySchema, 300): заметку пишет модель, длину она не ограничивает сама
   const trimmed = text.trim().slice(0, 300)
   if (!trimmed) return
-  if (notes.some((n) => n.text === trimmed)) return
+  // тот же ключ сравнения, что у правил памяти обвязки (lib/ai/memory/policy.ts): «Пишет диплом.» и «пишет
+  // диплом» — один факт, на устройстве и на сервере одинаково
+  const key = factKey(trimmed)
+  if (!key || notes.some((n) => factKey(n.text) === key)) return
   notes.push({ text: trimmed, createdAt: new Date().toISOString() })
   write(KEYS.notes, notes.slice(-MAX_NOTES))
 }

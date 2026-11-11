@@ -40,6 +40,7 @@ import { withAttribution } from '@/lib/visitor'
 import { getPatterns, peekStarts } from '@/lib/memory'
 import { useClientMount } from '@/hooks/use-client-mount'
 import { hapticThreshold } from '@/lib/haptics'
+import { firstStepFor } from '@/lib/ai-client'
 import {
   BLOCKERS,
   COSTS,
@@ -182,6 +183,68 @@ export function FirstRun() {
   }
   useEffect(() => () => window.clearTimeout(reactTimer.current), [])
 
+  // «Подскажи» через обвязку (lib/ai): своё дело в поле → первый крошечный шаг для НЕГО; поле пустое, в нём уже
+  // подсказка из списка или обвязка не ответила — мгновенная подсказка сферы, как раньше
+  const [thinking, setThinking] = useState(false)
+  const [careReply, setCareReply] = useState<string | null>(null)
+  const suggestAbort = useRef<AbortController | null>(null)
+  useEffect(() => () => suggestAbort.current?.abort(), [])
+  // текущее значение поля для ответа, пришедшего после ожидания (замыкание suggest видит старое)
+  const customRef = useRef(custom)
+  useEffect(() => {
+    customRef.current = custom
+  }, [custom])
+  function cancelSuggest() {
+    suggestAbort.current?.abort()
+    setThinking(false)
+    setCareReply(null)
+  }
+  // любой уход с шага («Назад», «Продолжить», кнопка браузера) отменяет подсказку и убирает бережный ответ:
+  // поздний ответ не должен прийти на другой шаг, а ответ на кризисный текст — висеть при возврате
+  const suggestStepRef = useRef(state.step)
+  useEffect(() => {
+    if (suggestStepRef.current === state.step) return
+    suggestStepRef.current = state.step
+    suggestAbort.current?.abort()
+    setThinking(false)
+    setCareReply(null)
+  }, [state.step])
+  async function suggest() {
+    if (thinking) return // кнопка остаётся доступной (фокус клавиатуры не теряется), повторное нажатие не шлёт запрос
+    hapticThreshold()
+    setNudge(false)
+    setCareReply(null)
+    const typed = custom.trim()
+    const local = () => suggestStep(state.sphere, state.blocker, typed || state.firstStep)
+    if (typed.length < 3 || stepsFor(state.sphere, state.blocker).includes(typed)) {
+      catReact('happy', 'wave', 700)
+      setCustom(local())
+      return
+    }
+    suggestAbort.current?.abort()
+    const ctrl = new AbortController()
+    suggestAbort.current = ctrl
+    setThinking(true)
+    setReact({ face: 'focused', action: 'think' })
+    const answer = await firstStepFor(
+      typed,
+      { sphere: SPHERES.find((x) => x.key === state.sphere)?.label, blocker: BLOCKERS.find((b) => b.key === state.blocker)?.label },
+      { signal: ctrl.signal },
+    )
+    if (ctrl.signal.aborted) return
+    setThinking(false)
+    setReact(null)
+    // человек за время ожидания поменял поле или ушёл с шага — его текст важнее подсказки
+    if (customRef.current.trim() !== typed) return
+    if (answer?.kind === 'care') {
+      setCareReply(answer.reply)
+      setCustom('') // кризисный текст не становится подписью сессии и плана
+      return
+    }
+    catReact('happy', 'wave', 700)
+    setCustom(answer?.step ?? local())
+  }
+
   const buildTimer = useRef(0)
   useEffect(() => () => window.clearTimeout(buildTimer.current), [])
 
@@ -313,6 +376,7 @@ export function FirstRun() {
   const lastGoRef = useRef(0)
   function next() {
     if (building || clock() - lastGoRef.current < 400) return
+    if (thinking) cancelSuggest() // ушли с шага — поздняя подсказка ничего не перезапишет
     if (!canContinue) {
       // Не немая кнопка: кот мягко подсказывает, что сделать
       setNudge(true)
@@ -748,6 +812,7 @@ export function FirstRun() {
                         autoFocus
                         value={custom}
                         onChange={(e) => {
+                          if (thinking || careReply) cancelSuggest()
                           setCustom(e.target.value)
                           setNudge(false)
                         }}
@@ -775,19 +840,18 @@ export function FirstRun() {
                     {customOpen && (
                     <button
                       type="button"
-                      onClick={() => {
-                        hapticThreshold()
-                        catReact('happy', 'wave', 700)
-                        setCustom(suggestStep(state.sphere, state.blocker, (customOpen && custom.trim()) || state.firstStep))
-                        setCustomOpen(true)
-                        setNudge(false)
-                      }}
-                      className="press flex min-h-11 items-center gap-2 self-start rounded-full px-3 text-[15px] font-semibold text-muted-foreground"
+                      aria-disabled={thinking}
+                      onClick={suggest}
+                      className="press flex min-h-11 items-center gap-2 self-start rounded-full px-3 text-[15px] font-semibold text-muted-foreground aria-disabled:opacity-70"
                     >
                       <Dices className="size-[18px]" aria-hidden="true" />
-                      Подскажи
+                      {thinking ? 'Думаю…' : 'Подскажи'}
                     </button>
                     )}
+                    {/* живая область стоит в разметке всегда: экранный диктор читает и «Думаю…», и бережный ответ */}
+                    <p role="status" className={careReply ? 'text-[15px] leading-snug text-foreground/90' : 'sr-only'}>
+                      {careReply ?? (thinking ? 'Думаю…' : '')}
+                    </p>
                   </>
                 )}
               </div>

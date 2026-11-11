@@ -27,6 +27,28 @@ const config = [
     rules: { "react/jsx-key": "off" },
   },
   {
+    // Единственный вход к модели — обвязка lib/ai (research/20-ai-harness/security-ai.md R2): прямой вызов
+    // модели из маршрута или экрана обходит кризисный ответ, проверку выхода, страховку моделей и журнал.
+    files: ["**/*.{ts,tsx,mjs}"],
+    ignores: ["lib/ai/**", "evals/**", "tests/**", "e2e/**", "design/**", "scripts/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "ai",
+              importNames: ["generateText", "streamText", "generateObject", "streamObject", "ToolLoopAgent", "Experimental_Agent", "embed", "embedMany", "wrapLanguageModel"],
+              message: "Модель — только через lib/ai (runTurn/chatTurn).",
+            },
+          ],
+          // любой провайдер, включая ещё не установленные (@ai-sdk/anthropic, @ai-sdk/openai…)
+          patterns: [{ group: ["@ai-sdk/*", "!@ai-sdk/react"], message: "Провайдеры — только в lib/ai/models.ts." }],
+        },
+      ],
+    },
+  },
+  {
     ignores: [".next/**", "node_modules/**", "next-env.d.ts", "design/**", "fonts-library/**", "public/**", "lib/asset-versions.ts", "components/mascot-poster-inline.ts", "e2e-report/**", "test-results/**"],
   },
 ];
