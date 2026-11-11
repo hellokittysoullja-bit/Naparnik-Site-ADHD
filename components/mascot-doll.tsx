@@ -25,12 +25,13 @@ type Props = {
   label?: string;
   className?: string;
   interactive?: boolean;
-  /** герой первого экрана: чёткий постер прямо в HTML + preload — кот виден с первой отрисовки */
-  inlinePoster?: boolean;
+  /** герой первого экрана: чёткий постер прямо в HTML (data-URI из components/mascot-poster-inline) — кот виден с первой
+   *  отрисовки. Передаётся строкой, а не флагом: иначе 37 КБ постера ехали в общем коде кота на каждую страницу
+   *  (Дом, Фокус, Мир, знакомство), где он не нужен (аудит архитектуры 11.11, −20 КБ br) */
+  inlinePoster?: string;
 };
 
 const BASE = "/mascot/doll/";
-import { MASCOT_POSTER_INLINE } from "@/components/mascot-poster-inline";
 type Rig = RigData & { eyes?: number[][]; cat?: number[] };
 let loading: Promise<Rig | null> | null = null;
 /** Риг и декодированные слои — один раз на страницу; WebGL-контекст у каждого экземпляра свой (lib/rig/renderer). */
@@ -77,7 +78,7 @@ export function MascotDoll(props: Props) {
   return <DollCanvas {...props} />;
 }
 
-function DollCanvas({ expression = "calm", action = "idle", size = 160, label, className, interactive = true, inlinePoster = false }: Props) {
+function DollCanvas({ expression = "calm", action = "idle", size = 160, label, className, interactive = true, inlinePoster }: Props) {
   const reduce = useReducedMotion();
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);   // кот: WebGL прямо здесь
@@ -267,7 +268,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
           {/* герой: чёткий кот прямо в HTML (480 px, ~37 КБ) — виден с первой отрисовки; поверх, когда
               долетит, — постер 900 px для экранов с DPR 3; остальные коты страницы — только внешний постер */}
           {inlinePoster ? (
-            <img src={MASCOT_POSTER_INLINE} alt="" draggable={false} aria-hidden
+            <img src={inlinePoster} alt="" draggable={false} aria-hidden
               style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
           ) : null}
           {/* у героя внешний постер идёт обычным приоритетом картинки в кадре: первый кадр уже дал инлайн, а шрифты

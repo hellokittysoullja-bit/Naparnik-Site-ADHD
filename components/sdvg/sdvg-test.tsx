@@ -12,6 +12,7 @@ import { CatNotebook } from '@/components/sdvg/cat-notebook'
 import { notebookPage, notesOf } from '@/lib/sdvg-notebook'
 import { withAttribution } from '@/lib/visitor'
 import { trackEvent } from '@/lib/events'
+import { MASCOT_POSTER_INLINE } from "@/components/mascot-poster-inline"
 import {
   EMPTY,
   SPHERES,
@@ -843,7 +844,7 @@ function IntroCat() {
         size={249}
         label=""
         className="size-[clamp(141px,33dvh,262px)]"
-        inlinePoster
+        inlinePoster={MASCOT_POSTER_INLINE}
       />
     </button>
   )
