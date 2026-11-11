@@ -97,3 +97,27 @@ test('финал первой сессии из знакомства ведёт 
   await page.getByRole('button', { name: 'Закончить раньше' }).click()
   await expect(page.getByRole('link', { name: 'Дальше', exact: true })).toHaveAttribute('href', /\/app\/start\/after\?m=relief&b=fear&s=work/, { timeout: 15000 })
 })
+
+// iPhone владельца (11.11): после удержания кнопка навсегда оставалась на «Поехали» — знакомство синхронизировало
+// свой адрес (replaceState) посреди перехода, и Next молча отменял router.push. Держим пальцем, как человек.
+for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+  test(`удержание «Начать» открывает сессию за секунду (${reducedMotion})`, async ({ browser }) => {
+    const ctx = await browser.newContext({ reducedMotion, viewport: { width: 390, height: 844 }, hasTouch: true })
+    const page = await ctx.newPage()
+    await page.goto('/app/start?step=7&s=home&h=month&b=fear&m=relief&c=q15')
+    await page.getByRole('radiogroup', { name: 'Первый шаг' }).getByRole('radio').first().click()
+    await page.waitForTimeout(500)
+    await page.getByRole('button', { name: 'Продолжить' }).click()
+    await page.getByRole('button', { name: /Начать первые/ }).click({ timeout: 8000 })
+    const hold = page.getByRole('button', { name: 'Начать первую сессию' })
+    await hold.waitFor()
+    await page.waitForTimeout(500)
+    const box = (await hold.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.waitForTimeout(1100)
+    await page.mouse.up()
+    await expect(page).toHaveURL(/\/app\/session\?.*from=onb/, { timeout: 1500 })
+    await ctx.close()
+  })
+}
