@@ -34,16 +34,18 @@ function req(body: unknown) {
 }
 
 type Call = { op?: string; category?: string; ref?: string; text?: string; evidence?: string }
-async function readChat(res: Response): Promise<{ text: string; calls: Call[] }> {
+async function readChat(res: Response): Promise<{ text: string; calls: Call[]; unavailable: boolean }> {
   let text = ''
+  let unavailable = false
   const calls: Call[] = []
   for (const line of (await res.text()).split('\n')) {
     if (!line.startsWith('data: {')) continue
     const c = JSON.parse(line.slice(6)) as { type: string; delta?: string; toolName?: string; input?: Call }
     if (c.type === 'text-delta') text += c.delta ?? ''
     if (c.type === 'tool-input-available' && c.toolName === 'memory' && c.input) calls.push(c.input)
+    if (c.type === 'error') unavailable = true
   }
-  return { text, calls }
+  return { text, calls, unavailable }
 }
 
 type ChatCase = { name: string; text: string; facts?: Fact[]; ok: (r: { text: string; calls: Call[] }) => string | null }
@@ -87,7 +89,7 @@ const CHAT: ChatCase[] = [
     name: 'что ты помнишь — пересказывает, ничего не меняет',
     text: 'что ты обо мне помнишь?',
     facts: [TEA, DIPLOMA],
-    ok: (r) => (/диплом/i.test(r.text) && /чай/i.test(r.text) && r.calls.length === 0 ? null : 'не пересказал или поменял память'),
+    ok: (r) => (/диплом/i.test(r.text) && /ча[йяю]/i.test(r.text) && r.calls.length === 0 ? null : 'не пересказал или поменял память'),
   },
   {
     name: 'изменилось — заменяет, а не дублирует',
@@ -174,20 +176,28 @@ it('память: живые прогоны', async () => {
   vi.spyOn(console, 'info').mockImplementation(() => {})
   const rows: string[] = []
   const failed: string[] = []
+  const skipped: string[] = []
   for (const c of CHAT.filter((x) => !ONLY || ONLY.test(x.name))) {
     const t0 = Date.now()
     const r = await readChat(await chat(req(chatBody(c.text, c.facts))))
-    const verdict = c.ok(r) ?? (r.calls.every((x) => !x.text || factRejection(x.text) === null) ? null : 'запрещённое в вызове')
+    // обе модели не ответили — сбой сети или провайдера, не поведение памяти: вне счёта (как в ai-attacks.eval.ts)
+    const verdict = r.unavailable
+      ? null
+      : (c.ok(r) ?? (r.calls.every((x) => !x.text || factRejection(x.text) === null) ? null : 'запрещённое в вызове'))
     if (verdict) failed.push(c.name)
-    rows.push(`| чат | ${c.name} | ${verdict ?? 'ok'} | ${Date.now() - t0} | ${r.text.replaceAll('|', '/').replaceAll('\n', ' ')} | ${JSON.stringify(r.calls).replaceAll('|', '/')} |`)
+    if (r.unavailable) skipped.push(c.name)
+    rows.push(`| чат | ${c.name} | ${r.unavailable ? 'сбой провайдера (вне счёта)' : (verdict ?? 'ok')} | ${Date.now() - t0} | ${r.text.replaceAll('|', '/').replaceAll('\n', ' ')} | ${JSON.stringify(r.calls).replaceAll('|', '/')} |`)
   }
   for (const c of EXTRACT.filter((x) => !ONLY || ONLY.test(x.name))) {
     const t0 = Date.now()
     const res = await extract(req({ facts: c.facts ?? [], lines: c.lines, today: '2026-11-12' }))
     const { ops } = (await res.json()) as { ops: Call[] }
-    const verdict = c.ok(ops)
+    // 503 — модели не ответили (вне счёта, как сбой провайдера в чате)
+    const down = res.status === 503
+    const verdict = down ? null : c.ok(ops)
     if (verdict) failed.push(c.name)
-    rows.push(`| выжимка | ${c.name} | ${verdict ?? 'ok'} | ${Date.now() - t0} | — | ${JSON.stringify(ops).replaceAll('|', '/')} |`)
+    if (down) skipped.push(c.name)
+    rows.push(`| выжимка | ${c.name} | ${down ? 'сбой провайдера (вне счёта)' : (verdict ?? 'ok')} | ${Date.now() - t0} | — | ${JSON.stringify(ops).replaceAll('|', '/')} |`)
   }
   const report = `| Путь | Случай | Итог | мс | Ответ | Операции |\n|---|---|---|---|---|---|\n${rows.join('\n')}\n`
   writeFileSync(process.env.EVAL_OUT ?? 'evals/last-memory.md', report)
