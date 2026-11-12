@@ -540,8 +540,10 @@ class Race {
     // следующей модели цепочки сразу, без ожидания страховки; только когда нарушили все — обязательность снимаем, и
     // эта модель отвечает как умеет (лучше ответ словами, чем заготовка)
     if (a.skippedRequiredTool && this.req.requiredTool) {
-      // следующую модель запустит вызывающий (launchNext после relaunchFailed); ещё идущая может послушаться
-      if (this.launched < this.req.chain.length || this.attempts.some((x) => !x.dead)) return
+      // следующую модель запустит вызывающий (launchNext после relaunchFailed). Все уже запущены — обязательность
+      // снимаем сразу, не дожидаясь ещё идущих: медленная модель продолжает с требованием, а эта отвечает без него
+      // параллельно (набор задач 12.11: обе Gemini нарушили, DeepSeek думала дольше предела — человек получал заготовку)
+      if (this.launched < this.req.chain.length) return
       this.req = { ...this.req, requiredTool: undefined }
       return this.startAttempt(a.step, true, true)
     }
@@ -582,7 +584,11 @@ class Race {
         instructions: this.req.instructions,
         messages: this.req.messages,
         tools: this.req.tools,
+        // обязательный конкретный инструмент — модели предлагается только он: Gemini через AnyModel соблюдает
+        // tool_choice лишь при ОДНОМ инструменте в запросе, при двух и больше молча отвечает текстом (замер 12.11:
+        // 3 из 3 запросов с двумя инструментами без вызова, 3 из 3 с одним — с вызовом)
         ...(this.toolChoice() ? { toolChoice: this.toolChoice() } : {}),
+        ...(typeof this.toolChoice() === 'object' ? { activeTools: [this.req.requiredTool!] } : {}),
         maxOutputTokens: this.input.maxOutputTokens,
         maxRetries: 0,
         abortSignal: AbortSignal.any([this.all, a.ctrl.signal]),

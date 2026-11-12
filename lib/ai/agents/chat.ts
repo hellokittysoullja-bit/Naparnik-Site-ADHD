@@ -105,7 +105,7 @@ export async function chatTurn(input: {
       actedSinceUser(input.conversation).length > 0 || input.conversation.at(-1)?.role !== 'user'
         ? undefined
         : explicitMemoryAsk(input.userTexts.at(-1) ?? '')
-          ? 'any'
+          ? memoryAskTool(input.userTexts.at(-1) ?? '', lastCatText(input.conversation))
           : acceptsStart(input.userTexts.at(-1) ?? '', lastCatText(input.conversation))
             ? 'startFocus'
             : undefined,
@@ -119,6 +119,22 @@ export async function chatTurn(input: {
 export function explicitMemoryAsk(text: string): boolean {
   return asksToRemember(text) || asksToForget(text)
 }
+
+/**
+ * Какой инструмент исполняет явное «запиши / запомни / забудь». Обязательным передаётся ровно один инструмент:
+ * провайдеры соблюдают обязательный вызов надёжно только при одном инструменте (замер 12.11). «Так и запиши» в
+ * разговоре о плане на завтра — это план (savePlan), остальное — память. «Забудь» — всегда память.
+ */
+export function memoryAskTool(userText: string, catText: string): 'memory' | 'savePlan' {
+  if (asksToForget(userText)) return 'memory'
+  const planTalk = PLAN_TALK.test(catText) || PLAN_TALK.test(userText) || CLOCK.test(userText)
+  return planTalk && !ABOUT_SELF.test(userText) ? 'savePlan' : 'memory'
+}
+
+const PLAN_TALK = /(?<!\p{L})(?:завтра|план\p{L}*|во\s+сколько|к\s+какому\s+часу|с\s+какого\s+(?:\p{L}+\s+)?шага)(?!\p{L})/iu
+const CLOCK = /(?<!\p{L})(?:в|к|с)\s+\d{1,2}(?:[:.]\d{2})?(?:\s*(?:утра|вечера|дня|ч(?:ас\p{L}*)?))?(?!\p{L})|(?<!\p{L})(?:утром|вечером|после\s+обеда)(?!\p{L})/iu
+// «запомни, что я…» — о себе, даже если рядом время («я лучше работаю утром»)
+const ABOUT_SELF = /(?<!\p{L})(?:что\s+я|я\s+(?:лучше|всегда|обычно|никогда|люблю|не\s+люблю|пишу|учусь|работаю))(?!\p{L})/iu
 
 /** текст последней реплики кота перед репликой человека */
 export function lastCatText(conversation: readonly ModelMessage[]): string {

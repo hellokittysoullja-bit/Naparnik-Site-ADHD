@@ -485,7 +485,7 @@ describe('модель ответила только запрещённым вы
     ]
     const t0 = Date.now()
     const parts = await collect(await chatTurn({ ctx: newTurn({ task: 'chat', sessionId: 'w' }), memory: new InProcessMemory(() => NOW), mode: 'companion', conversation: [{ role: 'user', content: 'запомни: я пишу диплом' }], userTexts: ['запомни: я пишу диплом'] }))
-    expect(seen[0]).toEqual({ type: 'required' })
+    expect(seen[0]).toEqual({ type: 'tool', toolName: 'memory' })
     expect(parts.some((p) => p.type === 'tool-call' && (p as { toolName?: string }).toolName === 'memory')).toBe(true)
     expect(parts.some((p) => p.type === 'text-delta' && /запишем/.test(p.text ?? ''))).toBe(false)
     expect(Date.now() - t0).toBeLessThan(1500) // не ждали страховку
@@ -503,7 +503,7 @@ describe('явная просьба о памяти — вызов обязат�
     })
     chain.steps = [{ id: 'm', model: m }]
     await collect(await chatTurn({ ctx: newTurn({ task: 'chat', sessionId: 'q' }), memory: new InProcessMemory(() => NOW), mode: 'companion', conversation: [{ role: 'user', content: 'запомни: я пишу диплом' }], userTexts: ['запомни: я пишу диплом'] }))
-    expect(seen[0]).toEqual({ type: 'required' }) // обязателен какой-нибудь инструмент: память или план выбирает модель
+    expect(seen[0]).toEqual({ type: 'tool', toolName: 'memory' }) // ровно один инструмент: так его соблюдают все провайдеры
     seen.length = 0
     chain.steps = [{ id: 'm', model: scripted(say('Готово.'), []) }]
     const auto = new MockLanguageModelV4({ doStream: async (o) => (seen.push(o.toolChoice), { stream: simulateReadableStream({ chunks: [{ type: 'stream-start', warnings: [] }, ...say('Слушай, с чего начнём?')] as never[] }) }) })
@@ -522,7 +522,7 @@ describe('явная просьба о памяти — вызов обязат�
         autoRounds: 1,
       }),
     )
-    expect(seen[0]).not.toEqual({ type: 'required' })
+    expect(seen[0]).toEqual({ type: 'auto' })
   })
   it('модель не вызвала обязательный инструмент — та же модель сразу без обязательности, человек получает слова', async () => {
     chain.steps = [{ id: 'm', model: scripted(say('Слушай, давай лучше начнём с одного дела.'), []) }]
@@ -568,5 +568,17 @@ describe('согласие начать → кнопка старта обяза
       }),
     )
     expect(seen[0]).toEqual({ type: 'tool', toolName: 'startFocus' })
+  })
+})
+
+describe('явная просьба о записи → один обязательный инструмент по смыслу (замер 12.11)', () => {
+  it('memoryAskTool: план на завтра — savePlan; о себе и «забудь» — память', async () => {
+    const { memoryAskTool } = await import('@/lib/ai/agents/chat')
+    const cat = 'Давай! С какого крошечного шага начнёшь и примерно во сколько?'
+    expect(memoryAskTool('открыть файл отчёта в 10 утра. да, так и запиши', cat)).toBe('savePlan')
+    expect(memoryAskTool('запиши: завтра начну с почты', 'Как ты?')).toBe('savePlan')
+    expect(memoryAskTool('запомни: я пишу диплом про морских котиков, сдаю в мае', 'Привет!')).toBe('memory')
+    expect(memoryAskTool('запомни, что я лучше работаю утром', cat)).toBe('memory')
+    expect(memoryAskTool('забудь про план на завтра', cat)).toBe('memory')
   })
 })
