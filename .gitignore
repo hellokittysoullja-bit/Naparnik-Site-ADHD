@@ -20,3 +20,7 @@ test-results/
 e2e-report/
 evals/last-run.md
 evals/last-attacks.md
+evals/last-memory.md
+# прогоны набора (evals/README.md): подробные итоги и траектории локальны, история процентов — в git
+evals/results/*
+!evals/results/history.jsonl

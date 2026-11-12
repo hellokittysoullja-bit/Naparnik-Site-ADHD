@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "eval:ai": "vitest run --config vitest.eval.config.ts",
+    "eval:ai": "vitest run --config vitest.eval.config.ts evals/ai",
+    "eval:suite": "vitest run --config vitest.eval.config.ts evals/suite.eval.ts",
     "test:e2e": "playwright test",
     "check": "tsc --noEmit && eslint . && vitest run"
   },
