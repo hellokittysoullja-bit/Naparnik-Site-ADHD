@@ -20,7 +20,7 @@ test('реплика не теряется, если уйти с Дома, по�
   const saved = await page.evaluate(() => localStorage.getItem('naparnik:chat') ?? '')
   expect(saved).toContain('пишу диплом и не могу начать уже неделю')
   await page.getByRole('link', { name: 'Дом' }).click()
-  await expect(page.getByText('пишу диплом и не могу начать уже неделю')).toBeVisible()
+  await expect(page.getByText('пишу диплом и не могу начать уже неделю', { exact: true })).toBeVisible()
 })
 
 test('ИИ недоступен и человек пишет о кризисе: проверенный ответ с 112, без кнопки старта', async ({ page }) => {
@@ -43,7 +43,7 @@ test('вторая вкладка не затирает переписку пе�
     const box = p.getByRole('textbox').last()
     await box.fill(text)
     await box.press('Enter')
-    await expect(p.getByText(text)).toBeVisible()
+    await expect(p.getByText(text, { exact: true })).toBeVisible()
     // скриптовый ответ пришёл и переписка сохранена
     await expect.poll(() => p.evaluate((t) => (localStorage.getItem('naparnik:chat') ?? '').includes(t), text), { timeout: 15_000 }).toBe(true)
     await p.waitForTimeout(1500)
