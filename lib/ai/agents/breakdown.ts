@@ -74,7 +74,7 @@ export async function breakdown(input: {
     hedgeAfterMs: 2000,
     // Gemini через AnyModel иногда рассуждает скрыто, несмотря на reasoning_effort: none (набор задач 12.11: 160 из 160
     // токенов ушли на рассуждение, текста ноль). Платим за потраченное, запас бесплатен
-    maxOutputTokens: 400,
+    maxOutputTokens: 1000,
     maxChars: 300,
     parse: (text) => {
       const steps = parseSteps(text)
