@@ -159,7 +159,7 @@ export async function extractMemory(input: {
     userTexts,
     timeoutMs: 12_000,
     hedgeAfterMs: 4_000,
-    maxOutputTokens: 400,
+    maxOutputTokens: 1000,
     maxChars: 1500,
     parse: (text) => parseExtract(text),
     fallback: () => [],

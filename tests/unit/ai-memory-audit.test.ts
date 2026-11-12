@@ -159,3 +159,34 @@ describe('выжимка на устройстве', () => {
     expect(purgeForgottenChips(msgs, new Set(['пишет диплом', 'любит чай']))).toBeNull()
   })
 })
+
+describe('приведение входа инструмента (живой прогон 12.11: «Запомнил» обрезалось, вызов с ref: "" был негоден)', () => {
+  it('пустые и null необязательные поля — как отсутствующие, и на сервере (схема AI SDK), и на устройстве', async () => {
+    const { toolSchema, coerceToolInput } = await import('@/lib/ai/tools/registry')
+    const call = { op: 'add', category: 'helps', text: 'Легче начинает после душа', evidence: 'мне легче начать после душа', ref: '', until: null }
+    const r = await toolSchema(memoryInput).validate!(call)
+    expect(r.success).toBe(true)
+    expect(memoryInput.safeParse(coerceToolInput(call)).success).toBe(true)
+    // но содержание по-прежнему проверяется
+    expect((await toolSchema(memoryInput).validate!({ ...call, text: 'Принимает риталин' })).success).toBe(false)
+  })
+})
+
+describe('заготовки без ИИ: не врут о памяти и не дробят ярлык', () => {
+  it('«я вообще ленивый, запомни это» — без повтора ярлыка и без кнопки старта', async () => {
+    const { scriptedReply } = await import('@/lib/scripted-companion')
+    const r = scriptedReply('я вообще ленивый, запомни это', null, 14)
+    expect(r.text).not.toMatch(/ленив/i)
+    expect(r.startStep).toBeUndefined()
+  })
+  it.each(['запомни: я пишу диплом про котиков', 'забудь про диплом', 'что ты обо мне помнишь?'])('«%s» — ни одного заявления о действии', async (t) => {
+    const { scriptedReply } = await import('@/lib/scripted-companion')
+    const r = scriptedReply(t, null, 14)
+    expect(checkOutput(r.text, { maxChars: 500, claim: { allowed: () => false } }).ok).toBe(true)
+    expect(r.text).toMatch(/памят/i)
+  })
+  it('ни одна заготовка «дела» не говорит «записал»', async () => {
+    const { scriptedReply } = await import('@/lib/scripted-companion')
+    for (let i = 0; i < 30; i++) expect(scriptedReply('отчёт по практике', null, 14).text).not.toMatch(/записал/)
+  })
+})

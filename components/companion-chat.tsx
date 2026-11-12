@@ -51,6 +51,7 @@ import { factKey } from '@/lib/ai/memory/fact-key'
 const MEMORY_IDLE_MS = 90_000
 import { TOOL_REFUSED, memoryInput, rememberFactInput, savePlanInput, startFocusInput, tools } from '@/lib/ai/tools/catalog'
 import { toFactOp } from '@/lib/ai/memory/policy'
+import { coerceToolInput } from '@/lib/ai/tools/registry'
 import { useClientMount } from '@/hooks/use-client-mount'
 import type { UIMessage } from 'ai'
 
@@ -363,7 +364,7 @@ export function CompanionChat({
         })
 
       if (name === 'savePlan') {
-        const parsed = savePlanInput.safeParse(toolCall.input)
+        const parsed = savePlanInput.safeParse(coerceToolInput(toolCall.input))
         if (!parsed.success) return done(false)
         const { task, firstStep, startTime } = parsed.data
         savePlan({ task, firstStep, startTime })
@@ -380,7 +381,7 @@ export function CompanionChat({
       } else if (name === 'memory') {
         // схема ещё раз проверяет содержание (здоровье, контакты, «указания коту»), toFactOp — номер факта и
         // просьбу «забудь»: устройство — хозяин своей памяти и последний, кто решает, что в неё попадёт
-        const parsed = memoryInput.safeParse(toolCall.input)
+        const parsed = memoryInput.safeParse(coerceToolInput(toolCall.input))
         if (!parsed.success) return done(false)
         const op = toFactOp(parsed.data, { refs: sentFactIdsRef.current, lastUserText: lastUserTextRef.current })
         if (!op.ok) return done(false)
@@ -393,7 +394,7 @@ export function CompanionChat({
           .catch(() => done(false))
       } else if (name === 'startFocus') {
         // Карточку с кнопкой рисует разметка ниже; здесь — проверка и подтверждение
-        done(startFocusInput.safeParse(toolCall.input).success)
+        done(startFocusInput.safeParse(coerceToolInput(toolCall.input)).success)
       }
     },
   })
@@ -1128,7 +1129,7 @@ export function CompanionChat({
                 }
 
                 if (part.type === 'tool-memory' && part.state === 'output-available' && part.output !== TOOL_REFUSED) {
-                  const m = memoryInput.safeParse(part.input)
+                  const m = memoryInput.safeParse(coerceToolInput(part.input))
                   if (!m.success) return null
                   const label =
                     m.data.op === 'forgetAll' ? 'забыл всё' : m.data.op === 'forget' ? 'забыл' : `запомнил: ${m.data.text}`

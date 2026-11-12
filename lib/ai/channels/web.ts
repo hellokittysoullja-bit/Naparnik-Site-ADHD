@@ -1,6 +1,7 @@
 import { convertToModelMessages, validateUIMessages, type ModelMessage, type UIMessage } from 'ai'
 import { clean } from '../context'
 import { TOOL_REFUSED, tools } from '../tools/catalog'
+import { coerceToolInput } from '../tools/registry'
 
 /**
  * Веб-канал (Hermes gateway/platforms: адаптер нормализует сообщения платформы и доставляет ответ). Здесь —
@@ -24,7 +25,7 @@ function sanitizeToolPart(p: Part & { type: `tool-${string}` }): Part | null {
   if (!spec || spec.executor !== 'client' || !spec.tasks.includes('chat')) return null
   const x = p as { toolCallId?: unknown; state?: unknown; input?: unknown }
   if (typeof x.toolCallId !== 'string' || x.toolCallId.length > 80) return null
-  const input = spec.input.safeParse(x.input)
+  const input = spec.input.safeParse(coerceToolInput(x.input))
   if (!input.success) return null
   // незавершённый вызов (результата нет) в историю модели не нужен — модель увидела бы «висящий» вызов
   if (x.state !== 'output-available') return null
