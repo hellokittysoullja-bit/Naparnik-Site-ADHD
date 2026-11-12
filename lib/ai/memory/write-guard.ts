@@ -161,14 +161,20 @@ export function factGrounded(text: string, evidence: string | undefined, userTex
  *    в разговоре смотрит только на две последние реплики);
  *  - факт связан со словами человека (factGrounded).
  */
-export function writeAllowed(text: string, evidence: string | undefined, userTexts: readonly string[]): boolean {
+export function writeAllowed(text: string, evidence: string | undefined, userTexts: readonly string[], opts: { explicit?: boolean } = {}): boolean {
   if (factRejection(text) !== null) return false
   // цитата — слова самого человека: «забудь», «отвечай» в ней — обычная речь, а не указание коту (набор задач:
   // «забудь про диплом, я его уже сдал» как основание замены отклонялось); остальные запреты — в силе
   const evRejected = evidence !== undefined ? factRejection(evidence) : null
   if (evRejected !== null && evRejected !== 'injection') return false
   if (checkInput([...userTexts]).crisis) return false
-  return factGrounded(text, evidence, userTexts)
+  if (factGrounded(text, evidence, userTexts)) return true
+  // Явная просьба «запомни, что я сова»: модель записывает с пояснением («Сова: активнее вечером»), и доля слов
+  // человека в факте падает ниже порога — просьба не исполнялась, кот отвечал «не могу сохранить» (набор задач
+  // 12.11). При явной просьбе хватает точной цитаты и одного содержательного слова человека в факте: запись он видит
+  // отметкой «запомнил: …» и может сказать «забудь это»
+  if (!opts.explicit || !groundedIn(evidence, userTexts)) return false
+  return stemHits(contentWords(text), contentWords(userTexts.at(-1) ?? '')) >= 1
 }
 
 /**

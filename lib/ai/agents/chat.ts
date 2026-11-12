@@ -209,7 +209,7 @@ export function memoryToolCheck(turn: { facts: number; userTexts: readonly strin
       case 'replace':
       case 'add':
         if (m.op === 'replace' && !refOk) return false
-        return writeAllowed(m.text ?? '', m.evidence ?? last.slice(0, 200), grounds)
+        return writeAllowed(m.text ?? '', m.evidence ?? last.slice(0, 200), grounds, { explicit: asksToRemember(last) })
     }
   }
 }

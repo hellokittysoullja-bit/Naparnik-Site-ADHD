@@ -65,7 +65,7 @@ export type ExtractOp =
 
 export type ExtractLine = { role: 'user' | 'cat'; text: string }
 
-export const EXTRACT_LIMITS = { lines: 16, userText: 600, catText: 300, ops: 6 } as const
+export const EXTRACT_LIMITS = { lines: 16, userText: 1200, catText: 300, ops: 6 } as const
 
 const BY_LABEL = new Map<string, FactCategory>(FACT_CATEGORIES.map((c) => [CATEGORY_LABEL[c], c]))
 const ISO = /^\d{4}-\d{2}-\d{2}$/

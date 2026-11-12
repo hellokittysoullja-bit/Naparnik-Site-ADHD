@@ -157,6 +157,17 @@ describe('основание факта', () => {
   })
 })
 
+describe('явная просьба запомнить', () => {
+  it('«запомни, что я сова» с пояснением модели записывается; без просьбы тот же текст — нет; выдумка — нет', async () => {
+    const { writeAllowed } = await import('@/lib/ai/memory/write-guard')
+    const said = ['запомни, что я сова, и раздроби мне уборку на кухне']
+    const text = 'Сова: активнее и лучше соображает вечером и поздно.'
+    expect(writeAllowed(text, 'запомни, что я сова', said, { explicit: true })).toBe(true)
+    expect(writeAllowed(text, 'запомни, что я сова', said)).toBe(false)
+    expect(writeAllowed('Работает юристом в банке', 'запомни, что я сова', said, { explicit: true })).toBe(false)
+  })
+})
+
 describe('замена не о том же', () => {
   const fact = (o: Partial<Fact>): Fact => ({ id: 'a', category: 'style', text: 'Не любит, когда торопят', source: 'explicit', createdAt: OLD, updatedAt: OLD, status: 'active', ...o })
   it('перепутанный номер не портит чужой факт: старое остаётся, новое — отдельным фактом «о себе»', () => {
