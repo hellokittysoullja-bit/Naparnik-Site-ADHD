@@ -33,6 +33,7 @@ import {
   applyMemoryOps,
   buildMemoryContext,
   peekAllFacts,
+  markSkillsShown,
   getChatMessages,
   getChatTimestamps,
   peekChatMessages,
@@ -303,13 +304,15 @@ export function CompanionChat({
         const memory = memoryRef.current
         sentFactIdsRef.current = memory?.factIds ?? []
         // id фактов — внутренняя связь устройства, серверу и модели не нужна
-        return { mode, memory: memory && { ...memory, factIds: undefined }, clientHour: new Date().getHours() }
+        return { mode, memory: memory && { ...memory, factIds: undefined, skillIds: undefined }, clientHour: new Date().getHours() }
       },
       // На сервер — только последние 30 реплик (столько же хранится): в длинном разговоре полная история
       // упиралась бы в потолок тела запроса (lib/api-guard.ts), и ИИ молча уходил бы в скрипт до перезагрузки
       prepareSendMessagesRequest: ({ id, messages: all, body, trigger, messageId }) => {
         const lastUser = [...all].reverse().find((m) => m.role === 'user')
         lastUserTextRef.current = lastUser?.parts.map((p) => (p.type === 'text' ? p.text : '')).join(' ') ?? ''
+        // навыки, которые сервер раскроет под эту реплику, — «применён» (счётчики для Curator)
+        if (trigger === 'submit-message' && all.at(-1)?.role === 'user') markSkillsShown(lastUserTextRef.current)
         return { body: { ...body, id, messages: all.slice(-30), trigger, messageId } }
       },
     }),

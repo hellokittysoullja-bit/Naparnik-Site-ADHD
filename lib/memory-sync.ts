@@ -4,7 +4,9 @@ import { FACT_LIMITS, type FactOp } from '@/lib/ai/memory/facts'
 import { factKey } from '@/lib/ai/memory/fact-key'
 import { toFactOp } from '@/lib/ai/memory/policy'
 import { memoryInput } from '@/lib/ai/tools/catalog'
-import { applyMemoryOps, peekFacts, todayKey } from '@/lib/memory'
+import { applyMemoryOps, applySkillMemoryOps, peekFacts, peekSkills, todayKey } from '@/lib/memory'
+import type { SkillOp } from '@/lib/ai/memory/skills'
+import { factRejection } from '@/lib/ai/memory/write-guard'
 
 /**
  * Фоновая выжимка памяти на устройстве (решение владельца 12.11): когда разговор затих, кусок после прошлой
@@ -83,6 +85,16 @@ export function toDeviceOp(op: ExtractOp, refs: readonly string[]): FactOp | nul
   return r.ok ? r.op : null
 }
 
+/** Навык из выжимки → операция устройства: номер → id по отправленному списку, содержание ещё раз через запреты */
+export function toDeviceSkillOp(op: ExtractOp, refs: readonly string[]): SkillOp | null {
+  if (op.op !== 'skill' && op.op !== 'skillPatch') return null
+  const fields = [op.op === 'skill' ? op.name : '', op.when, op.steps, op.avoid ?? '']
+  if (fields.some((f) => typeof f !== 'string' || (f !== '' && factRejection(f) !== null))) return null
+  if (op.op === 'skill') return { op: 'create', name: op.name, when: op.when, steps: op.steps, avoid: op.avoid }
+  const id = /^\d{1,2}$/.test(op.ref) ? refs[Number(op.ref)] : undefined
+  return id ? { op: 'patch', id, when: op.when, steps: op.steps, avoid: op.avoid } : null
+}
+
 /** Выжать память из затихшего разговора. Возвращает число применённых операций (для тестов и журнала) */
 export async function syncMemory(messages: readonly UIMessage[], opts: { keepalive?: boolean } = {}): Promise<number> {
   if (inFlight || messages.length === 0) return 0
@@ -100,12 +112,19 @@ export async function syncMemory(messages: readonly UIMessage[], opts: { keepali
       }
       const facts = peekFacts().slice(0, FACT_LIMITS.active)
       const refs = facts.map((f) => f.id)
+      const skills = peekSkills()
+      const skillRefs = skills.map((s) => s.id)
       const res = await fetch('/api/memory', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'same-origin',
         keepalive: opts.keepalive,
-        body: JSON.stringify({ facts: facts.map((f) => ({ category: f.category, text: f.text })), lines, today: todayKey() }),
+        body: JSON.stringify({
+          facts: facts.map((f) => ({ category: f.category, text: f.text })),
+          skills: skills.map((s) => ({ name: s.name, when: s.when })),
+          lines,
+          today: todayKey(),
+        }),
       })
       // 503 — модели не ответили; 429 — лимит; сеть — исключение: курсор стоит, кусок уйдёт в следующий раз
       if (!res.ok) break
@@ -115,6 +134,10 @@ export async function syncMemory(messages: readonly UIMessage[], opts: { keepali
         .filter((op): op is FactOp => op !== null)
       const results = await applyMemoryOps(ops)
       applied += results.filter((r) => r.ok).length
+      const skillOps = (Array.isArray(data.ops) ? (data.ops as ExtractOp[]) : [])
+        .map((op) => toDeviceSkillOp(op, skillRefs))
+        .filter((op): op is SkillOp => op !== null)
+      applied += (await applySkillMemoryOps(skillOps)).filter((r) => r.ok).length
       writeCursor(upTo)
       if (upTo === messages[messages.length - 1].id) break
     }

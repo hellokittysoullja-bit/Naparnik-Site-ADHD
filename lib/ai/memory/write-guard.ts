@@ -158,3 +158,25 @@ export function writeAllowed(text: string, evidence: string | undefined, userTex
   if (checkInput([...userTexts]).crisis) return false
   return factGrounded(text, evidence, userTexts)
 }
+
+/**
+ * Навык (memory/skills.ts) — те же запреты по каждому полю: навык попадает в промпт так же, как факт. Основание —
+ * слова человека: цитата из его реплик и связь навыка с ними (не меньше четверти основ — навык описывает действия
+ * кота, их слов у человека нет, поэтому порог ниже, чем у факта).
+ */
+export function skillAllowed(
+  skill: { name?: string; when?: string; steps?: string; avoid?: string },
+  evidence: string | undefined,
+  userTexts: readonly string[],
+): boolean {
+  const fields = [skill.name, skill.when, skill.steps, skill.avoid].filter((x): x is string => !!x && x.trim() !== '')
+  if (fields.some((f) => factRejection(f) !== null)) return false
+  if (evidence === undefined || factRejection(evidence) !== null || checkInput([...userTexts]).crisis) return false
+  if (!groundedIn(evidence, userTexts)) return false
+  const norm = (s: string) => forMatching(s).replace(/[^\p{L}]+/gu, ' ').trim()
+  const stem = (x: string) => x.slice(0, 4)
+  const words = norm(fields.join(' ')).split(' ').filter((x) => x.length >= 4 && !STOP.has(stem(x)))
+  if (words.length === 0) return false
+  const have = new Set(norm(userTexts.join(' ')).split(' ').map(stem))
+  return words.filter((x) => have.has(stem(x))).length / words.length >= 0.25
+}

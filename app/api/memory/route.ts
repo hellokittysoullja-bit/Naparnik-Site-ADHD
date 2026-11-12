@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { EXTRACT_LIMITS, extractMemory } from '@/lib/ai/agents/memory-extract'
 import { newTurn } from '@/lib/ai/core/turn'
 import { FACT_CATEGORIES, FACT_LIMITS, type FactCategory } from '@/lib/ai/memory/facts'
+import { SKILL_LIMITS } from '@/lib/ai/memory/skills'
 import { handle, rateLimit, readJsonBody, sameOrigin } from '@/lib/api-guard'
 
 /**
@@ -17,6 +18,10 @@ const Body = z.object({
   facts: z
     .array(z.object({ category: z.enum(FACT_CATEGORIES as [FactCategory, ...FactCategory[]]), text: clip(FACT_LIMITS.text) }))
     .max(FACT_LIMITS.active),
+  skills: z
+    .array(z.object({ name: clip(SKILL_LIMITS.name), when: clip(SKILL_LIMITS.when) }))
+    .max(SKILL_LIMITS.active)
+    .optional(),
   lines: z
     .array(z.object({ role: z.enum(['user', 'cat']), text: z.string() }))
     .min(1)

@@ -1,6 +1,7 @@
 import { dataBlock } from '../context'
 import { BLOCKERS, HANGING, MOTIVES, SPHERES } from '../../onboarding'
 import { CATEGORY_LABEL } from './facts'
+import { relevantSkills } from './skills'
 import type { MemorySnapshot } from './schema'
 import { factRejection, INSTRUCTION_LIKE } from './write-guard'
 import { matchVariants } from '../guards/normalize'
@@ -23,6 +24,34 @@ const HIDDEN = '(подпись скрыта)'
 const plain = (s: string) => (matchVariants(s).some((v) => INSTRUCTION_LIKE.test(v)) ? HIDDEN : s)
 // даты с устройства — только датами: в поле даты не может прийти текст (аудит 12.11)
 const day = (s: string | null | undefined) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined)
+
+const skillOk = (s: NonNullable<MemorySnapshot['skills']>[number]) =>
+  [s.name, s.when, s.steps, s.avoid ?? ''].every((f) => !f || factRejection(f) === null)
+
+function skillIndex(m: MemorySnapshot) {
+  return (m.skills ?? [])
+    .map((s, i) => ({ s, i }))
+    .filter(({ s }) => skillOk(s))
+    .map(({ s, i }) => ({ '№': String(i), название: s.name, когда: s.when }))
+}
+
+/**
+ * Навыки, подходящие к последней реплике, — целиком (уровень 1 раскрытия). Ярус «изменчивое» рядом со знаниями:
+ * перед последней репликой человека (prompt/assemble.ts), чтобы не трогать кэш истории.
+ */
+export function renderSkills(m: MemorySnapshot | null, lastUserText: string): string | undefined {
+  if (!m?.skills?.length) return undefined
+  const full = relevantSkills(
+    m.skills.map((s, i) => ({ ...s, id: String(i), createdAt: '', updatedAt: '', uses: 0, wins: 0, status: 'active' as const })),
+    lastUserText,
+  ).filter(skillOk)
+  if (full.length === 0) return undefined
+  return dataBlock(
+    'memory',
+    Object.fromEntries(full.map((s) => [`навык №${s.id} «${s.name}»`, { когда: s.when, 'что делать': s.steps, 'чего избегать': s.avoid }])),
+    400,
+  )
+}
 
 export function renderMemory(m: MemorySnapshot | null): string {
   if (!m) return dataBlock('memory', { 'первый разговор': true })
@@ -67,6 +96,9 @@ export function renderMemory(m: MemorySnapshot | null): string {
       ? m.recentFinds.map((f) => ({ название: plain(f.name), редкая: f.rarity === 'rare' }))
       : undefined,
     'ты помнишь о человеке': facts.length ? facts : undefined,
+    // навыки — списком «название + когда» (Hermes: уровень 0 прогрессивного раскрытия); подходящие к реплике целиком
+    // приходят отдельным блоком перед ней (renderSkills) — так этот блок стабилен от хода к ходу и кэшируется
+    'твои навыки с этим человеком': skillIndex(m).length ? skillIndex(m) : undefined,
     'ты запомнил о человеке': legacy.length ? legacy : undefined,
   })
 }

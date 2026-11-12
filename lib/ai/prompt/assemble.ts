@@ -23,6 +23,8 @@ export type AssembleInput = {
   situation?: string
   /** знания под этот ход (knowledge/select.ts) — рядом с ситуацией, перед последней репликой человека */
   knowledge?: string
+  /** навыки кота о человеке, подходящие к этой реплике (memory/render.ts renderSkills) — там же */
+  skills?: string
   /** история разговора (уже очищенная) или одно задание */
   conversation: ModelMessage[]
 }
@@ -44,7 +46,7 @@ export function assemble(input: AssembleInput): Assembled {
       break
     }
   }
-  const volatile = [input.knowledge, input.situation].filter((x): x is string => !!x)
+  const volatile = [input.skills, input.knowledge, input.situation].filter((x): x is string => !!x)
   conv.forEach((m, i) => {
     if (i === lastUser) for (const v of volatile) messages.push({ role: 'user', content: v })
     messages.push(m)

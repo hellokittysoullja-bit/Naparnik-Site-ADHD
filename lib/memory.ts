@@ -6,6 +6,7 @@
  * это замена реализации, а не рефакторинг всех вызовов.
  */
 import { activeFacts, applyFactOps, FACT_CATEGORIES, type Fact, type FactOp, type OpResult } from '@/lib/ai/memory/facts'
+import { activeSkills, applySkillOps, curate, relevantSkills, type Skill, type SkillOp, type SkillOpResult } from '@/lib/ai/memory/skills'
 
 export type Plan = {
   /** Дата, на которую положен план, YYYY-MM-DD */
@@ -62,6 +63,8 @@ const KEYS = {
   facts: 'naparnik:facts',
   onboarding: 'naparnik:onboarding',
   profileForgotten: 'naparnik:profileForgotten',
+  skills: 'naparnik:skills',
+  skillShown: 'naparnik:skillShown',
   finds: 'naparnik:finds',
   worldSeen: 'naparnik:worldSeen',
   activeSession: 'naparnik:activeSession',
@@ -271,6 +274,7 @@ export async function recordStart(input: {
   const starts = await getStarts()
   starts.push(entry)
   write(KEYS.starts, starts)
+  creditSkills()
   keepMemory()
   markHome(true)
   return entry
@@ -572,9 +576,76 @@ export async function applyMemoryOps(ops: readonly FactOp[]): Promise<OpResult[]
   if (ops.length === 0) return []
   const { facts, results } = applyFactOps(peekAllFacts(), ops, { now: new Date().toISOString(), newId: newFactId, today: todayKey() })
   write(KEYS.facts, facts)
-  // «забудь всё» — это и ответы знакомства: кот больше не опирается на них (сами ответы остаются знакомству)
-  if (ops.some((o) => o.op === 'forgetAll')) write(KEYS.profileForgotten, true)
+  // «забудь всё» — это и ответы знакомства, и навыки о человеке: кот больше не опирается на них (сами ответы
+  // остаются знакомству)
+  if (ops.some((o) => o.op === 'forgetAll')) {
+    write(KEYS.profileForgotten, true)
+    write(KEYS.skills, [])
+    write(KEYS.skillShown, null)
+  }
   return results
+}
+
+// ---------- Навыки кота о человеке (lib/ai/memory/skills.ts) ----------
+
+const isSkill: Guard<Skill> = (v): v is Skill =>
+  isObj(v) &&
+  isStr(v.id) &&
+  isStr(v.name) &&
+  isStr(v.when) &&
+  isStr(v.steps) &&
+  (v.avoid === undefined || isStr(v.avoid)) &&
+  isStr(v.createdAt) &&
+  isStr(v.updatedAt) &&
+  isNum(v.uses) &&
+  isNum(v.wins) &&
+  (v.lastUsedAt === undefined || isStr(v.lastUsedAt)) &&
+  (v.status === 'active' || v.status === 'archived')
+
+/** Все навыки, включая архив; Curator проходит при чтении (дубли, давно не применявшиеся, лимит) */
+export function peekAllSkills(): Skill[] {
+  const raw = readList(KEYS.skills, isSkill)
+  const curated = curate(raw, todayKey())
+  if (JSON.stringify(curated) !== JSON.stringify(raw)) write(KEYS.skills, curated)
+  return curated
+}
+
+/** Активные навыки в порядке, который видит модель: номер навыка = место в этом списке */
+export function peekSkills(): Skill[] {
+  return activeSkills(peekAllSkills())
+}
+
+export async function applySkillMemoryOps(ops: readonly SkillOp[]): Promise<SkillOpResult[]> {
+  if (ops.length === 0) return []
+  const { skills, results } = applySkillOps(peekAllSkills(), ops, { now: new Date().toISOString(), newId: newFactId })
+  write(KEYS.skills, skills)
+  return results
+}
+
+const SKILL_WIN_MS = 30 * 60_000
+
+/**
+ * Навыки, которые раскроются в этом ходе (тот же отбор, что на сервере, memory/render.ts), отмечаются «применён»;
+ * если в ближайшие полчаса будет старт — «после него был старт». Эти счётчики — основа решений Curator.
+ */
+export function markSkillsShown(lastUserText: string): void {
+  const all = peekAllSkills()
+  const shown = relevantSkills(all, lastUserText)
+  if (shown.length === 0) return
+  const now = new Date().toISOString()
+  const ids = new Set(shown.map((s) => s.id))
+  write(KEYS.skills, all.map((s) => (ids.has(s.id) ? { ...s, uses: s.uses + 1, lastUsedAt: now } : s)))
+  write(KEYS.skillShown, { ids: [...ids], at: Date.now() })
+}
+
+function creditSkills(): void {
+  const shown = read<{ ids: string[]; at: number } | null>(KEYS.skillShown, null, (v): v is { ids: string[]; at: number } =>
+    isObj(v) && Array.isArray(v.ids) && v.ids.every(isStr) && isNum(v.at),
+  )
+  if (!shown || Date.now() - shown.at > SKILL_WIN_MS) return
+  const ids = new Set(shown.ids)
+  write(KEYS.skills, peekAllSkills().map((s) => (ids.has(s.id) ? { ...s, wins: s.wins + 1 } : s)))
+  write(KEYS.skillShown, null)
 }
 
 // ---------- Паттерны (производные) ----------
@@ -709,6 +780,9 @@ export type MemoryContext = {
   facts: Array<{ category: Fact['category']; text: string; since: string }>
   /** id тех же фактов в том же порядке: по ним устройство переводит номер из ответа модели обратно в факт */
   factIds: string[]
+  /** Навыки кота о человеке — номер навыка для модели = место в списке */
+  skills: Array<{ name: string; when: string; steps: string; avoid?: string }>
+  skillIds: string[]
   /** Ответы знакомства — ключи вариантов (подписи подставляет сервер) */
   profile: { sphere?: string; hanging?: string; blocker?: string; motive?: string } | null
   /** Последние находки острова — напарник может вспоминать их в разговоре */
@@ -740,6 +814,13 @@ export function peekMemoryContext(): MemoryContext {
     patterns,
     facts: facts.map((f) => ({ category: f.category, text: f.text, since: f.createdAt.slice(0, 10) })),
     factIds: facts.map((f) => f.id),
+    ...(() => {
+      const skills = peekSkills()
+      return {
+        skills: skills.map(({ name, when, steps, avoid }) => ({ name, when, steps, avoid })),
+        skillIds: skills.map((s) => s.id),
+      }
+    })(),
     profile: peekProfile(),
     recentFinds: finds.slice(-3).map(({ name, rarity, date }) => ({ name, rarity, date })),
     companionName,

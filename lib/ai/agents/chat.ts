@@ -4,7 +4,7 @@ import { streamTurn } from '../core/stream-turn'
 import type { TurnContext } from '../core/turn'
 import { asksToForget } from '../memory/facts'
 import type { MemoryProvider, MemoryWrite } from '../memory/provider'
-import { renderMemory } from '../memory/render'
+import { renderMemory, renderSkills } from '../memory/render'
 import { writeAllowed } from '../memory/write-guard'
 import type { MemorySnapshot } from '../memory/schema'
 import { assemble } from '../prompt/assemble'
@@ -73,6 +73,7 @@ export async function chatTurn(input: {
   const { instructions, messages } = assemble({
     taskSystem: input.mode === 'focus' ? FOCUS_CHAT_SYSTEM : CHAT_SYSTEM,
     memory: renderMemory(snapshot),
+    skills: renderSkills(snapshot, input.userTexts.at(-1) ?? ''),
     situation: situation(input.clientHour),
     // знания под реплику (каталог пуст до утверждения владельцем — тогда блока нет)
     knowledge: renderKnowledge(selectKnowledge(KNOWLEDGE, [input.userTexts.at(-1) ?? ''])),

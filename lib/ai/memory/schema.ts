@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { FACT_CATEGORIES, FACT_LIMITS, type FactCategory } from './facts'
+import { SKILL_LIMITS } from './skills'
 
 /**
  * Снимок памяти о человеке — форма, в которой память входит в ход (ядро не знает, где она хранится).
@@ -52,6 +53,19 @@ export const MemorySnapshotSchema = z.object({
     .max(MEMORY_LIMITS.facts)
     .optional(),
   notes: z.array(clip(MEMORY_LIMITS.field)).max(MEMORY_LIMITS.notes).optional(),
+  // навыки кота об этом человеке (memory/skills.ts): номер — место в списке, как у фактов
+  skills: z
+    .array(
+      z.object({
+        name: clip(SKILL_LIMITS.name),
+        when: clip(SKILL_LIMITS.when),
+        steps: clip(SKILL_LIMITS.steps),
+        avoid: clip(SKILL_LIMITS.avoid).optional(),
+      }),
+    )
+    .max(SKILL_LIMITS.active)
+    .optional()
+    .catch(undefined),
   // ответы знакомства (ярус Т1) — ключи вариантов, подписи подставляет сервер (memory/render.ts)
   profile: z
     .object({
