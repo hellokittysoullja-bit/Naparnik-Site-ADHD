@@ -1,5 +1,8 @@
 import { expect, it, vi } from 'vitest'
-import { CASES } from './suite/cases'
+import { CASES as BASE_CASES } from './suite/cases'
+import { HARD_CASES } from './suite/cases-hard'
+
+const CASES = [...BASE_CASES, ...HARD_CASES]
 import {
   appendHistory,
   compare,

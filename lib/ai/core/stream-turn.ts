@@ -355,7 +355,7 @@ class Attempt {
           // вызов был, но его отбросили правила, — это не нарушение обязательности (повтор без инструмента)
           if (this.mustCall && !this.toolCalled && this.rejectedTools.size === 0) {
             this.skippedRequiredTool = true
-            return { out, fail: 'error' }
+            return { out, fail: 'no-tool' }
           }
           return { out, fail: 'empty' }
         }
@@ -371,7 +371,10 @@ class Attempt {
   private failWith(error: unknown): { out: Part[]; fail: AttemptResult } {
     const status = (error as { statusCode?: unknown } | null)?.statusCode
     if (typeof status === 'number') this.errorStatus = status
-    if (isToolChoiceViolation(error)) this.skippedRequiredTool = true
+    if (isToolChoiceViolation(error)) {
+      this.skippedRequiredTool = true
+      return { out: [], fail: 'no-tool' }
+    }
     return { out: [], fail: 'error' }
   }
 
@@ -635,9 +638,10 @@ class Race {
       if (typeof status === 'number') a.errorStatus ??= status
       if (isToolChoiceViolation(e)) a.skippedRequiredTool = true
       const timedOut = this.all.aborted
-      if (a === this.winner) this.finishWinner(a, timedOut ? 'timeout' : 'error')
+      const result: AttemptResult = timedOut ? 'timeout' : a.skippedRequiredTool ? 'no-tool' : 'error'
+      if (a === this.winner) this.finishWinner(a, result)
       else {
-        this.endAttempt(a, timedOut ? 'timeout' : 'error')
+        this.endAttempt(a, result)
         if (!timedOut) {
           this.relaunchFailed(a)
           this.launchNext()

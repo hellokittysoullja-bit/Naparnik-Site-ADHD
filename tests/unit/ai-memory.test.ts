@@ -367,7 +367,7 @@ describe('честность о действиях: «забыл / запомн�
     const parts = await collect(await turn('забудь про диплом'))
     expect(shown(parts)).toBe('Скажи, что именно забыть?')
     // «забудь» — вызов обязателен: лжец отвечает текстом в обход обязательности, его ход отбрасывается целиком
-    expect(events).toContainEqual(expect.objectContaining({ type: 'model.end', model: 'liar', result: 'error' }))
+    expect(events).toContainEqual(expect.objectContaining({ type: 'model.end', model: 'liar', result: 'no-tool' }))
   })
   it('без обязательного вызова «забыл» без вызова ловит проверка утверждений', async () => {
     chain.steps = [

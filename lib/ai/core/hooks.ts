@@ -9,7 +9,8 @@ import type { TurnContext } from './turn'
  *  - синхронная доставка: на сервере без фоновых процессов (Vercel) асинхронный журнал мог бы не успеть.
  */
 /** cancelled — попытку отменили, потому что другая модель уже ответила (не сбой) */
-export type AttemptResult = 'ok' | 'parse' | 'timeout' | 'cancelled' | 'error' | OutputViolation
+/** 'no-tool' — модель ответила словами вместо обязательного вызова инструмента (это её поведение, не сбой провайдера) */
+export type AttemptResult = 'ok' | 'parse' | 'timeout' | 'cancelled' | 'error' | 'no-tool' | OutputViolation
 export type TurnOutcome = 'model' | 'fallback' | 'crisis' | 'aborted'
 
 export type HarnessEvent =
