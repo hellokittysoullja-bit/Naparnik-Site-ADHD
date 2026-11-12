@@ -414,6 +414,8 @@ class Race {
       echo: echoWords(input.echoTexts ?? input.userTexts),
       leak: leakPrint(this.req.instructions),
       claim: input.claims ? { allowed: (k: ClaimKind) => input.claims!.fromStart.includes(k) } : undefined,
+      // речь кота — без канцелярита; служебные задачи (выжимка, вспоминание) человеку не показываются
+      plainSpeech: !input.whole?.internal,
     }
     this.personMedical = mentionsMedical(input.echoTexts ?? input.userTexts)
     const total = AbortSignal.timeout(input.totalTimeoutMs)

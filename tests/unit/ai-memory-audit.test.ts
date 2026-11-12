@@ -248,3 +248,19 @@ describe('находки набора задач 12.11', () => {
     expect(checkOutput('Ты ленивый, соберись.', { maxChars: 300 })).toMatchObject({ ok: false, reason: 'shame' })
   })
 })
+
+describe('прогон набора 12.11 после исправлений', () => {
+  it('сумма словами — тоже деньги', () => {
+    expect(factRejection('Нужно внести платёж банку восемьдесят тысяч')).toBe('money')
+    expect(factRejection('Должен другу пятьдесят тысяч')).toBe('money')
+    expect(factRejection('Пишет курсовую на двадцать тысяч знаков')).toBeNull()
+    expect(factRejection('Пишет диплом по экономике')).toBeNull()
+  })
+  it('канцелярит в речи кота не показывается; в обычной речи и в фактах — не трогаем', () => {
+    const cat = { maxChars: 300, plainSpeech: true }
+    expect(checkOutput('Что у тебя сейчас на повестке дня?', cat)).toMatchObject({ ok: false, reason: 'bureaucratese' })
+    expect(checkOutput('В рамках этой задачи осуществим первый шаг.', cat)).toMatchObject({ ok: false, reason: 'bureaucratese' })
+    expect(checkOutput('Слушай, давай-ка откроем файл курсовой?', cat).ok).toBe(true)
+    expect(checkOutput('Что у тебя сейчас на повестке дня?', { maxChars: 300 }).ok).toBe(true) // не речь кота
+  })
+})

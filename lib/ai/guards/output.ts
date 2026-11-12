@@ -128,7 +128,7 @@ const NO_ECHO: ReadonlySet<string> = new Set()
 
 const unquote = (t: string) => t.replace(/«[^«»]{1,80}»|"[^"]{1,80}"|“[^”]{1,80}”|„[^“”]{1,80}[“”]/g, '«…»')
 
-export type OutputViolation = 'shame' | 'medical' | 'language' | 'empty' | 'length' | 'link' | 'phone' | 'leak' | 'identity' | 'claim'
+export type OutputViolation = 'shame' | 'medical' | 'language' | 'empty' | 'length' | 'link' | 'phone' | 'leak' | 'identity' | 'claim' | 'bureaucratese'
 export type OutputVerdict = { ok: true } | { ok: false; reason: OutputViolation }
 
 export type OutputOpts = {
@@ -143,7 +143,16 @@ export type OutputOpts = {
    * бы прежней (живой прогон 12.11: «Принято, забыл про диплом.» без вызова)
    */
   claim?: { allowed: (kind: ClaimKind) => boolean }
+  /** речь кота (чат, голос, шаги): канцелярит не пропускать (правило владельца 12.11) */
+  plainSpeech?: boolean
 }
+
+/**
+ * Канцелярит в речи кота (правило владельца 12.11: «никаких канцеляритов»). Промпт запрещает, но модели всё равно
+ * пишут «на повестке дня» (набор задач 12.11) — правило исполняет код. Только однозначно казённые обороты: такой
+ * ответ не показывается, ход уходит следующей модели.
+ */
+const BUREAUCRATESE = /(?<!\p{L})(?:на\s+повестке|в\s+рамках|осуществ\p{L}*|явля(?:ется|ются|лся|лась)|зафиксирова\p{L}*|реализова(?:ть|ть|ние|нии)|произвести|с\s+целью|в\s+случае\s+если|в\s+связи\s+с\s+тем|вышеуказанн\p{L}*|нижеследующ\p{L}*|данн(?:ый|ая|ое|ого|ой|ую)\s+(?:момент|вопрос|задач|дел|случа))(?!\p{L})/iu
 
 /**
  * Заявление кота о сделанном. memory — о памяти («забыл», «запомнил», «удалено», «учту», «больше не помню»); save —
@@ -194,6 +203,7 @@ export function checkOutput(text: string, opts: OutputOpts): OutputVerdict {
   if (matchVariants(unquote(raw)).some((t) => SHAME.some((r) => r.test(t)))) return { ok: false, reason: 'shame' }
   const { leak } = opts
   if (leak && hit((t) => leaks(t, leak))) return { ok: false, reason: 'leak' }
+  if (opts.plainSpeech && hit((t) => BUREAUCRATESE.test(t))) return { ok: false, reason: 'bureaucratese' }
   if (opts.claim) {
     // прочтения, где пропали знаки вопроса, сюда не годятся: «Сохранил?» — вопрос, не заявление
     const q = (t: string) => t.split('?').length
