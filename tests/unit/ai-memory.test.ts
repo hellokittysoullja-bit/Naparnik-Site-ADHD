@@ -201,8 +201,8 @@ describe('инструмент memory: схема и проверка хода',
     expect(toFactOp({ op: 'add', category: 'about', text: 'Сова', evidence: 'я сова' }, { refs, lastUserText: 'запомни, я сова' })).toMatchObject({ ok: true, op: { source: 'explicit' } })
   })
   it('пачка в одном ходе: номера относятся к показанному, а не к меняющемуся списку', () => {
-    const base = { facts: [fact({ id: 'A', text: 'Учится' }), fact({ id: 'B', text: 'Любит чай' }), fact({ id: 'C', text: 'Сова' })], plan: null }
-    const r = applyWrites(base, [{ kind: 'memory', input: { op: 'forget', ref: '0' } }, { kind: 'memory', input: { op: 'forget', ref: '2' } }], { now: NOW, lastUserText: 'забудь про учёбу и что я сова', newId: () => 'n' })
+    const base = { facts: [fact({ id: 'A', text: 'Учится в университете' }), fact({ id: 'B', text: 'Любит чай' }), fact({ id: 'C', text: 'Сова' })], plan: null }
+    const r = applyWrites(base, [{ kind: 'memory', input: { op: 'forget', ref: '0' } }, { kind: 'memory', input: { op: 'forget', ref: '2' } }], { now: NOW, lastUserText: 'забудь про университет и что я сова', newId: () => 'n' })
     expect(r.next.facts.map((f) => f.id)).toEqual(['B'])
   })
   it('вызов инструмента → запись; чужой инструмент и негодный вход — нет', () => {
@@ -434,5 +434,30 @@ describe('подписи стартов и план с устройства', ()
     expect(block).toContain('курсовая по социологии')
     expect(block).toContain('открыть файл')
     expect(block).toContain('(подпись скрыта)')
+  })
+})
+
+describe('модель ответила только запрещённым вызовом памяти (набор задач 12.11)', () => {
+  it('повтор без инструмента памяти: человек получает слова кота, а запрещённое не записывается', async () => {
+    const calls: string[][] = []
+    const m = new MockLanguageModelV4({
+      doStream: async (o) => {
+        const names = (o.tools ?? []).map((t) => (t as { name: string }).name)
+        calls.push(names)
+        const chunks = names.includes('memory')
+          ? [
+              { type: 'tool-call', toolCallId: 'c1', toolName: 'memory', input: JSON.stringify({ op: 'add', category: 'about', text: 'Должен банку 80 тысяч', evidence: 'должен банку 80 тысяч' }) },
+              { type: 'finish', finishReason: { unified: 'tool-calls', raw: 'tool_calls' }, usage },
+            ]
+          : say('Слушай, давай возьмём одно дело на сегодня. Какое ближе всего?')
+        return { stream: simulateReadableStream({ chunks: [{ type: 'stream-start', warnings: [] }, ...chunks] as never[] }) }
+      },
+    })
+    chain.steps = [{ id: 'm', model: m }]
+    const parts = await collect(await chatTurn({ ctx: newTurn({ task: 'chat', sessionId: 'r' }), memory: new InProcessMemory(() => NOW), mode: 'companion', conversation: [{ role: 'user', content: 'я должен банку 80 тысяч' }], userTexts: ['я должен банку 80 тысяч'] }))
+    expect(parts.filter((p) => p.type === 'text-delta').map((p) => p.text).join('')).toBe('Слушай, давай возьмём одно дело на сегодня. Какое ближе всего?')
+    expect(parts.some((p) => p.type === 'tool-call' || p.type === 'error')).toBe(false)
+    expect(calls.at(-1)).not.toContain('memory')
+    expect(events).toContainEqual(expect.objectContaining({ type: 'tool.retry', without: ['memory'] }))
   })
 })

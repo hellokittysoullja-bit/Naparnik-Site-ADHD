@@ -388,7 +388,11 @@ export function CompanionChat({
         // просьбу «забудь»: устройство — хозяин своей памяти и последний, кто решает, что в неё попадёт
         const parsed = memoryInput.safeParse(coerceToolInput(toolCall.input))
         if (!parsed.success) return done(false)
-        const op = toFactOp(parsed.data, { refs: sentFactIdsRef.current, lastUserText: lastUserTextRef.current })
+        const op = toFactOp(parsed.data, {
+          refs: sentFactIdsRef.current,
+          lastUserText: lastUserTextRef.current,
+          textOf: (id) => peekAllFacts().find((f) => f.id === id)?.text,
+        })
         if (!op.ok) return done(false)
         applyMemoryOps([op.op])
           .then(async ([r]) => {

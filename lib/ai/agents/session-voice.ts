@@ -42,7 +42,8 @@ export async function sessionVoice(input: {
     userTexts: [input.task],
     timeoutMs: 6000,
     hedgeAfterMs: 1500,
-    maxOutputTokens: 120,
+    // запас под скрытое рассуждение Gemini (набор задач 12.11: 79 из 120 токенов ушли на него, ответ обрезан)
+    maxOutputTokens: 400,
     maxChars: 220,
     parse: (text) => text,
     fallback: preset,

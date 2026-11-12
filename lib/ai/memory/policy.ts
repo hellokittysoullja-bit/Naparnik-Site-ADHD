@@ -1,5 +1,5 @@
 import type { MemoryInput } from '../tools/catalog'
-import { activeFacts, applyFactOps, asksToForget, asksToRemember, FACT_LIMITS, type Fact, type FactOp, type OpResult } from './facts'
+import { activeFacts, applyFactOps, asksToForget, asksToForgetAll, asksToRemember, forgetMatches, FACT_LIMITS, type Fact, type FactOp, type OpResult } from './facts'
 import { factKey } from './fact-key'
 import type { MemorySnapshot } from './schema'
 
@@ -40,7 +40,7 @@ export type RefusedWrite = 'unknown_ref' | 'not_asked_to_forget' | 'incomplete'
  */
 export function toFactOp(
   input: MemoryInput,
-  ctx: { refs: readonly string[]; lastUserText: string },
+  ctx: { refs: readonly string[]; lastUserText: string; textOf?: (id: string) => string | undefined },
 ): { ok: true; op: FactOp } | { ok: false; reason: RefusedWrite } {
   const idOf = (ref: string | undefined) => (ref !== undefined && /^\d{1,2}$/.test(ref) ? ctx.refs[Number(ref)] : undefined)
   switch (input.op) {
@@ -66,10 +66,16 @@ export function toFactOp(
     case 'forget': {
       if (!asksToForget(ctx.lastUserText)) return { ok: false, reason: 'not_asked_to_forget' }
       const id = idOf(input.ref)
-      return id ? { ok: true, op: { op: 'forget', id } } : { ok: false, reason: 'unknown_ref' }
+      if (!id) return { ok: false, reason: 'unknown_ref' }
+      // забыть можно только то, о чём просят (кроме «забудь всё» словами — тогда любой)
+      const text = ctx.textOf?.(id)
+      if (text !== undefined && !asksToForgetAll(ctx.lastUserText) && !forgetMatches(text, ctx.lastUserText)) {
+        return { ok: false, reason: 'not_asked_to_forget' }
+      }
+      return { ok: true, op: { op: 'forget', id } }
     }
     case 'forgetAll':
-      return asksToForget(ctx.lastUserText) ? { ok: true, op: { op: 'forgetAll' } } : { ok: false, reason: 'not_asked_to_forget' }
+      return asksToForgetAll(ctx.lastUserText) ? { ok: true, op: { op: 'forgetAll' } } : { ok: false, reason: 'not_asked_to_forget' }
   }
 }
 
@@ -96,7 +102,7 @@ export function applyWrites(
       applied.push({ write: w, accepted: true })
       continue
     }
-    const op = toFactOp(w.input, { refs, lastUserText: ctx.lastUserText })
+    const op = toFactOp(w.input, { refs, lastUserText: ctx.lastUserText, textOf: (id) => base.facts.find((f) => f.id === id)?.text })
     if (!op.ok) {
       applied.push({ write: w, accepted: false, reason: op.reason })
       continue

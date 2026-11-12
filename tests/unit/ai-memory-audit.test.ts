@@ -231,3 +231,20 @@ describe('фоновое ревью каждые 10 ходов', () => {
     vi.unstubAllGlobals()
   })
 })
+
+describe('находки набора задач 12.11', () => {
+  it('«забудь X» стирает только факт про X; «забудь всё» — только на явное «всё»', async () => {
+    const { forgetMatches, asksToForgetAll } = await import('@/lib/ai/memory/facts')
+    expect(forgetMatches('Начинать помогает чай', 'забудь, что я рассказывал про переезд')).toBe(false)
+    expect(forgetMatches('Переезжает в Казань в декабре', 'забудь, что я рассказывал про переезд')).toBe(true)
+    expect(asksToForgetAll('забудь, что я рассказывал про переезд')).toBe(false)
+    expect(asksToForgetAll('забудь вообще всё, что знаешь')).toBe(true)
+    const check = memoryToolCheck({ facts: 1, userTexts: ['забудь, что я рассказывал про переезд'], factTexts: ['Начинать помогает чай'] })
+    expect(check('memory', { op: 'forget', ref: '0' })).toBe(false)
+    expect(check('memory', { op: 'forgetAll' })).toBe(false)
+  })
+  it('цитата слова человека в кавычках — не стыд', () => {
+    expect(checkOutput('Слушай, «ленивый и безответственный» это не про тебя, это просто ярлык. Какое дело висит?', { maxChars: 300 }).ok).toBe(true)
+    expect(checkOutput('Ты ленивый, соберись.', { maxChars: 300 })).toMatchObject({ ok: false, reason: 'shame' })
+  })
+})

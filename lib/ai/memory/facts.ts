@@ -274,6 +274,30 @@ export function asksToForget(userText: string): boolean {
   return FORGET.test(userText.normalize('NFKC').toLowerCase().replace(/ё/g, 'е'))
 }
 
+/** «Забудь всё» — только явное «всё» (набор задач 12.11: на «забудь про переезд» модель вызывала forgetAll) */
+const FORGET_ALL = /(?<!\p{L})(?:забудь(?:те)?|сотри(?:те)?|удали(?:те)?|выкинь(?:те)?)\s+(?:вообще\s+|просто\s+|пожалуйста\s+)?(?:вс[её]|все)(?!\p{L})|(?<!\p{L})(?:начн[её]м|начнем)\s+с\s+чистого\s+листа/iu
+
+export function asksToForgetAll(userText: string): boolean {
+  return FORGET_ALL.test(userText.normalize('NFKC').toLowerCase().replace(/ё/g, 'е'))
+}
+
+const FORGET_WORDS = /^(?:забуд|забыв|забыт|помни|запом|удали|сотри|стер|выкин|перес|больш|вспом|напом|пожал|прост|вообщ|котор|этот|этом|рассказ|говор|сказа)/
+
+/**
+ * Забыть можно только то, о чём человек просит (набор задач 12.11: «забудь, что я рассказывал про переезд» при
+ * факте «начинать помогает чай» стирало чай). Хотя бы одна основа слова (первые 4 буквы, слова от 4 букв, кроме
+ * слов самой просьбы) общая у факта и у просьбы.
+ */
+export function forgetMatches(factText: string, userText: string): boolean {
+  const stems = (s: string) =>
+    factKey(s)
+      .split(' ')
+      .filter((w) => w.length >= 4 && !FORGET_WORDS.test(w))
+      .map((w) => w.slice(0, 4))
+  const asked = new Set(stems(userText))
+  return stems(factText).some((w) => asked.has(w))
+}
+
 /** Явная просьба запомнить — запись получает приоритет (не вытесняется) */
 const REMEMBER = /(?<!\p{L})(?:запомни\p{L}*|запиши\p{L}*|не\s+забудь|учти|зови\s+меня|называй\s+меня)(?!\p{L})/iu
 

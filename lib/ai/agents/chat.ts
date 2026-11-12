@@ -2,7 +2,7 @@ import type { ModelMessage, TextStreamPart, ToolSet } from 'ai'
 import { emit } from '../core/hooks'
 import { streamTurn } from '../core/stream-turn'
 import type { TurnContext } from '../core/turn'
-import { asksToForget } from '../memory/facts'
+import { asksToForget, asksToForgetAll, forgetMatches } from '../memory/facts'
 import type { MemoryProvider, MemoryWrite } from '../memory/provider'
 import { renderMemory, renderSkills } from '../memory/render'
 import { writeAllowed } from '../memory/write-guard'
@@ -91,7 +91,7 @@ export async function chatTurn(input: {
     // ранние уже получили свой ответ; латинские слова — из всего разговора
     userTexts: input.userTexts.slice(-2),
     echoTexts: input.userTexts,
-    toolCheck: memoryToolCheck({ facts: snapshot?.facts?.length ?? 0, userTexts: input.userTexts }),
+    toolCheck: memoryToolCheck({ facts: snapshot?.facts?.length ?? 0, userTexts: input.userTexts, factTexts: snapshot?.facts?.map((f) => f.text) }),
     // «забыл/запомнил/сохранил» — только если это правда случилось: в этом ответе или в автокруге после инструмента
     claims: { unlocks: CLAIM_UNLOCKS, fromStart: actedSinceUser(input.conversation) },
     ...TURN_LIMITS,
@@ -127,7 +127,7 @@ export function actedSinceUser(conversation: readonly ModelMessage[]): ClaimKind
  *    «сохраняй только то, что обосновано репликой»): модель не запишет то, что придумала сама или прочла в памяти.
  * Устройство повторяет первые две проверки само: оно знает свой список точнее.
  */
-export function memoryToolCheck(turn: { facts: number; userTexts: readonly string[] }) {
+export function memoryToolCheck(turn: { facts: number; userTexts: readonly string[]; factTexts?: readonly string[] }) {
   const last = turn.userTexts.at(-1) ?? ''
   const grounds = turn.userTexts.slice(-6)
   return (name: string, raw: unknown): boolean => {
@@ -138,9 +138,12 @@ export function memoryToolCheck(turn: { facts: number; userTexts: readonly strin
     const refOk = m.ref !== undefined && Number(m.ref) < turn.facts
     switch (m.op) {
       case 'forgetAll':
-        return asksToForget(last)
-      case 'forget':
-        return refOk && asksToForget(last)
+        return asksToForgetAll(last)
+      case 'forget': {
+        if (!refOk || !asksToForget(last)) return false
+        const text = turn.factTexts?.[Number(m.ref)]
+        return text === undefined || asksToForgetAll(last) || forgetMatches(text, last)
+      }
       case 'replace':
       case 'add':
         if (m.op === 'replace' && !refOk) return false

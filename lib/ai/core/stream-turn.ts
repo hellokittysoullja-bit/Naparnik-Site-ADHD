@@ -142,6 +142,8 @@ class Attempt {
   errorStatus?: number
   /** чем закончилась попытка (для решения о повторе) */
   result?: AttemptResult
+  /** инструменты, чьи вызовы в этой попытке отброшены (схема, правила, проверка хода) */
+  readonly rejectedTools = new Set<string>()
 
   constructor(
     readonly step: ModelStep,
@@ -240,15 +242,20 @@ class Attempt {
         onTool(part.toolName, valid)
         // негодный вызов человеку не уходит: клиент AI SDK считает вызов с ошибкой «завершённым» и сам шлёт
         // историю заново — модель повторяла бы вызов платной петлёй (находка аудита 12.11)
-        if (!valid) return { out }
+        if (!valid) {
+          this.rejectedTools.add(part.toolName)
+          return { out }
+        }
         // аргументы пишет модель и их увидит человек (карточка плана, кнопка, «запомнил: …») — это тоже вывод кота:
         // та же проверка, что у текста. Раньше ссылка или доза в аргументе шли мимо правил (находка аудита 12.11)
         if (!toolArgsOk(part.input, { echo: this.opts.echo, medical: this.personMedical })) {
           onTool(part.toolName, false)
+          this.rejectedTools.add(part.toolName)
           return { out }
         }
         if (this.toolCheck && !safeCheck(this.toolCheck, part.toolName, part.input)) {
           onTool(part.toolName, false)
+          this.rejectedTools.add(part.toolName)
           return { out }
         }
         this.toolCalled = true // до закрытия текста: пустой текст рядом с вызовом — норма
@@ -366,6 +373,8 @@ class Race {
   private retryTimer?: ReturnType<typeof setTimeout>
   /** повтор запланирован: «все упали» сейчас не значит «сдаёмся» */
   private retryPending = false
+  /** повтор без отброшенных инструментов уже был */
+  private toolRetried = false
   /** исход решён: новые попытки не запускаются, части проигравших игнорируются */
   private settled = false
   private closed = false
@@ -519,7 +528,7 @@ class Race {
 
   private giveUpIfExhausted(): void {
     if (this.winner || this.settled || this.retryPending || this.launched < this.req.chain.length || !this.attempts.every((a) => a.dead)) return
-    if (this.retryLater()) return
+    if (this.retryLater() || this.retryWithoutRejected()) return
     this.giveUp()
   }
 
@@ -528,6 +537,25 @@ class Race {
    * а не отказом проверки или таймаутом — значит, провайдер «моргнул»: пауза с разбросом и ещё один проход цепочки,
    * если до предела фиксации остаётся время. Отказ проверки вывода не повторяем: модель ответила, ответ негоден.
    */
+  /**
+   * Модель ответила только вызовом, который правила отбросили (набор задач 12.11: обе модели пытались записать
+   * «должен банку 80 тысяч» и больше ничего не сказали — человек получал заготовку). Один повтор цепочки без
+   * этих инструментов: кот ответит словами, а запрещённое так и не запишется.
+   */
+  private retryWithoutRejected(): boolean {
+    if (this.toolRetried || this.all.aborted || !this.req.tools) return false
+    const rejected = new Set(this.attempts.flatMap((a) => (a.result === 'empty' ? [...a.rejectedTools] : [])))
+    if (rejected.size === 0) return false
+    const left = this.input.commitTimeoutMs - (Date.now() - this.ctx.startedAt)
+    if (left < RETRY.minLeftMs) return false
+    this.toolRetried = true
+    this.req = { ...this.req, tools: Object.fromEntries(Object.entries(this.req.tools).filter(([name]) => !rejected.has(name))) }
+    emit({ type: 'tool.retry', without: [...rejected] }, this.ctx)
+    this.launched = 0
+    this.launchNext()
+    return true
+  }
+
   private retryLater(): boolean {
     if (this.retryRound >= RETRY.rounds || this.all.aborted) return false
     const failed = this.attempts.filter((a) => a.result !== 'cancelled')

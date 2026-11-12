@@ -126,6 +126,8 @@ const IDENTITY = new RegExp(
 
 const NO_ECHO: ReadonlySet<string> = new Set()
 
+const unquote = (t: string) => t.replace(/«[^«»]{1,80}»|"[^"]{1,80}"|“[^”]{1,80}”|„[^“”]{1,80}[“”]/g, '«…»')
+
 export type OutputViolation = 'shame' | 'medical' | 'language' | 'empty' | 'length' | 'link' | 'phone' | 'leak' | 'identity' | 'claim'
 export type OutputVerdict = { ok: true } | { ok: false; reason: OutputViolation }
 
@@ -187,7 +189,9 @@ export function checkOutput(text: string, opts: OutputOpts): OutputVerdict {
   if (hit(isLink)) return { ok: false, reason: 'link' }
   if (hit(isPhone)) return { ok: false, reason: 'phone' }
   if (hit((t) => MEDICAL.some((r) => r.test(t)))) return { ok: false, reason: 'medical' }
-  if (hit((t) => SHAME.some((r) => r.test(t)))) return { ok: false, reason: 'shame' }
+  // слова в кавычках — цитата человека, а не ярлык от кота: «„ленивый и безответственный“ это не про тебя» (набор
+  // задач 12.11: такой ответ отбрасывался как стыд). Сказать от себя «ты ленивый» в кавычках модели незачем
+  if (matchVariants(unquote(raw)).some((t) => SHAME.some((r) => r.test(t)))) return { ok: false, reason: 'shame' }
   const { leak } = opts
   if (leak && hit((t) => leaks(t, leak))) return { ok: false, reason: 'leak' }
   if (opts.claim) {

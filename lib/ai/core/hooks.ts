@@ -16,6 +16,7 @@ export type HarnessEvent =
   | { type: 'turn.start' }
   | { type: 'guard.input'; crisis: boolean; injection: boolean }
   | { type: 'model.start'; model: string; hedge: boolean; retry?: boolean }
+  | { type: 'tool.retry'; without: string[] }
   /** первый годный кусок ответа (точка фиксации) — по нему считается задержка модели (core/latency.ts) */
   | { type: 'model.commit'; model: string; ms: number }
   /** committed — попытка успела пройти точку фиксации (тогда ms — длительность всего потока, а не задержка) */

@@ -64,7 +64,9 @@ export async function breakdown(input: {
     userTexts: [input.task],
     timeoutMs: input.timeoutMs ?? 8000,
     hedgeAfterMs: 2000,
-    maxOutputTokens: 160,
+    // Gemini через AnyModel иногда рассуждает скрыто, несмотря на reasoning_effort: none (набор задач 12.11: 160 из 160
+    // токенов ушли на рассуждение, текста ноль). Платим за потраченное, запас бесплатен
+    maxOutputTokens: 400,
     maxChars: 300,
     parse: (text) => {
       const steps = parseSteps(text)
