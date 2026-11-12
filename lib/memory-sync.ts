@@ -1,9 +1,9 @@
 import type { UIMessage } from 'ai'
 import type { ExtractLine, ExtractOp } from '@/lib/ai/agents/memory-extract'
-import { FACT_LIMITS, type FactOp } from '@/lib/ai/memory/facts'
+import { asksToForget, asksToForgetAll, asksToRemember, FACT_LIMITS, forgetMatches, type FactOp } from '@/lib/ai/memory/facts'
 import { factKey } from '@/lib/ai/memory/fact-key'
 import { toFactOp } from '@/lib/ai/memory/policy'
-import { memoryInput } from '@/lib/ai/tools/catalog'
+import { memoryInput, TOOL_REFUSED } from '@/lib/ai/tools/catalog'
 import { applyMemoryOps, applySkillMemoryOps, peekFacts, peekSkills, todayKey } from '@/lib/memory'
 import type { SkillOp } from '@/lib/ai/memory/skills'
 import { factRejection } from '@/lib/ai/memory/write-guard'
@@ -178,4 +178,40 @@ export function purgeForgottenChips<M extends UIMessage>(messages: readonly M[],
     else changed = true
   }
   return changed ? out : null
+}
+
+/**
+ * Явные «запомни» / «забудь» исполняются независимо от модели (Hermes: исполнение команд не зависит от того, послушалась
+ * ли модель). Набор задач 12.11: Gemini через AnyModel игнорирует обязательный вызов инструмента и пишет «давай
+ * запишем это в память», ничего не вызвав. Если в ответе на такую просьбу нет вызова памяти:
+ *  - «запомни X» — сразу фоновое ревью этого куска (не ждём 90 с тишины): ревью записывает надёжно, по тем же правилам;
+ *  - «забудь X» — правило без модели: забываются факты, у которых есть общая основа слова с просьбой; «забудь всё» — всё.
+ */
+export function explicitForgetOps(userText: string, facts: readonly { id: string; text: string }[]): FactOp[] {
+  if (!asksToForget(userText)) return []
+  if (asksToForgetAll(userText)) return facts.length ? [{ op: 'forgetAll' }] : []
+  return facts.filter((f) => forgetMatches(f.text, userText)).map((f) => ({ op: 'forget' as const, id: f.id }))
+}
+
+export type ExplicitResult = 'none' | 'handled-by-cat' | 'review' | 'forgot'
+
+/** Последняя просьба человека и ответ кота после неё: была ли явная просьба о памяти и исполнил ли её кот */
+export async function enforceExplicitMemory(messages: readonly UIMessage[]): Promise<ExplicitResult> {
+  let i = messages.length - 1
+  while (i >= 0 && messages[i].role !== 'user') i--
+  if (i < 0 || i === messages.length - 1) return 'none'
+  const userText = textOf(messages[i])
+  if (!asksToRemember(userText) && !asksToForget(userText)) return 'none'
+  const catDid = messages
+    .slice(i + 1)
+    .some((m) => m.parts.some((p) => p.type === 'tool-memory' && (p as { output?: unknown }).output !== TOOL_REFUSED))
+  if (catDid) return 'handled-by-cat'
+  if (asksToForget(userText)) {
+    const ops = explicitForgetOps(userText, peekFacts())
+    if (ops.length === 0) return 'none'
+    await applyMemoryOps(ops)
+    return 'forgot'
+  }
+  await syncMemory(messages)
+  return 'review'
 }

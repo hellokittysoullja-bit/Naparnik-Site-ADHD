@@ -48,7 +48,7 @@ import {
 import { scriptedReply } from '@/lib/scripted-companion'
 import { archiveMessages, searchArchive } from '@/lib/chat-archive'
 import { RECALL_NONE, rawRecall } from '@/lib/ai/memory/recall-text'
-import { pendingUserTurns, purgeForgottenChips, REVIEW_EVERY_TURNS, syncMemory } from '@/lib/memory-sync'
+import { enforceExplicitMemory, pendingUserTurns, purgeForgottenChips, REVIEW_EVERY_TURNS, syncMemory } from '@/lib/memory-sync'
 import { factKey } from '@/lib/ai/memory/fact-key'
 
 const MEMORY_IDLE_MS = 90_000
@@ -457,6 +457,26 @@ export function CompanionChat({
   // Фоновая выжимка памяти (lib/memory-sync.ts): разговор затих на 90 с — или человек ушёл со вкладки — кусок
   // после прошлой выжимки уходит на сервер, проверенные факты ложатся в память устройства. Пока кот отвечает — ждём.
   const idleForMemory = status === 'ready' || status === 'error'
+  // явные «запомни» / «забудь», которые кот не исполнил сам, исполняются здесь — один раз на реплику человека;
+  // реплики, восстановленные из прошлой сессии, не трогаем (первый проход только запоминает, что уже было)
+  const explicitDoneRef = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    if (!explicitDoneRef.current && messages.length === 0) {
+      explicitDoneRef.current = new Set()
+      return
+    }
+    if (!idleForMemory || messages.length === 0) return
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user')
+    if (!explicitDoneRef.current) {
+      explicitDoneRef.current = new Set(messages.filter((m) => m.role === 'user').map((m) => m.id))
+      return
+    }
+    if (!lastUser || explicitDoneRef.current.has(lastUser.id) || messages.at(-1)?.role !== 'assistant') return
+    explicitDoneRef.current.add(lastUser.id)
+    void enforceExplicitMemory(messages).then((r) => {
+      if (r === 'review' || r === 'forgot') void buildMemoryContext().then((m) => (memoryRef.current = m))
+    })
+  }, [messages, idleForMemory])
   useEffect(() => {
     if (!idleForMemory || messages.length === 0) return
     const run = (keepalive = false) =>

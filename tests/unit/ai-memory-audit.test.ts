@@ -296,3 +296,14 @@ describe('голос кота кодом: приветствие посреди 
     for (const t of ['Сделаем пять минут и всё.', 'Через два дня экзамен, давай начнём.', 'Рад тебя видеть! Чем займёмся?']) expect(cat(t).ok, t).toBe(true)
   })
 })
+
+describe('явные «запомни» / «забудь» исполняются независимо от модели', () => {
+  it('правило забывания без модели: только факты по словам просьбы; «всё» — всё; без просьбы — ничего', async () => {
+    const { explicitForgetOps } = await import('@/lib/memory-sync')
+    const facts = [{ id: 'a', text: 'Начинать помогает чай' }, { id: 'b', text: 'Пишет диплом по экономике' }]
+    expect(explicitForgetOps('забудь про диплом, я его уже сдал', facts)).toEqual([{ op: 'forget', id: 'b' }])
+    expect(explicitForgetOps('забудь вообще всё', facts)).toEqual([{ op: 'forgetAll' }])
+    expect(explicitForgetOps('забудь про переезд', facts)).toEqual([])
+    expect(explicitForgetOps('надо удалить фото с телефона', facts)).toEqual([])
+  })
+})

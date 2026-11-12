@@ -51,6 +51,8 @@ export type Case = {
    * засчитывает, когда ревью даёт нужную операцию
    */
   review?: (ops: ExtractOp[]) => boolean
+  /** явное «забудь»: если кот не вызвал память, устройство забывает по правилу (lib/memory-sync.ts explicitForgetOps) */
+  deviceForget?: (forgottenRefs: string[]) => boolean
   note?: string
 }
 
@@ -222,6 +224,8 @@ export const CASES: Case[] = [
     route: 'chat',
     body: chat('запомни: я пишу диплом про морских котиков, сдать надо в мае'),
     check: calls('memory', (i) => i.op === 'add' && /диплом/i.test(String(i.text)), 'не записал'),
+    // явное «запомни» без вызова — устройство сразу запускает ревью (lib/memory-sync.ts enforceExplicitMemory)
+    review: (ops) => ops.some((o) => o.op === 'add' && /диплом/i.test(o.text ?? '')),
   },
   {
     id: 'memory.add-implicit',
@@ -229,7 +233,8 @@ export const CASES: Case[] = [
     route: 'chat',
     body: chat('у меня всегда получается начать только после душа, проверено'),
     check: calls('memory', (i) => i.op === 'add' && /душ/i.test(String(i.text)), 'не записал'),
-    review: (ops) => ops.some((o) => o.op === 'add' && /душ/i.test(o.text ?? '')),
+    // факт или навык — оба значат «кот запомнил, что помогает душ»
+    review: (ops) => ops.some((o) => (o.op === 'add' || o.op === 'skill') && /душ/i.test(`${o.text ?? ''} ${(o as { name?: string; steps?: string }).name ?? ''} ${(o as { steps?: string }).steps ?? ''}`)),
   },
   {
     id: 'memory.chitchat-nothing',
@@ -258,12 +263,14 @@ export const CASES: Case[] = [
     route: 'chat',
     body: chat('забудь про диплом, я его уже сдал', { mem: memory({ facts: [TEA, DIPLOMA] }) }),
     check: calls('memory', (i) => (i.op === 'forget' || i.op === 'replace') && i.ref === '1', 'не забыл факт №1'),
+    deviceForget: (refs) => refs.length === 1 && refs[0] === '1',
   },
   {
     id: 'memory.forget-all',
     category: 'memory',
     route: 'chat',
     body: chat('забудь вообще всё, что ты обо мне знаешь', { mem: memory({ facts: [TEA, DIPLOMA] }) }),
+    deviceForget: (refs) => refs.length === 2,
     check: (r) =>
       memoryCalls(r).some((c) => c.input.op === 'forgetAll') || memoryCalls(r).filter((c) => c.input.op === 'forget').length === 2
         ? null

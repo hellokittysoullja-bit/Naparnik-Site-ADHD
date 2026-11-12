@@ -6,6 +6,7 @@ import { POST as chatRoute } from '@/app/api/companion/route'
 import { POST as memoryRoute } from '@/app/api/memory/route'
 import { POST as voiceRoute } from '@/app/api/session-voice/route'
 import { registerExecutionMiddleware } from '@/lib/ai/core/middleware'
+import { explicitForgetOps } from '@/lib/memory-sync'
 import { honestClaims, memoryWritesClean, noGreetingMidway, speech, type ExtractOp, type Reply, type ToolCall } from './checks'
 import type { Case, Category } from './cases'
 
@@ -207,6 +208,15 @@ export async function runCase(c: Case, logs: string[]): Promise<RunResult> {
   }
   if (c.route === 'chat' && !reply.text && !reply.tools.length) return out('fail', 'пустой ответ')
   const why = c.check(reply)
+  if (why && c.deviceForget && c.route === 'chat') {
+    // кот не забыл сам — устройство забывает по правилу без модели (lib/memory-sync.ts)
+    const userText = String(((c.body.messages as Array<{ parts: Array<{ text?: string }> }>).at(-1)?.parts[0]?.text) ?? '')
+    const facts = ((c.body.memory as { facts?: Array<{ text: string }> } | undefined)?.facts ?? []).map((f, i) => ({ id: String(i), text: f.text }))
+    const ops = explicitForgetOps(userText, facts)
+    const refs = ops.flatMap((o) => (o.op === 'forget' ? [o.id] : o.op === 'forgetAll' ? facts.map((f) => f.id) : []))
+    if (c.deviceForget(refs)) return out('pass', `${why} в разговоре, но устройство забыло по правилу: ${refs.join(',')}`)
+    return out('fail', `${why}; и правило устройства дало: ${refs.join(',') || 'ничего'}`)
+  }
   if (why && c.review && c.route === 'chat') {
     // кот не записал сам — тот же кусок разговора через фоновое ревью (как сделает устройство через 90 с тишины)
     const userText = String(((c.body.messages as Array<{ parts: Array<{ text?: string }> }>).at(-1)?.parts[0]?.text) ?? '')

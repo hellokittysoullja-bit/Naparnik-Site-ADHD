@@ -156,7 +156,10 @@ export function factGrounded(text: string, evidence: string | undefined, userTex
  */
 export function writeAllowed(text: string, evidence: string | undefined, userTexts: readonly string[]): boolean {
   if (factRejection(text) !== null) return false
-  if (evidence !== undefined && factRejection(evidence) !== null) return false
+  // цитата — слова самого человека: «забудь», «отвечай» в ней — обычная речь, а не указание коту (набор задач:
+  // «забудь про диплом, я его уже сдал» как основание замены отклонялось); остальные запреты — в силе
+  const evRejected = evidence !== undefined ? factRejection(evidence) : null
+  if (evRejected !== null && evRejected !== 'injection') return false
   if (checkInput([...userTexts]).crisis) return false
   return factGrounded(text, evidence, userTexts)
 }
