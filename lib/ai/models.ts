@@ -53,10 +53,19 @@ type Profile = { id: string; robust?: boolean }
  * просто ничего не меняет, пока замер (evals/ai-attacks.eval.ts) не покажет разницу.
  */
 export const PRIMARY_MODEL = 'gc/gemini-2.5-flash'
+/**
+ * Резервный провайдер (Hermes: цепочка «основная → резервный провайдер → запасная»): та же Gemini 2.5 Flash по
+ * второму маршруту AnyModel. Замер 12.11 (8 запросов, поток, настоящие инструкции): gc 8/8, первое слово 1,4 с;
+ * ag 8/8, 1,8 с (худшее 3,4 с); DeepSeek 6/8, 4,4 с, худшее 14 с. Набор задач в тот же день: провалы почти
+ * целиком — обрыв Gemini на одном маршруте и медленная DeepSeek. Выбор владельца (Gemini основная, DeepSeek
+ * запасная) не меняется: резерв — та же модель, платим за него, только когда первая медлит или упала.
+ */
+export const RESERVE_MODEL = 'ag/gemini-2.5-flash'
 export const FALLBACK_MODEL = 'ds/deepseek-v4-flash'
 
 const PROFILES: Record<string, Profile> = {
   primary: { id: PRIMARY_MODEL },
+  reserve: { id: RESERVE_MODEL },
   fallback: { id: FALLBACK_MODEL },
 }
 
@@ -66,13 +75,13 @@ const PROFILES: Record<string, Profile> = {
  * модель (например, дешёвую для фоновой выжимки памяти), не трогая ядро и маршруты.
  */
 const ROUTES: Record<TaskName, readonly (keyof typeof PROFILES)[]> = {
-  test: ['primary', 'fallback'],
-  chat: ['primary', 'fallback'],
-  'session-voice': ['primary', 'fallback'],
-  breakdown: ['primary', 'fallback'],
-  'onboarding-first-step': ['primary', 'fallback'],
-  'memory-extract': ['primary', 'fallback'],
-  recall: ['primary', 'fallback'],
+  test: ['primary', 'reserve', 'fallback'],
+  chat: ['primary', 'reserve', 'fallback'],
+  'session-voice': ['primary', 'reserve', 'fallback'],
+  breakdown: ['primary', 'reserve', 'fallback'],
+  'onboarding-first-step': ['primary', 'reserve', 'fallback'],
+  'memory-extract': ['primary', 'reserve', 'fallback'],
+  recall: ['primary', 'reserve', 'fallback'],
 }
 
 /**

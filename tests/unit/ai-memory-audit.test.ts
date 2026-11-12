@@ -277,3 +277,22 @@ describe('прогоны набора 12.11 (вечер)', () => {
     expect(checkOutput(r.text, { maxChars: 300, plainSpeech: true, claim: { allowed: () => false } }).ok).toBe(true)
   })
 })
+
+describe('голос кота кодом: приветствие посреди разговора и счёт пропуска', () => {
+  it('приветствие снимается, только когда разговор идёт и человек не здоровался', async () => {
+    const { stripGreeting } = await import('@/lib/ai/guards/output')
+    expect(stripGreeting('О, привет! Да я тут, у костра.')).toBe('Да я тут, у костра.')
+    expect(stripGreeting('Привет-привет, слушай, давай откроем файл.')).toBe('Слушай, давай откроем файл.')
+    expect(stripGreeting('Приветик, Аня! Начнём?')).toBe('Начнём?')
+    expect(stripGreeting('Давай откроем файл.')).toBe('Давай откроем файл.')
+    const { SentenceGuard } = await import('@/lib/ai/core/stream-guard')
+    const g = new SentenceGuard({ maxChars: 300, noGreeting: true })
+    const out = [g.push('О, привет! '), g.push('Давай откроем файл курсовой. '), g.end()].map((s) => (s.kind === 'release' ? s.text : '')).join('')
+    expect(out).toBe('Давай откроем файл курсовой.')
+  })
+  it('счёт пропуска не показывается; обычные числа — да', () => {
+    const cat = (t: string) => checkOutput(t, { maxChars: 400, plainSpeech: true })
+    for (const t of ['Ты пропал на двенадцать дней, я весь остров обошёл.', 'Ой, шесть дней — это срок!', 'Тебя не было целых 5 дней.', 'Я ждал тебя три дня.']) expect(cat(t), t).toMatchObject({ ok: false, reason: 'absence' })
+    for (const t of ['Сделаем пять минут и всё.', 'Через два дня экзамен, давай начнём.', 'Рад тебя видеть! Чем займёмся?']) expect(cat(t).ok, t).toBe(true)
+  })
+})

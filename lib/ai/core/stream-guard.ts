@@ -1,4 +1,4 @@
-import { checkOutput, undash, type OutputOpts, type OutputViolation } from '../guards/output'
+import { checkOutput, stripGreeting, undash, type OutputOpts, type OutputViolation } from '../guards/output'
 
 /**
  * Проверка ответа ПО ХОДУ печати (чат печатает ответ по мере генерации).
@@ -91,6 +91,13 @@ export class SentenceGuard {
     if (!verdict.ok) return { kind: 'violation', reason: verdict.reason }
     this.pending = this.pending.slice(cut)
     if (!this.opened) chunk = chunk.trimStart()
+    if (!this.opened && this.opts.noGreeting) {
+      chunk = stripGreeting(chunk)
+      if (!chunk.trim()) {
+        // ответ начался только с приветствия: ждём следующее предложение
+        return { kind: 'hold' }
+      }
+    }
     this.opened = true
     this.released += chunk
     return chunk ? { kind: 'release', text: chunk } : { kind: 'hold' }

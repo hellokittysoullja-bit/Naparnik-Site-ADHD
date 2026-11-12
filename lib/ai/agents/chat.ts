@@ -14,7 +14,7 @@ import { fitConversation } from '../prompt/context-budget'
 import { CHAT_SYSTEM, FOCUS_CHAT_SYSTEM, situation } from '../prompt/tasks/chat'
 import { memoryInput, savePlanInput, tools } from '../tools/catalog'
 import { DEVICE_REFUSED } from '../channels/web'
-import type { ClaimKind } from '../guards/output'
+import { GREETS, type ClaimKind } from '../guards/output'
 
 type Part = TextStreamPart<ToolSet>
 
@@ -94,6 +94,9 @@ export async function chatTurn(input: {
     toolCheck: memoryToolCheck({ facts: snapshot?.facts?.length ?? 0, userTexts: input.userTexts, factTexts: snapshot?.facts?.map((f) => f.text) }),
     // «забыл/запомнил/сохранил» — только если это правда случилось: в этом ответе или в автокруге после инструмента
     claims: { unlocks: CLAIM_UNLOCKS, fromStart: actedSinceUser(input.conversation) },
+    // здороваться — только в начале разговора или в ответ на приветствие (правило владельца 12.11; модели
+    // здоровались посреди разговора вопреки промпту — набор задач)
+    noGreeting: input.conversation.some((m) => m.role === 'assistant') && !GREETS.test(input.userTexts.at(-1) ?? ''),
     ...TURN_LIMITS,
     signal: input.signal,
   })

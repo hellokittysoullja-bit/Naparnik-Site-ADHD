@@ -278,13 +278,13 @@ describe('запись в память (R6, Hermes memory_tool_store: строг
 })
 
 describe('маршруты задач (Hermes: свой маршрут у каждой задачи)', () => {
-  it('у каждой задачи есть цепочка из двух разных моделей (выбор владельца: Gemini 2.5 Flash → DeepSeek)', async () => {
+  it('у каждой задачи цепочка: Gemini 2.5 Flash → тот же Gemini резервным маршрутом → DeepSeek (Hermes: резервный провайдер)', async () => {
     vi.stubEnv('ANYMODEL_API_KEY', 'test-key')
     const { modelChain, resetModelsForTests } = await vi.importActual<typeof import('@/lib/ai/models')>('@/lib/ai/models')
     resetModelsForTests()
-    for (const task of ['chat', 'session-voice', 'breakdown', 'onboarding-first-step', 'memory-extract'] as const) {
+    for (const task of ['chat', 'session-voice', 'breakdown', 'onboarding-first-step', 'memory-extract', 'recall'] as const) {
       const c = modelChain(task)
-      expect(c.map((s) => s.id)).toEqual(['gc/gemini-2.5-flash', 'ds/deepseek-v4-flash'])
+      expect(c.map((s) => s.id)).toEqual(['gc/gemini-2.5-flash', 'ag/gemini-2.5-flash', 'ds/deepseek-v4-flash'])
     }
     vi.unstubAllEnvs()
     resetModelsForTests()

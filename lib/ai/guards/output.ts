@@ -128,7 +128,7 @@ const NO_ECHO: ReadonlySet<string> = new Set()
 
 const unquote = (t: string) => t.replace(/«[^«»]{1,80}»|"[^"]{1,80}"|“[^”]{1,80}”|„[^“”]{1,80}[“”]/g, '«…»')
 
-export type OutputViolation = 'shame' | 'medical' | 'language' | 'empty' | 'length' | 'link' | 'phone' | 'leak' | 'identity' | 'claim' | 'bureaucratese'
+export type OutputViolation = 'shame' | 'medical' | 'language' | 'empty' | 'length' | 'link' | 'phone' | 'leak' | 'identity' | 'claim' | 'bureaucratese' | 'absence'
 export type OutputVerdict = { ok: true } | { ok: false; reason: OutputViolation }
 
 export type OutputOpts = {
@@ -145,13 +145,44 @@ export type OutputOpts = {
   claim?: { allowed: (kind: ClaimKind) => boolean }
   /** речь кота (чат, голос, шаги): канцелярит не пропускать (правило владельца 12.11) */
   plainSpeech?: boolean
+  /** разговор уже идёт и человек не здоровался: приветствие в начале ответа снимается (правило владельца 12.11) */
+  noGreeting?: boolean
 }
+
+const GREETING_START =
+  /^\s*(?:(?:о|ой|ну|ага|а)[,!]?\s+)?(?:приве\p{L}*(?:[-\s]+приве\p{L}*)?|здравствуй\p{L}*|здорово|хай|салют|доброе\s+утро|добрый\s+(?:день|вечер)|доброй\s+ночи)/iu
+// «Приветик, Аня!» — имя после приветствия (с заглавной; регистр важен, поэтому отдельно от правила выше)
+const GREETING_NAME = /^\s*,\s*\p{Lu}[\p{L}-]*/u
+
+/** «О, привет! Слушай…» → «Слушай…»: снимаем приветствие в начале ответа посреди разговора */
+export function stripGreeting(text: string): string {
+  const m = GREETING_START.exec(text)
+  if (!m) return text
+  let rest = text.slice(m[0].length)
+  const name = GREETING_NAME.exec(rest)
+  if (name) rest = rest.slice(name[0].length)
+  rest = rest.replace(/^[!.,…\s]+/u, '')
+  return rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : ''
+}
+
+export const GREETS = /^\s*(?:(?:о|ой|ну)[,!]?\s+)?(?:приве|здравств|здаров|хай|салют|добр\p{L}*\s+(?:утро|день|вечер)|hi|hello|hey)/iu
 
 /**
  * Канцелярит в речи кота (правило владельца 12.11: «никаких канцеляритов»). Промпт запрещает, но модели всё равно
  * пишут «на повестке дня» (набор задач 12.11) — правило исполняет код. Только однозначно казённые обороты: такой
  * ответ не показывается, ход уходит следующей модели.
  */
+/**
+ * Счёт пропуска (правило владельца: «если человек не появлялся, НИКОГДА не считай упущенное»; база знаний CP08 —
+ * кот не ждёт и не считает). Набор задач 12.11: «Ты пропал на двенадцать дней», «шесть дней — это срок!» — промпт
+ * это запрещал, модели всё равно писали. Число дней или недель рядом с «пропал / не было / не заходил / ждал».
+ */
+const NUM_OR_WORD = String.raw`(?:\d+|один|одну|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|\p{L}*надцать|двадцать|тридцать|сорок|пару|несколько)`
+const ABSENCE_COUNT = new RegExp(
+  String.raw`(?<!\p{L})(?:пропал\p{L}*|не\s+было|не\s+заходил\p{L}*|не\s+появлял\p{L}*|отсутствовал\p{L}*|ждал\p{L}*|скучал\p{L}*)(?:\s+\p{L}+){0,2}\s+(?:на\s+|целых\s+|уже\s+)?(?:${NUM_OR_WORD}|\d+)\s+(?:дн|день|недел|месяц)|(?<!\p{L})(?:${NUM_OR_WORD}|\d+)\s+(?:дн\p{L}*|недел\p{L}*)\s*(?:—|-|,)?\s*(?:это\s+)?(?:срок|долго|немало|целая|вечность)`,
+  'iu',
+)
+
 const BUREAUCRATESE = /(?<!\p{L})(?:на\s+повестке|в\s+рамках|осуществ\p{L}*|явля(?:ется|ются|лся|лась)|зафиксирова\p{L}*|реализова(?:ть|ть|ние|нии)|произвести|с\s+целью|в\s+случае\s+если|в\s+связи\s+с\s+тем|вышеуказанн\p{L}*|нижеследующ\p{L}*|данн(?:ый|ая|ое|ого|ой|ую)\s+(?:момент|вопрос|задач|дел|случа))(?!\p{L})/iu
 
 /**
@@ -204,6 +235,7 @@ export function checkOutput(text: string, opts: OutputOpts): OutputVerdict {
   const { leak } = opts
   if (leak && hit((t) => leaks(t, leak))) return { ok: false, reason: 'leak' }
   if (opts.plainSpeech && hit((t) => BUREAUCRATESE.test(t))) return { ok: false, reason: 'bureaucratese' }
+  if (opts.plainSpeech && hit((t) => ABSENCE_COUNT.test(t))) return { ok: false, reason: 'absence' }
   if (opts.claim) {
     // прочтения, где пропали знаки вопроса, сюда не годятся: «Сохранил?» — вопрос, не заявление
     const q = (t: string) => t.split('?').length

@@ -59,6 +59,8 @@ export type StreamTurnInput = {
    * вызов одного из tools в этой попытке или (allowedFromStart) результат такого вызова уже в истории хода
    */
   claims?: { unlocks: Readonly<Record<string, readonly ClaimKind[]>>; fromStart: readonly ClaimKind[] }
+  /** разговор уже идёт и человек не здоровался — приветствие в начале ответа снимается */
+  noGreeting?: boolean
   signal?: AbortSignal
 }
 
@@ -434,6 +436,7 @@ class Race {
       claim: input.claims ? { allowed: (k: ClaimKind) => input.claims!.fromStart.includes(k) } : undefined,
       // речь кота — без канцелярита; служебные задачи (выжимка, вспоминание) человеку не показываются
       plainSpeech: !input.whole?.internal,
+      noGreeting: input.noGreeting,
     }
     this.personMedical = mentionsMedical(input.echoTexts ?? input.userTexts)
     const total = AbortSignal.timeout(input.totalTimeoutMs)
