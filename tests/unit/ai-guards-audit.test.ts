@@ -67,6 +67,13 @@ describe('обходы закрыты', () => {
     expect(stripPetNames('Аня, привет!')).toBe('Аня, привет!')
     expect(tidy('Солнышко, давай начнём с чашек.')).toBe('Давай начнём с чашек.')
   })
+  it('счёт пропуска в любой форме не проходит (набор задач 12.11)', () => {
+    const o = { maxChars: 400, plainSpeech: true }
+    expect(checkOutput('О, привет! Я эти двенадцать дней рыбачил у костра, а тебя всё не было. Как ты?', o)).toEqual({ ok: false, reason: 'absence' })
+    expect(checkOutput('Рыбачил у костра, а тебя всё не было.', o)).toEqual({ ok: false, reason: 'absence' })
+    expect(checkOutput('О, привет! Я тут рыбачил и смотрел на волны. Как ты?', o)).toEqual({ ok: true })
+    expect(checkOutput('Все три шага уже за день сделаны, красота.', o)).toEqual({ ok: true })
+  })
   it('снятие приветствия не портит похвалу (аудит 12.11)', async () => {
     const { stripGreeting } = await import('@/lib/ai/guards/output')
     expect(stripGreeting('Здорово, что ты вернулся! Давай начнём.')).toBe('Здорово, что ты вернулся! Давай начнём.')
