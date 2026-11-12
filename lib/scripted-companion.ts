@@ -1,3 +1,6 @@
+import { CRISIS_REPLY } from '@/lib/ai/crisis'
+import { checkInput } from '@/lib/ai/guards/input'
+import { mentionsMedical } from '@/lib/ai/guards/output'
 /**
  * Скриптовый мозг напарника — фолбэк, когда LLM недоступен
  * (нет ключа, исчерпан лимит, сбой сети).
@@ -233,6 +236,14 @@ export function scriptedReply(
   const finds = memory?.recentFinds ?? []
   const lastFind = finds.length > 0 ? finds[finds.length - 1] : null
   const totalStarts = memory?.patterns.totalStarts ?? 0
+
+  // Кризис — раньше всего остального: заготовка показывается, когда ИИ недоступен (сеть, лимит запросов), и без этой
+  // проверки на «не хочу жить» отвечала «хороший зверь, но большой… Кнопка ниже» с кнопкой старта (аудит 12.11)
+  if (checkInput([text]).crisis) return { text: CRISIS_REPLY }
+  // Лекарства и дозы — не дело для карточки: только врач
+  if (mentionsMedical([text]) && /\?|сколько|можно\s+ли|стоит\s+ли|как\s+(?:пить|принимать)/iu.test(text)) {
+    return { text: 'Про лекарства и дозы я не подскажу, это вопрос к твоему *врачу*. А с делами помогу: что сейчас висит?' }
+  }
 
   // Прощание
   if (matches(text, RX.bye)) {

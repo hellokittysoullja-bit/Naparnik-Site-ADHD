@@ -3,6 +3,8 @@
 import '@/lib/zod-jitless' // первым — см. файл
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
+import { CRISIS_REPLY } from '@/lib/ai/crisis'
+import { checkInput } from '@/lib/ai/guards/input'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from 'ai'
 import { AnimatePresence, motion, motionValue, useReducedMotion, type MotionValue } from 'motion/react'
@@ -329,7 +331,12 @@ export function CompanionChat({
             .filter((p) => p.type === 'text')
             .map((p) => (p.type === 'text' ? p.text : ''))
             .join(' ') ?? ''
-        const reply = scriptedReply(userText, memoryRef.current, new Date().getHours())
+        // кризис обвязка смотрит по двум последним репликам («не хочу» / «жить»): заготовка — так же
+        const lastTwo = prev
+          .filter((m) => m.role === 'user')
+          .slice(-2)
+          .map((m) => m.parts.map((p) => (p.type === 'text' ? p.text : '')).join(' '))
+        const reply = checkInput(lastTwo).crisis ? { text: CRISIS_REPLY } : scriptedReply(userText, memoryRef.current, new Date().getHours())
 
         const parts: (typeof prev)[number]['parts'] = [{ type: 'text', text: reply.text }]
         if (reply.startStep) {

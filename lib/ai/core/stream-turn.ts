@@ -482,7 +482,9 @@ class Race {
       { instructions: input.instructions, messages: input.messages, chain: modelChain(ctx.task), tools: input.tools, requiredTool: input.requiredTool, hedgeAfterMs: input.hedgeAfterMs },
       { ctx, input: verdict },
     )
+    this.personMedical = mentionsMedical(input.echoTexts ?? input.userTexts)
     this.guardOpts = {
+      personMedical: this.personMedical,
       maxChars: input.maxChars,
       echo: echoWords(input.echoTexts ?? input.userTexts),
       leak: leakPrint(this.req.instructions),
@@ -491,7 +493,6 @@ class Race {
       plainSpeech: !input.whole?.internal,
       noGreeting: input.noGreeting,
     }
-    this.personMedical = mentionsMedical(input.echoTexts ?? input.userTexts)
     const total = AbortSignal.timeout(input.totalTimeoutMs)
     this.all = input.signal ? AbortSignal.any([input.signal, total]) : total
     // уже отменённый сигнал событие 'abort' не пошлёт — проверяем сразу (иначе ход висел до таймера)
