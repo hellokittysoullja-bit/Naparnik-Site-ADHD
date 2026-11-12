@@ -264,3 +264,16 @@ describe('прогон набора 12.11 после исправлений', ()
     expect(checkOutput('Что у тебя сейчас на повестке дня?', { maxChars: 300 }).ok).toBe(true) // не речь кота
   })
 })
+
+describe('прогоны набора 12.11 (вечер)', () => {
+  it('дата платежа по банку — тоже деньги', () => {
+    expect(factRejection('В среду платёж по банку, надо подготовиться')).toBe('money')
+  })
+  it('заготовка на «запомни, что я пью риталин» — честно «такое не храню», без названия препарата', async () => {
+    const { scriptedReply } = await import('@/lib/scripted-companion')
+    const r = scriptedReply('запомни, что я пью риталин по утрам', null, 12)
+    expect(r.text).toMatch(/не запоминаю|не храню/)
+    expect(r.text).not.toMatch(/риталин/i)
+    expect(checkOutput(r.text, { maxChars: 300, plainSpeech: true, claim: { allowed: () => false } }).ok).toBe(true)
+  })
+})
