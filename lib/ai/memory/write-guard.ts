@@ -180,8 +180,17 @@ export function skillAllowed(
   if (!groundedIn(evidence, userTexts)) return false
   const norm = (s: string) => forMatching(s).replace(/[^\p{L}]+/gu, ' ').trim()
   const stem = (x: string) => x.slice(0, 4)
-  const words = norm(fields.join(' ')).split(' ').filter((x) => x.length >= 4 && !STOP.has(stem(x)))
+  // навык — совет коту своими словами («предложить сходить в душ»), поэтому слова процедуры у человека не ищем по
+  // доле: достаточно двух разных основ из его реплик или четверти слов. Короткие слова тоже считаются — «душ»,
+  // «чай», «сон» (набор задач 12.11: навык «Душ для старта» отбрасывался, у «душ» три буквы)
+  const words = norm(fields.join(' ')).split(' ').filter((x) => x.length >= 3 && !STOP.has(stem(x)) && !SHORT_STOP.has(x))
   if (words.length === 0) return false
-  const have = new Set(norm(userTexts.join(' ')).split(' ').map(stem))
-  return words.filter((x) => have.has(stem(x))).length / words.length >= 0.25
+  const said = norm(userTexts.join(' ')).split(' ')
+  const have = new Set(said.map(stem))
+  const hit = (x: string) => (x.length >= 4 ? have.has(stem(x)) : said.some((w) => w.startsWith(x)))
+  const matched = words.filter(hit)
+  return new Set(matched.map(stem)).size >= 2 || matched.length / words.length >= 0.25
 }
+
+/** служебные трёхбуквенные слова — не основа навыка */
+const SHORT_STOP = new Set('для как все всё тот так там тут где кто что его она они оно мне мой моя без под над при про его раз еще ещё уже или если тебя тебе'.split(' '))
