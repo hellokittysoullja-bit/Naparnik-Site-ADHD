@@ -455,6 +455,8 @@ class Race {
   private toolRetried = false
   /** исход решён: новые попытки не запускаются, части проигравших игнорируются */
   private settled = false
+  /** ответ победителя оборван после фиксации — причина */
+  private cut?: AttemptResult
   private closed = false
   private turnEnded = false
   private hedgeTimer?: ReturnType<typeof setTimeout>
@@ -672,7 +674,11 @@ class Race {
    */
   private finishWinner(a: Attempt, result: AttemptResult, outcome: Outcome = 'model'): void {
     this.endAttempt(a, result)
-    if (result !== 'ok') this.write(a.cutParts())
+    if (result !== 'ok') {
+      this.write(a.cutParts())
+      // обрезанный ответ отличим в журнале от целого: без этого долю обрывов не посчитать (аудит 12.11)
+      this.cut = result
+    }
     this.settle(outcome, a)
   }
 
@@ -769,7 +775,7 @@ class Race {
       emit(
         // attempts — сколько платных вызовов сделал ход: токены известны только у победителя (у отменённых нет finish),
         // и без этого числа перерасход страховки в журнале не виден (аудит 12.11)
-        { type: 'turn.end', outcome, model: a?.step.id, ms: Date.now() - this.ctx.startedAt, inTokens: a?.usage.in, outTokens: a?.usage.out, attempts: this.attempts.length },
+        { type: 'turn.end', outcome, model: a?.step.id, ms: Date.now() - this.ctx.startedAt, inTokens: a?.usage.in, outTokens: a?.usage.out, attempts: this.attempts.length, ...(this.cut ? { cut: this.cut } : {}) },
         this.ctx,
       )
       this.onSettled({ outcome, model: a?.step.id })

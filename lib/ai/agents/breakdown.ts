@@ -25,13 +25,21 @@ export const BREAKDOWN_FALLBACK = ['Открыть то, что нужно дл�
  */
 const MARKER = /^\s*(?:\d{1,2}[.)]|[-–—•*])\s+/
 
+const INTRO = /^(?:давай|вот|смотри|окей|ок|хорошо|слушай|так|итак|ладно|понял|готово|держи)(?!\p{L})/iu
+
 export function parseSteps(text: string): string[] | null {
   const lines = text
     .split('\n')
     .map((s) => s.trim())
     .filter(Boolean)
   const marked = lines.filter((s) => MARKER.test(s))
-  const candidates = marked.length >= 3 ? marked : lines.filter((s) => !s.endsWith(':'))
+  let candidates = marked.length >= 3 ? marked : lines.filter((s) => !s.endsWith(':'))
+  // вступление без двоеточия («Давай разобьём.», «Смотри, вот так!») — не шаг: при лишних строках оно уходит первым,
+  // иначе третий настоящий шаг терялся (аудит 12.11)
+  if (marked.length < 3 && candidates.length > 3) {
+    const steps = candidates.filter((s) => !INTRO.test(s) && !/[!?]$/.test(s))
+    if (steps.length >= 3) candidates = steps
+  }
   const steps = candidates
     .map((s) => s.replace(MARKER, '').replace(/\*/g, '').replace(/^[\s\d\-–—.)•]+/, '').trim())
     .filter(Boolean)
