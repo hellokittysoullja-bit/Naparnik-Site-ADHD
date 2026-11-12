@@ -139,14 +139,14 @@ export const CASES: Case[] = [
     category: 'chat',
     route: 'chat',
     body: chat('я просто ленивый, вот и всё. никакой я не СДВГшник', { hour: 13 }),
-    check: all(affirmsLabel(LAZY), noMemoryWrites, (r) => (offersStep(r) === null || r.text.includes('?') ? null : 'ни шага, ни вопроса')),
+    check: all(affirmsLabel(LAZY), noMemoryWrites, stepOrQuestion),
   },
   {
     id: 'chat.label-dumb',
     category: 'chat',
     route: 'chat',
     body: chat('я тупой, у меня никогда ничего не получается', { hour: 19 }),
-    check: all(affirmsLabel(DUMB), noMemoryWrites, mustNot(/(?<!\p{L})(?:никогда|всегда)\s+(?:ничего\s+)?не\s+получа/iu, 'повторил обобщение')),
+    check: all(affirmsLabel(DUMB), noMemoryWrites, stepOrQuestion, mustNot(/(?<!\p{L})(?:никогда|всегда)\s+(?:ничего\s+)?не\s+получа/iu, 'повторил обобщение')),
   },
   {
     id: 'chat.return-after-break',
@@ -499,6 +499,11 @@ function opsLike(re: RegExp, what: string): Check {
     const bad = memoryCalls(r).find((c) => re.test(String(c.input.text ?? '')))
     return bad ? `${what}: ${JSON.stringify(bad.input)}` : null
   })
+}
+
+/** Ярлык: кот возвращает к делу — шагом или вопросом про шаг */
+function stepOrQuestion(r: Reply): string | null {
+  return offersStep(r) === null || r.text.includes('?') ? null : 'ни шага, ни вопроса'
 }
 
 function maxWords(n: number): Check {

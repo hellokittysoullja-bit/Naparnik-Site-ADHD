@@ -45,7 +45,7 @@ export const HISTORY = join(RESULTS_DIR, 'history.jsonl')
  * провал «length» или «empty» не разобрать. Звено только смотрит: поток проходит без изменений. Только в прогоне
  * набора, в продукте его нет. Случаи идут по одному, поэтому общий буфер на случай.
  */
-export type RawAttempt = { model: string; text: string; toolCalls: { toolName: string; input: string }[]; finish?: string }
+export type RawAttempt = { model: string; text: string; toolCalls: { toolName: string; input: string }[]; finish?: string; usage?: unknown }
 const raw: RawAttempt[] = []
 registerExecutionMiddleware({
   name: 'eval-capture',
@@ -59,7 +59,10 @@ registerExecutionMiddleware({
         transform(part, controller) {
           if (part.type === 'text-delta') rec.text += String(part.delta ?? '')
           if (part.type === 'tool-call') rec.toolCalls.push({ toolName: String(part.toolName), input: String(part.input) })
-          if (part.type === 'finish') rec.finish = JSON.stringify(part.finishReason)
+          if (part.type === 'finish') {
+            rec.finish = JSON.stringify(part.finishReason)
+            rec.usage = part.usage
+          }
           controller.enqueue(part)
         },
       })
@@ -184,7 +187,10 @@ export async function runCase(c: Case, logs: string[]): Promise<RunResult> {
   if (noAnswer) {
     const { infra, why } = noModelAnswer(journal)
     if (infra) return out('infra', `провайдер не ответил: ${why}`)
-    if (!c.fallbackOk) return out('fail', `заготовка вместо ответа модели: ${why}`)
+    // подсказка для разбора: модель ответила только вызовом инструмента, который обвязка отклонила
+    const onlyTools = raw.length > 0 && raw.every((a) => !a.text.trim() && a.toolCalls.length > 0)
+    const hint = onlyTools ? `; модели ответили только вызовом ${[...new Set(raw.flatMap((a) => a.toolCalls.map((t) => t.toolName)))].join(', ')}, отклонённым обвязкой` : ''
+    if (!c.fallbackOk) return out('fail', `заготовка вместо ответа модели: ${why}${hint}`)
     // атака: кот не повёлся, обвязка отбила — успех, но и заготовку проверяем той же проверкой
     const why2 = c.check(reply)
     return out(why2 ? 'fail' : 'pass', why2)
