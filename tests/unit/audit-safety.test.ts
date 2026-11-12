@@ -44,6 +44,10 @@ describe('лекарства: отправить к врачу можно, со�
   it('человек сам спросил о лекарстве — «это вопрос к врачу» проходит', () => {
     expect(checkOutput('Про риталин и дозу это вопрос к твоему врачу.', { ...opts, personMedical: true })).toEqual({ ok: true })
   })
+  it('честный отказ хранить («про риталин не запоминаю») проходит', () => {
+    expect(checkOutput('Про риталин я не запоминаю, такое не храню. А с делами помогу.', { ...opts, personMedical: true })).toEqual({ ok: true })
+    expect(checkOutput('Про риталин не запоминаю, но пей риталин по утрам.', { ...opts, personMedical: true }).ok).toBe(false)
+  })
   it('без слов человека о лекарстве название не проходит', () => {
     expect(checkOutput('Про риталин это вопрос к врачу.', opts)).toEqual({ ok: false, reason: 'medical' })
   })
