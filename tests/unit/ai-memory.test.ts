@@ -582,3 +582,11 @@ describe('явная просьба о записи → один обязате�
     expect(memoryAskTool('забудь про план на завтра', cat)).toBe('memory')
   })
 })
+
+describe('прозвище в потоке ответа снимается (набор задач 12.11)', () => {
+  it('«Овечка моя, привет!» → человек видит «Привет!»', async () => {
+    chain.steps = [{ id: 'm', model: scripted(say('Овечка моя, привет! Давай начнём с чашек на столе.'), []) }]
+    const parts = await collect(await chatTurn({ ctx: newTurn({ task: 'chat', sessionId: 'p' }), memory: new InProcessMemory(() => NOW), mode: 'companion', conversation: [{ role: 'user', content: 'меня Аня зовут, помоги с уборкой' }], userTexts: ['меня Аня зовут, помоги с уборкой'] }))
+    expect(parts.filter((p) => p.type === 'text-delta').map((p) => (p as { text: string }).text).join('')).toBe('Привет! Давай начнём с чашек на столе.')
+  })
+})

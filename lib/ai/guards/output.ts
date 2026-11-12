@@ -165,6 +165,20 @@ export function stripGreeting(text: string): string {
   return rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : ''
 }
 
+/**
+ * Ласковое прозвище обращением («Овечка моя, привет!», «Держись, зайка.») снимается кодом: промпт запрещает, а модель
+ * всё равно зовёт так (набор задач 12.11, «Овечка моя» при названном имени «Аня»). Только обращение — между запятыми
+ * или в начале с запятой; «как зайка из мультика» не трогаем.
+ */
+const PET = String.raw`(?:зай(?:ка|чик|ченок|чонок|ушка)|солнышк\p{L}*|овечк\p{L}*|малыш(?:ка)?|детка|дружочек|пупсик|лапочк\p{L}*|лапул\p{L}*|рыбка|птичка|котёночек|котенок|котёнок|милаш\p{L}*|красотк\p{L}*|родн(?:ой|ая|уля)|мил(?:ый|ая))(?:\s+мо(?:я|й))?`
+const PET_START = new RegExp(String.raw`^(\s*)(?:мо(?:я|й)\s+)?${PET}\s*,\s*(\p{L})`, 'iu')
+const PET_INNER = new RegExp(String.raw`,\s*(?:мо(?:я|й)\s+)?${PET}(?=\s*[,.!?…])`, 'giu')
+export function stripPetNames(text: string): string {
+  return text
+    .replace(PET_START, (_m, sp: string, ch: string) => sp + ch.toUpperCase())
+    .replace(PET_INNER, '')
+}
+
 export const GREETS = /^\s*(?:(?:о|ой|ну)[,!]?\s+)?(?:приве|здравств|здаров|хай|салют|добр\p{L}*\s+(?:утро|день|вечер)|hi|hello|hey)/iu
 
 /**
@@ -276,7 +290,7 @@ export function undash(text: string): string {
 }
 
 export function tidy(text: string): string {
-  return undash(text)
+  return stripPetNames(undash(text))
     .trim()
     .replace(/\*\*(.+?)\*\*/g, '*$1*')
     // кавычки снимаются, только если обёрнута вся реплика: «A» — шаг «B» остаётся как есть

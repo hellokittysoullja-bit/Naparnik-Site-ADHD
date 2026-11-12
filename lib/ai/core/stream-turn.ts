@@ -444,6 +444,8 @@ class Race {
   private retryTimer?: ReturnType<typeof setTimeout>
   /** повтор запланирован: «все упали» сейчас не значит «сдаёмся» */
   private retryPending = false
+  /** сколько попыток нарушили обязательный вызов инструмента */
+  private violations = 0
   /** повтор без отброшенных инструментов уже был */
   private toolRetried = false
   /** исход решён: новые попытки не запускаются, части проигравших игнорируются */
@@ -543,7 +545,10 @@ class Race {
       // следующую модель запустит вызывающий (launchNext после relaunchFailed). Все уже запущены — обязательность
       // снимаем сразу, не дожидаясь ещё идущих: медленная модель продолжает с требованием, а эта отвечает без него
       // параллельно (набор задач 12.11: обе Gemini нарушили, DeepSeek думала дольше предела — человек получал заготовку)
-      if (this.launched < this.req.chain.length) return
+      // После второго нарушения требование снимается тоже: две модели подряд отказались вызывать — третья (медленная)
+      // может не успеть до предела (набор задач 12.11: «запомни, что я ленивый» — обе Gemini отказались, DeepSeek не успела)
+      this.violations++
+      if (this.launched < this.req.chain.length && this.violations < 2) return
       this.req = { ...this.req, requiredTool: undefined }
       return this.startAttempt(a.step, true, true)
     }
