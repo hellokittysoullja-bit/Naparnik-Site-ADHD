@@ -22,6 +22,8 @@ export type TurnRequest = {
   messages: ModelMessage[]
   chain: ModelStep[]
   tools?: ToolSet
+  /** обязательный инструмент на этом ходе (маршрутизация по явной просьбе: «запомни», «забудь») */
+  requiredTool?: string
   /** через сколько мс без фиксации запускать следующую модель */
   hedgeAfterMs: number
 }
@@ -65,6 +67,7 @@ const copy = (r: TurnRequest): TurnRequest => ({
   messages: cloneMessages(r.messages),
   chain: r.chain.map((s) => ({ ...s })),
   tools: r.tools ? { ...r.tools } : undefined,
+  requiredTool: r.requiredTool,
   hedgeAfterMs: r.hedgeAfterMs,
 })
 

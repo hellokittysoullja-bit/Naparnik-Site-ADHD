@@ -61,6 +61,12 @@ export type StreamTurnInput = {
   claims?: { unlocks: Readonly<Record<string, readonly ClaimKind[]>>; fromStart: readonly ClaimKind[] }
   /** разговор уже идёт и человек не здоровался — приветствие в начале ответа снимается */
   noGreeting?: boolean
+  /**
+   * Обязательный инструмент на этом ходе (Hermes: маршрутизация явных намерений до модели). Человек прямо просит
+   * «запомни» / «забудь» — модель обязана вызвать инструмент памяти, а не пообещать словами (набор задач 12.11:
+   * «Давай зафиксируем это в памяти» без вызова)
+   */
+  requiredTool?: string
   signal?: AbortSignal
 }
 
@@ -108,6 +114,29 @@ const usageOf = (part: Part & { type: 'finish' }): Usage => ({
 })
 
 /**
+ * Запрос без отброшенных инструментов — для повтора, когда ответ модели был только негодным вызовом. Модель знает
+ * из правил, что инструмент есть, и без прямой строки снова пытается его вызвать или говорит «забыл» словами (набор
+ * задач 12.11) — поэтому для этого повтора говорим прямо, что действия не было
+ */
+function isToolChoiceViolation(e: unknown): boolean {
+  const name = (e as { name?: unknown } | null)?.name
+  return name === 'AI_ToolChoiceViolationError' || (e instanceof Error && /required tool/i.test(e.message))
+}
+
+function withoutTools(req: TurnRequest, rejected: ReadonlySet<string>): TurnRequest {
+  const names = [...rejected].join(', ')
+  const note = rejected.has('memory')
+    ? 'Изменить память сейчас нельзя: того, о чём просят, в памяти нет, или это нельзя хранить. Ничего не записано и не забыто, поэтому не говори «запомнил», «забыл», «стёр». Честно и коротко скажи это своими словами и продолжи разговор.'
+    : `Сейчас инструменты ${names} недоступны: ответь человеку словами, без вызовов.`
+  return {
+    ...req,
+    instructions: `${req.instructions}\n\n${note}`,
+    tools: Object.fromEntries(Object.entries(req.tools ?? {}).filter(([name]) => !rejected.has(name))),
+    requiredTool: req.requiredTool && rejected.has(req.requiredTool) ? undefined : req.requiredTool,
+  }
+}
+
+/**
  * повтор после сбоя провайдера: один раз, пауза 0,6–0,9 с, только если до предела фиксации ≥ 2,5 с (обычный ответ
  * Gemini — около 2 с; при 4 с у дробления с пределом 8 с повтор не успевал — набор задач 12.11)
  */
@@ -148,6 +177,8 @@ class Attempt {
 
   /** поток закончился по лимиту длины (причина остановки length) */
   truncated = false
+  /** модель не вызвала обязательный инструмент (AI SDK: ToolChoiceViolation) */
+  skippedRequiredTool = false
 
   /** сколько текста модель успела написать (для решения «провайдер оборвал» или «модель упёрлась в лимит») */
   get textLength(): number {
@@ -321,6 +352,7 @@ class Attempt {
   private failWith(error: unknown): { out: Part[]; fail: AttemptResult } {
     const status = (error as { statusCode?: unknown } | null)?.statusCode
     if (typeof status === 'number') this.errorStatus = status
+    if (isToolChoiceViolation(error)) this.skippedRequiredTool = true
     return { out: [], fail: 'error' }
   }
 
@@ -426,7 +458,7 @@ class Race {
     }
     // middleware запроса (Hermes llm_request): может переставить цепочку, поправить инструкцию и набор инструментов
     this.req = applyRequestMiddleware(
-      { instructions: input.instructions, messages: input.messages, chain: modelChain(ctx.task), tools: input.tools, hedgeAfterMs: input.hedgeAfterMs },
+      { instructions: input.instructions, messages: input.messages, chain: modelChain(ctx.task), tools: input.tools, requiredTool: input.requiredTool, hedgeAfterMs: input.hedgeAfterMs },
       { ctx, input: verdict },
     )
     this.guardOpts = {
@@ -484,16 +516,18 @@ class Race {
   private relaunchFailed(a: Attempt): void {
     if (this.winner || this.settled || this.all.aborted) return
     const left = this.input.commitTimeoutMs - (Date.now() - this.ctx.startedAt)
+    // модель не смогла вызвать обязательный инструмент — пусть ответит как умеет: обязательность снимаем для всех
+    // следующих попыток, эту модель запускаем сразу (лучше ответ словами, чем заготовка)
+    if (a.skippedRequiredTool && this.req.requiredTool) {
+      this.req = { ...this.req, requiredTool: undefined }
+      return this.startAttempt(a.step, true, true)
+    }
     if (a.result === 'empty' && a.rejectedTools.size > 0 && !this.toolRetried && this.req.tools && left >= RETRY.minLeftMs) {
       this.toolRetried = true
       const rejected = a.rejectedTools
       // модель знает из правил, что инструмент есть, и без прямой строки снова пытается его вызвать (набор задач:
       // повтор без инструмента возвращал пустоту) — для этого повтора говорим прямо
-      this.req = {
-        ...this.req,
-        instructions: `${this.req.instructions}\n\nСейчас инструменты ${[...rejected].join(', ')} недоступны: ответь человеку словами, без вызовов.`,
-        tools: Object.fromEntries(Object.entries(this.req.tools).filter(([name]) => !rejected.has(name))),
-      }
+      this.req = withoutTools(this.req, rejected)
       emit({ type: 'tool.retry', without: [...rejected] }, this.ctx)
       return this.startAttempt(a.step, true, true)
     }
@@ -517,6 +551,9 @@ class Race {
         instructions: this.req.instructions,
         messages: this.req.messages,
         tools: this.req.tools,
+        ...(this.req.requiredTool && this.req.tools?.[this.req.requiredTool]
+          ? { toolChoice: { type: 'tool' as const, toolName: this.req.requiredTool } }
+          : {}),
         maxOutputTokens: this.input.maxOutputTokens,
         maxRetries: 0,
         abortSignal: AbortSignal.any([this.all, a.ctrl.signal]),
@@ -539,6 +576,7 @@ class Race {
       if (a.dead) return
       const status = (e as { statusCode?: unknown } | null)?.statusCode
       if (typeof status === 'number') a.errorStatus ??= status
+      if (isToolChoiceViolation(e)) a.skippedRequiredTool = true
       const timedOut = this.all.aborted
       if (a === this.winner) this.finishWinner(a, timedOut ? 'timeout' : 'error')
       else {
@@ -615,11 +653,7 @@ class Race {
     const left = this.input.commitTimeoutMs - (Date.now() - this.ctx.startedAt)
     if (left < RETRY.minLeftMs) return false
     this.toolRetried = true
-    this.req = {
-      ...this.req,
-      instructions: `${this.req.instructions}\n\nСейчас инструменты ${[...rejected].join(', ')} недоступны: ответь человеку словами, без вызовов.`,
-      tools: Object.fromEntries(Object.entries(this.req.tools).filter(([name]) => !rejected.has(name))),
-    }
+    this.req = withoutTools(this.req, rejected)
     emit({ type: 'tool.retry', without: [...rejected] }, this.ctx)
     this.launched = 0
     this.launchNext()

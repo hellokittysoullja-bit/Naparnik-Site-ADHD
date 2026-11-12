@@ -2,7 +2,7 @@ import type { ModelMessage, TextStreamPart, ToolSet } from 'ai'
 import { emit } from '../core/hooks'
 import { streamTurn } from '../core/stream-turn'
 import type { TurnContext } from '../core/turn'
-import { asksToForget, asksToForgetAll, forgetMatches } from '../memory/facts'
+import { asksToForget, asksToForgetAll, asksToRemember, forgetMatches } from '../memory/facts'
 import type { MemoryProvider, MemoryWrite } from '../memory/provider'
 import { renderMemory, renderSkills } from '../memory/render'
 import { writeAllowed } from '../memory/write-guard'
@@ -97,10 +97,18 @@ export async function chatTurn(input: {
     // здороваться — только в начале разговора или в ответ на приветствие (правило владельца 12.11; модели
     // здоровались посреди разговора вопреки промпту — набор задач)
     noGreeting: input.conversation.some((m) => m.role === 'assistant') && !GREETS.test(input.userTexts.at(-1) ?? ''),
+    // явная просьба «запомни» / «забудь» — первый шаг обязан вызвать память (Hermes: маршрутизация намерения до
+    // модели); после результата инструмента (автокруг) — уже нет, иначе модель вызывала бы его по кругу
+    requiredTool: explicitMemoryAsk(input.userTexts.at(-1) ?? '') && !actedSinceUser(input.conversation).includes('memory') ? 'memory' : undefined,
     ...TURN_LIMITS,
     signal: input.signal,
   })
   return stream.pipeThrough(memoryLifecycle(input.ctx, input.memory, input.userTexts.at(-1) ?? ''))
+}
+
+/** Человек прямо просит сделать что-то с памятью */
+export function explicitMemoryAsk(text: string): boolean {
+  return asksToRemember(text) || asksToForget(text)
 }
 
 /** какой инструмент делает правдой какое заявление: память — «забыл/запомнил» и «записал», план — только «записал» */
@@ -150,7 +158,7 @@ export function memoryToolCheck(turn: { facts: number; userTexts: readonly strin
       case 'replace':
       case 'add':
         if (m.op === 'replace' && !refOk) return false
-        return writeAllowed(m.text ?? '', m.evidence, grounds)
+        return writeAllowed(m.text ?? '', m.evidence ?? last.slice(0, 200), grounds)
     }
   }
 }

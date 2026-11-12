@@ -56,8 +56,10 @@ export const memoryInput = z
       .optional()
       .describe('Для события или расписания: до какой даты это актуально, ГГГГ-ММ-ДД (например, дата экзамена)'),
   })
-  .refine((m) => m.op !== 'add' || (m.category && m.text && m.evidence), 'add: нужны category, text и evidence')
-  .refine((m) => m.op !== 'replace' || (m.ref && m.text && m.evidence), 'replace: нужны ref, text и evidence')
+  // цитата необязательна (набор задач 12.11: модель присылала replace без неё, и вызов терялся) — тогда основание
+  // ход ищет в последней реплике человека (agents/chat.ts memoryToolCheck)
+  .refine((m) => m.op !== 'add' || (m.category && m.text), 'add: нужны category и text')
+  .refine((m) => m.op !== 'replace' || (m.ref && m.text), 'replace: нужны ref и text')
   .refine((m) => m.op !== 'forget' || m.ref, 'forget: нужен ref')
 
 export type MemoryInput = z.infer<typeof memoryInput>

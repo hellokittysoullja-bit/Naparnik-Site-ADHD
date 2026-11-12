@@ -461,3 +461,43 @@ describe('модель ответила только запрещённым вы
     expect(events).toContainEqual(expect.objectContaining({ type: 'tool.retry', without: ['memory'] }))
   })
 })
+
+describe('явная просьба о памяти — вызов обязателен (Hermes: маршрутизация намерения)', () => {
+  it('«запомни …» — модели передаётся обязательный инструмент memory; после результата (автокруг) — уже нет', async () => {
+    const seen: Array<unknown> = []
+    const m = new MockLanguageModelV4({
+      doStream: async (o) => {
+        seen.push(o.toolChoice)
+        return { stream: simulateReadableStream({ chunks: [{ type: 'stream-start', warnings: [] }, ...memoryCall({ op: 'add', category: 'task', text: 'Пишет диплом', evidence: 'пишу диплом' }).slice(3)] as never[] }) }
+      },
+    })
+    chain.steps = [{ id: 'm', model: m }]
+    await collect(await chatTurn({ ctx: newTurn({ task: 'chat', sessionId: 'q' }), memory: new InProcessMemory(() => NOW), mode: 'companion', conversation: [{ role: 'user', content: 'запомни: я пишу диплом' }], userTexts: ['запомни: я пишу диплом'] }))
+    expect(seen[0]).toEqual({ type: 'tool', toolName: 'memory' })
+    seen.length = 0
+    chain.steps = [{ id: 'm', model: scripted(say('Готово.'), []) }]
+    const auto = new MockLanguageModelV4({ doStream: async (o) => (seen.push(o.toolChoice), { stream: simulateReadableStream({ chunks: [{ type: 'stream-start', warnings: [] }, ...say('Слушай, с чего начнём?')] as never[] }) }) })
+    chain.steps = [{ id: 'm', model: auto }]
+    await collect(
+      await chatTurn({
+        ctx: newTurn({ task: 'chat', sessionId: 'q' }),
+        memory: new InProcessMemory(() => NOW),
+        mode: 'companion',
+        conversation: [
+          { role: 'user', content: 'запомни: я пишу диплом' },
+          { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'c', toolName: 'memory', input: { op: 'add' } }] },
+          { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'c', toolName: 'memory', output: { type: 'text', value: 'Готово, память обновлена.' } }] },
+        ],
+        userTexts: ['запомни: я пишу диплом'],
+        autoRounds: 1,
+      }),
+    )
+    expect(seen[0]).not.toEqual({ type: 'tool', toolName: 'memory' })
+  })
+  it('модель не вызвала обязательный инструмент — та же модель сразу без обязательности, человек получает слова', async () => {
+    chain.steps = [{ id: 'm', model: scripted(say('Слушай, давай лучше начнём с одного дела.'), []) }]
+    const parts = await collect(await chatTurn({ ctx: newTurn({ task: 'chat', sessionId: 'v' }), memory: new InProcessMemory(() => NOW), mode: 'companion', conversation: [{ role: 'user', content: 'запомни, что я пью риталин' }], userTexts: ['запомни, что я пью риталин'] }))
+    expect(parts.filter((p) => p.type === 'text-delta').map((p) => p.text).join('')).toBe('Слушай, давай лучше начнём с одного дела.')
+    expect(parts.some((p) => p.type === 'error')).toBe(false)
+  })
+})

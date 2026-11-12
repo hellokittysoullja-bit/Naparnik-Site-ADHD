@@ -207,6 +207,22 @@ export async function runCase(c: Case, logs: string[]): Promise<RunResult> {
   }
   if (c.route === 'chat' && !reply.text && !reply.tools.length) return out('fail', 'пустой ответ')
   const why = c.check(reply)
+  if (why && c.review && c.route === 'chat') {
+    // кот не записал сам — тот же кусок разговора через фоновое ревью (как сделает устройство через 90 с тишины)
+    const userText = String(((c.body.messages as Array<{ parts: Array<{ text?: string }> }>).at(-1)?.parts[0]?.text) ?? '')
+    const mem = c.body.memory as { facts?: Array<{ category: string; text: string }> } | undefined
+    const r = await memoryRoute(
+      new Request('https://naparnik.test/api/memory', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'sec-fetch-site': 'same-origin', 'x-forwarded-for': `198.51.100.${Math.floor(Math.random() * 200)}` },
+        body: JSON.stringify({ facts: mem?.facts ?? [], lines: [{ role: 'user', text: userText }, { role: 'cat', text: reply.text || '…' }], today: '2026-11-12' }),
+      }),
+    )
+    if (r.status === 503) return out('infra', `${why}; ревью: провайдер не ответил`)
+    const ops = ((await r.json()) as { ops?: ExtractOp[] }).ops ?? []
+    if (c.review(ops)) return out('pass', `${why} в разговоре, но записал фоновым ревью: ${JSON.stringify(ops)}`)
+    return out('fail', `${why}; и ревью не записало: ${JSON.stringify(ops)}`)
+  }
   return out(why ? 'fail' : 'pass', why)
 }
 

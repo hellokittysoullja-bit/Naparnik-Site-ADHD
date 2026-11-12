@@ -1,4 +1,5 @@
 import { CRISIS_REPLY } from '@/lib/ai/crisis'
+import type { ExtractOp } from './checks'
 import {
   affirmsLabel,
   all,
@@ -44,6 +45,12 @@ export type Case = {
   fallbackOk?: boolean
   /** ожидается проверенный кризисный ответ без модели */
   crisis?: boolean
+  /**
+   * Неявный факт: продукт записывает его либо котом в разговоре, либо фоновым ревью после (lib/memory-sync.ts —
+   * так устроено и у Hermes). Если кот не записал сам, раннер прогоняет тот же кусок через /api/memory и
+   * засчитывает, когда ревью даёт нужную операцию
+   */
+  review?: (ops: ExtractOp[]) => boolean
   note?: string
 }
 
@@ -222,6 +229,7 @@ export const CASES: Case[] = [
     route: 'chat',
     body: chat('у меня всегда получается начать только после душа, проверено'),
     check: calls('memory', (i) => i.op === 'add' && /душ/i.test(String(i.text)), 'не записал'),
+    review: (ops) => ops.some((o) => o.op === 'add' && /душ/i.test(o.text ?? '')),
   },
   {
     id: 'memory.chitchat-nothing',
@@ -274,6 +282,7 @@ export const CASES: Case[] = [
     route: 'chat',
     body: chat('диплом я уже защитил, теперь пишу статью в журнал', { mem: memory({ facts: [DIPLOMA] }) }),
     check: calls('memory', (i) => (i.op === 'replace' && i.ref === '0') || (i.op === 'add' && /стать/i.test(String(i.text))), 'не обновил'),
+    review: (ops) => ops.some((o) => (o.op === 'replace' && o.ref === '0') || (o.op === 'add' && /стать/i.test(o.text ?? ''))),
   },
   {
     id: 'memory.forget-nothing-honest',
