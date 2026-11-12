@@ -80,13 +80,22 @@ export async function chatTurn(input: {
     // бюджет истории (prompt/context-budget.ts): сайт укладывается и так, боту с длинной историей — обязательно
     conversation: fitConversation(input.conversation, HISTORY_TOKENS),
   })
+  // просят запомнить то, что кот не хранит: память на этот ход не предлагается вовсе (иначе модель звала её, вызов
+  // отбрасывали правила, и на повтор уходило 3–4 с — набор задач 12.11), а инструкция говорит это прямо
+  const unstorable = unstorableAsk(input.userTexts.at(-1) ?? '')
+  const allTools = tools.forTask('chat')
   const stream = streamTurn({
     ctx: input.ctx,
-    instructions,
+    instructions: unstorable ? `${instructions}\n\n${UNSTORABLE_NOTE}` : instructions,
     messages,
     // после двух автокругов подряд — без инструментов: модель, зовущая инструмент на каждый ход, иначе гоняла бы
     // платные запросы сама (security-ai.md дефект 13)
-    tools: (input.autoRounds ?? 0) >= MAX_AUTO_ROUNDS ? undefined : tools.forTask('chat'),
+    tools:
+      (input.autoRounds ?? 0) >= MAX_AUTO_ROUNDS
+        ? undefined
+        : unstorable
+          ? Object.fromEntries(Object.entries(allTools).filter(([name]) => name !== 'memory'))
+          : allTools,
     // кризис — по двум последним репликам человека: фразу делят на два сообщения («не хочу» / «жить»), а более
     // ранние уже получили свой ответ; латинские слова — из всего разговора
     userTexts: input.userTexts.slice(-2),
@@ -143,6 +152,9 @@ const ABOUT_SELF = /(?<!\p{L})(?:что\s+(?:я|у\s+меня|мне|мой|мо
  * ответ здесь слова («такое не записываю, ярлыки делу не помогают»). Набор задач 12.11: обе модели так и отвечали, а
  * обвязка отбрасывала эти ответы как «не вызвал обязательный инструмент», и человек получал заготовку.
  */
+const UNSTORABLE_NOTE =
+  'Человек просит запомнить то, что ты не хранишь (здоровье и лекарства, ярлыки о себе, деньги, контакты, документы). Память не трогай. Одной тёплой фразой скажи, что такое не запоминаешь, без слов «запомню», «учту», «записал», и вернись к делу одним коротким вопросом.'
+
 export function unstorableAsk(userText: string): boolean {
   if (!asksToRemember(userText) || asksToForget(userText)) return false
   const reason = factRejection(userText)
