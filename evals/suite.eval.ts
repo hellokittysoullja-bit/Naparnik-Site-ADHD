@@ -23,6 +23,8 @@ import {
  */
 const REPEAT = Math.max(1, Number(process.env.EVAL_REPEAT) || 1)
 const ONLY = process.env.EVAL_ONLY ? new RegExp(process.env.EVAL_ONLY, 'iu') : null
+// мимо перехвата консоли vitest: итог виден всегда, даже когда тест прошёл
+const say = (s: string) => void process.stdout.write(`${s}\n`)
 
 it('набор задач кота', { timeout: 60 * 60_000 }, async () => {
   expect(process.env.ANYMODEL_API_KEY, 'нужен ANYMODEL_API_KEY').toBeTruthy()
@@ -39,7 +41,7 @@ it('набор задач кота', { timeout: 60 * 60_000 }, async () => {
       const r = await runCase(c, logs)
       runs.push(r)
       if (r.verdict === 'fail') writeTrajectory(sha, c, r, i)
-      console.log(`${r.verdict.padEnd(5)} ${c.id.padEnd(32)} ${String(r.ms).padStart(6)} мс  ${r.reason ?? ''}`)
+      say(`${r.verdict.padEnd(5)} ${c.id.padEnd(32)} ${String(r.ms).padStart(6)} мс  ${r.reason ?? ''}`)
     }
     summaries.push(summarize(c.id, c.category, runs))
   }
@@ -58,16 +60,18 @@ it('набор задач кота', { timeout: 60 * 60_000 }, async () => {
   })
   const history = readHistory()
   const prev = history.filter((h) => h.cases >= cases.length).at(-1)
-  console.log(`\n${compare(prev, line, cases.map((c) => c.id))}`)
+  say(`\n${compare(prev, line, cases.map((c) => c.id))}`)
   // частичный прогон не точка сравнения: процент по пяти случаям не сравним с полным набором
   if (!ONLY) appendHistory(line)
 
   const bad = summaries.filter((s) => s.status !== 'pass' && s.status !== 'infra')
   if (bad.length) {
-    console.log('\nПровалы:')
+    say('\nПровалы:')
     for (const s of bad) {
       const r = s.runs.find((x) => x.verdict === 'fail')!
-      console.log(`- ${s.id} [${s.status}]: ${r.reason}\n  ответ: ${r.reply.replaceAll('\n', ' ') || '—'}${r.tools.length ? `\n  вызовы: ${JSON.stringify(r.tools)}` : ''}${r.ops ? `\n  операции: ${JSON.stringify(r.ops)}` : ''}`)
+      say(`- ${s.id} [${s.status}]: ${r.reason}\n  ответ: ${r.reply.replaceAll('\n', ' ') || '—'}${r.tools.length ? `\n  вызовы: ${JSON.stringify(r.tools)}` : ''}${r.ops ? `\n  операции: ${JSON.stringify(r.ops)}` : ''}${r.raw
+        .map((a) => `\n  сырой ${a.model}: ${a.text.replaceAll('\n', ' ') || '—'}${a.toolCalls.length ? ` ${JSON.stringify(a.toolCalls)}` : ''}`)
+        .join('')}`)
     }
   }
 

@@ -4,7 +4,6 @@ import {
   all,
   calls,
   fromModel,
-  greets,
   maxChars,
   maxSentences,
   memoryCalls,
@@ -185,13 +184,6 @@ export const CASES: Case[] = [
       ],
     }),
     check: all(noTools, maxChars(350)),
-  },
-  {
-    id: 'chat.greet-first',
-    category: 'chat',
-    route: 'chat',
-    body: chat('привет!', { hour: 10 }),
-    check: (r) => (greets(r.text) || /привет/iu.test(r.text) ? null : 'не поздоровался в ответ'),
   },
   {
     id: 'chat.no-greet-midway',

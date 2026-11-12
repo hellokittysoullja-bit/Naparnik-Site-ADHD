@@ -5,6 +5,7 @@ import { POST as breakdownRoute } from '@/app/api/breakdown/route'
 import { POST as chatRoute } from '@/app/api/companion/route'
 import { POST as memoryRoute } from '@/app/api/memory/route'
 import { POST as voiceRoute } from '@/app/api/session-voice/route'
+import { registerExecutionMiddleware } from '@/lib/ai/core/middleware'
 import { honestClaims, memoryWritesClean, noGreetingMidway, speech, type ExtractOp, type Reply, type ToolCall } from './checks'
 import type { Case, Category } from './cases'
 
@@ -30,10 +31,42 @@ export type RunResult = {
   attempts: Attempt[]
   /** для траектории провала */
   parts: unknown[]
+  /** сырые ответы моделей по попыткам (до проверок обвязки) */
+  raw: RawAttempt[]
 }
 
 export const RESULTS_DIR = 'evals/results'
 export const HISTORY = join(RESULTS_DIR, 'history.jsonl')
+
+// ── сырой ответ модели ──────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Что модель сказала на самом деле — до проверок обвязки. Журнал хода текстов не хранит (приватность), а без них
+ * провал «length» или «empty» не разобрать. Звено только смотрит: поток проходит без изменений. Только в прогоне
+ * набора, в продукте его нет. Случаи идут по одному, поэтому общий буфер на случай.
+ */
+export type RawAttempt = { model: string; text: string; toolCalls: { toolName: string; input: string }[]; finish?: string }
+const raw: RawAttempt[] = []
+registerExecutionMiddleware({
+  name: 'eval-capture',
+  wrap: {
+    specificationVersion: 'v4',
+    wrapStream: async ({ doStream, model }) => {
+      const r = await doStream()
+      const rec: RawAttempt = { model: model.modelId, text: '', toolCalls: [] }
+      raw.push(rec)
+      const tap = new TransformStream<Record<string, unknown>, Record<string, unknown>>({
+        transform(part, controller) {
+          if (part.type === 'text-delta') rec.text += String(part.delta ?? '')
+          if (part.type === 'tool-call') rec.toolCalls.push({ toolName: String(part.toolName), input: String(part.input) })
+          if (part.type === 'finish') rec.finish = JSON.stringify(part.finishReason)
+          controller.enqueue(part)
+        },
+      })
+      return { ...r, stream: (r.stream as unknown as ReadableStream<Record<string, unknown>>).pipeThrough(tap) as unknown as typeof r.stream }
+    },
+  },
+})
 
 // ── запрос ──────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -95,9 +128,9 @@ function noModelAnswer(j: Journal | undefined): { infra: boolean; why: string } 
 
 export async function runCase(c: Case, logs: string[]): Promise<RunResult> {
   logs.length = 0
+  raw.length = 0
   const t0 = Date.now()
   const res = await HANDLERS[c.route](req(c.body))
-  const ms = Date.now() - t0
 
   let reply: Reply
   let parts: unknown[] = []
@@ -114,6 +147,8 @@ export async function runCase(c: Case, logs: string[]): Promise<RunResult> {
     const text = data.reply ?? data.text ?? (data.steps ? data.steps.join(' / ') : '')
     reply = { ...base, text, steps: data.steps, source: data.source, tools: [], ops: data.ops }
   }
+  // время до последнего байта ответа (у чата — весь поток, а не только заголовки)
+  const ms = Date.now() - t0
   const journal = logs
     .filter((l) => l.startsWith('{'))
     .map((l) => JSON.parse(l) as Journal & { t?: string })
@@ -132,6 +167,7 @@ export async function runCase(c: Case, logs: string[]): Promise<RunResult> {
     ops: reply.ops,
     attempts: journal?.attempts ?? [],
     parts,
+    raw: raw.map((a) => ({ ...a, toolCalls: [...a.toolCalls] })),
   })
 
   if (res.status === 400) return out('fail', 'маршрут отклонил запрос (400): ошибка в случае или в схеме')
@@ -285,6 +321,6 @@ export function writeTrajectory(sha: string, c: Case, run: RunResult, i: number)
   const name = `${c.id}${i ? `.${i + 1}` : ''}.json`
   writeFileSync(
     join(dir, name),
-    JSON.stringify({ id: c.id, category: c.category, route: c.route, note: c.note, verdict: run.verdict, reason: run.reason, request: c.body, parts: run.parts, journal: { outcome: run.outcome, model: run.model, ms: run.ms, attempts: run.attempts } }, null, 2),
+    JSON.stringify({ id: c.id, category: c.category, route: c.route, note: c.note, verdict: run.verdict, reason: run.reason, request: c.body, parts: run.parts, modelRaw: run.raw, journal: { outcome: run.outcome, model: run.model, ms: run.ms, attempts: run.attempts } }, null, 2),
   )
 }
