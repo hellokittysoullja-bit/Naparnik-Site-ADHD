@@ -34,9 +34,10 @@ export async function recall(input: { ctx?: TurnContext; query: string; episodes
       'найденные куски': input.episodes.map((e) => ({ дата: e.at, реплики: e.lines.map((l) => `${l.role === 'user' ? 'человек' : 'кот'}: ${l.text}`) })),
     }),
     userTexts,
-    timeoutMs: 8000,
+    // Gemini тратит часть бюджета вывода до текста: при 300 ответ обрывался по длине (живой прогон 12.11)
+    timeoutMs: 10_000,
     hedgeAfterMs: 3000,
-    maxOutputTokens: 300,
+    maxOutputTokens: 1000,
     maxChars: 1500,
     parse: (t) => {
       const text = undash(t.trim())
