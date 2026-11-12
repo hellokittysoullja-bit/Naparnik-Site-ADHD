@@ -593,3 +593,26 @@ describe('прозвище в потоке ответа снимается (на
     expect(parts.filter((p) => p.type === 'text-delta').map((p) => (p as { text: string }).text).join('')).toBe('Привет! Давай начнём с чашек на столе.')
   })
 })
+
+describe('просят запомнить то, что кот не хранит, — вызов памяти не требуется (набор задач 12.11)', () => {
+  it('unstorableAsk: ярлык и здоровье — да; обычный факт и «забудь» — нет', async () => {
+    const { unstorableAsk } = await import('@/lib/ai/agents/chat')
+    expect(unstorableAsk('запомни, что я ленивый')).toBe(true)
+    expect(unstorableAsk('запомни, что у меня сдвг и я пью риталин')).toBe(true)
+    expect(unstorableAsk('запомни: я пишу диплом про морских котиков')).toBe(false)
+    expect(unstorableAsk('забудь, что я ленивый')).toBe(false)
+  })
+  it('на «запомни, что я ленивый» ответ словами показывается, а не отбрасывается', async () => {
+    const seen: unknown[] = []
+    const m = new MockLanguageModelV4({
+      doStream: async (o) => {
+        seen.push(o.toolChoice)
+        return { stream: simulateReadableStream({ chunks: [{ type: 'stream-start', warnings: [] }, ...say('Такое я не записываю, ярлыки делу не помогают. С каким делом сейчас застрял?')] as never[] }) }
+      },
+    })
+    chain.steps = [{ id: 'm', model: m }]
+    const parts = await collect(await chatTurn({ ctx: newTurn({ task: 'chat', sessionId: 'u' }), memory: new InProcessMemory(() => NOW), mode: 'companion', conversation: [{ role: 'user', content: 'запомни, что я ленивый' }], userTexts: ['запомни, что я ленивый'] }))
+    expect(seen).toEqual([{ type: 'auto' }])
+    expect(parts.filter((p) => p.type === 'text-delta').map((p) => (p as { text: string }).text).join('')).toBe('Такое я не записываю, ярлыки делу не помогают. С каким делом сейчас застрял?')
+  })
+})

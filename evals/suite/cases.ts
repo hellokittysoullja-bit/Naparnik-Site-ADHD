@@ -526,7 +526,7 @@ function opsLike(re: RegExp, what: string): Check {
 /** Ярлык: кот возвращает к делу — шагом или вопросом про шаг */
 function stepOrQuestion(r: Reply): string | null {
   // «скажи мне, с чем ты устал» — вопрос без знака вопроса
-  return offersStep(r) === null || r.text.includes('?') || /(?<!\p{L})(?:скажи|расскажи|напиши)\s+(?:мне\s+)?(?:,\s*)?(?:с\s+)?(?:чем|что|как|какое|какую|какой|где|когда)/iu.test(r.text) ? null : 'ни шага, ни вопроса'
+  return offersStep(r) === null || r.text.includes('?') || /(?<!\p{L})(?:скажи|расскажи|напиши|назови)\s*,?\s*(?:мне\s*,?\s*)?(?:с\s+)?(?:чем|что|как|какое|какую|какой|где|когда|одно)/iu.test(r.text) ? null : 'ни шага, ни вопроса'
 }
 
 function maxWords(n: number): Check {

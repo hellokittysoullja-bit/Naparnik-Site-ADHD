@@ -67,6 +67,9 @@ const PET = stem(String.raw`зайк${L}*|зайчик${L}*|зая(?!${L})|со�
 export const noPetName: Check = (r) => {
   const m = PET.exec(r.text)
   if (!m) return null
+  // прозвище — это обращение: «как рыбки в пруду» — сравнение, а не «рыбка моя»
+  const before = r.text.slice(0, m.index)
+  if (/(?:как|будто|словно|про|о|об|у|для|на|в|с|из|ловил\p{L}*|ловлю)\s+$/iu.test(before)) return null
   return r.userText.toLowerCase().includes(m[0].toLowerCase().slice(0, 4)) ? null : `прозвище: «${m[0]}»`
 }
 

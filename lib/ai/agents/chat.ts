@@ -5,7 +5,7 @@ import type { TurnContext } from '../core/turn'
 import { asksToForget, asksToForgetAll, asksToRemember, forgetMatches, forgetsLast } from '../memory/facts'
 import type { MemoryProvider, MemoryWrite } from '../memory/provider'
 import { renderMemory, renderSkills } from '../memory/render'
-import { writeAllowed } from '../memory/write-guard'
+import { factRejection, writeAllowed } from '../memory/write-guard'
 import type { MemorySnapshot } from '../memory/schema'
 import { assemble } from '../prompt/assemble'
 import { KNOWLEDGE } from '../knowledge/catalog'
@@ -105,7 +105,9 @@ export async function chatTurn(input: {
       actedSinceUser(input.conversation).length > 0 || input.conversation.at(-1)?.role !== 'user'
         ? undefined
         : explicitMemoryAsk(input.userTexts.at(-1) ?? '')
-          ? memoryAskTool(input.userTexts.at(-1) ?? '', lastCatText(input.conversation))
+          ? unstorableAsk(input.userTexts.at(-1) ?? '')
+            ? undefined
+            : memoryAskTool(input.userTexts.at(-1) ?? '', lastCatText(input.conversation))
           : acceptsStart(input.userTexts.at(-1) ?? '', lastCatText(input.conversation))
             ? 'startFocus'
             : undefined,
@@ -135,6 +137,17 @@ export function memoryAskTool(userText: string, catText: string): 'memory' | 'sa
 const PLAN_TALK = /(?<!\p{L})(?:завтра|план\p{L}*|во\s+сколько|к\s+какому\s+часу|с\s+какого\s+(?:\p{L}+\s+)?шага)(?!\p{L})/iu
 // «запомни, что я…» — о себе, даже если рядом время («я лучше работаю утром»)
 const ABOUT_SELF = /(?<!\p{L})(?:что\s+(?:я|у\s+меня|мне|мой|моя|мо[ёе])|у\s+меня\s+(?:завтра|сегодня|в\s+\p{L}+)|я\s+(?:лучше|всегда|обычно|никогда|люблю|не\s+люблю|пишу|учусь|работаю))(?!\p{L})/iu
+
+/**
+ * Просят запомнить то, что кот не хранит (ярлык, здоровье, деньги, контакты): вызов памяти не требуется — правильный
+ * ответ здесь слова («такое не записываю, ярлыки делу не помогают»). Набор задач 12.11: обе модели так и отвечали, а
+ * обвязка отбрасывала эти ответы как «не вызвал обязательный инструмент», и человек получал заготовку.
+ */
+export function unstorableAsk(userText: string): boolean {
+  if (!asksToRemember(userText) || asksToForget(userText)) return false
+  const reason = factRejection(userText)
+  return reason !== null && reason !== 'injection'
+}
 
 /** текст последней реплики кота перед репликой человека */
 export function lastCatText(conversation: readonly ModelMessage[]): string {
