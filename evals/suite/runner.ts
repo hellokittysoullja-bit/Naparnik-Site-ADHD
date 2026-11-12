@@ -118,9 +118,10 @@ const lastUserText = (c: Case): string => {
 
 // ── вердикт ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-// сбой провайдера, а не поведение модели: время, сеть, 429 и 5xx; ответ 4xx на наш запрос — дефект обвязки
+// сбой провайдера, а не поведение модели: время, сеть, 429 и 5xx, а также доступ и оплата у провайдера (401, 402,
+// 403: 12.11 прогон упал на 402 Payment Required у обеих моделей посреди набора); другой 4xx на наш запрос — дефект обвязки
 const INFRA_RESULTS = new Set(['timeout', 'error', 'cancelled'])
-const isInfraAttempt = (a: Attempt) => INFRA_RESULTS.has(a.result) && !(a.result === 'error' && a.status && a.status >= 400 && a.status < 500 && a.status !== 408 && a.status !== 429)
+const isInfraAttempt = (a: Attempt) => INFRA_RESULTS.has(a.result) && !(a.result === 'error' && a.status && a.status >= 400 && a.status < 500 && a.status !== 408 && a.status !== 429 && a.status !== 401 && a.status !== 402 && a.status !== 403)
 
 /** Ход не дал ответа модели: инфраструктура (все попытки — время/сеть) или поведение (негодный ответ) */
 function noModelAnswer(j: Journal | undefined): { infra: boolean; why: string } {
