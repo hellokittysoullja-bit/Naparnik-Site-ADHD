@@ -50,7 +50,7 @@ import {
 import { scriptedReply } from '@/lib/scripted-companion'
 import { archiveMessages, searchArchive } from '@/lib/chat-archive'
 import { RECALL_NONE, rawRecall } from '@/lib/ai/memory/recall-text'
-import { enforceExplicitMemory, pendingUserTurns, purgeForgottenChips, REVIEW_EVERY_TURNS, syncMemory } from '@/lib/memory-sync'
+import { enforceExplicitMemory, hiddenFromModel, pendingUserTurns, purgeForgottenChips, REVIEW_EVERY_TURNS, syncMemory } from '@/lib/memory-sync'
 import { factKey } from '@/lib/ai/memory/fact-key'
 
 const MEMORY_IDLE_MS = 90_000
@@ -300,6 +300,7 @@ export function CompanionChat({
     [memoryCtx, clientHour],
   )
 
+  const sentUserIdsRef = useRef(new Set<string>())
   const { messages, sendMessage, status, addToolOutput, setMessages } = useChat({
     ...(boot && boot.chat.length > 0 ? { messages: boot.chat } : {}),
     transport: new DefaultChatTransport({
@@ -317,7 +318,11 @@ export function CompanionChat({
         lastUserTextRef.current = lastUser?.parts.map((p) => (p.type === 'text' ? p.text : '')).join(' ') ?? ''
         // навыки, которые сервер раскроет под эту реплику, — «применён» (счётчики для Curator)
         if (trigger === 'submit-message' && all.at(-1)?.role === 'user') markSkillsShown(lastUserTextRef.current)
-        return { body: { ...body, id, messages: all.slice(-30), trigger, messageId } }
+        // реплика отправлена в этой сессии: только такие просьбы «запомни / забудь» исполняются правилом без модели
+        if (lastUser) sentUserIdsRef.current.add(lastUser.id)
+        // забытое кот не видит: реплики о забытой теме старше просьбы не уходят модели (lib/forgotten.ts)
+        const hidden = hiddenFromModel(all)
+        return { body: { ...body, id, messages: all.filter((m) => !hidden.has(m.id)).slice(-30), trigger, messageId } }
       },
     }),
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
@@ -399,6 +404,10 @@ export function CompanionChat({
           refs: sentFactIdsRef.current,
           lastUserText: lastUserTextRef.current,
           textOf: (id) => peekAllFacts().find((f) => f.id === id)?.text,
+          // «забудь это»: самый свежий факт, если он записан в последние 15 минут
+          latestId: peekAllFacts()
+            .filter((f) => f.status === 'active' && Date.now() - Date.parse(f.updatedAt) < 15 * 60_000)
+            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.id,
         })
         if (!op.ok) return done(false)
         applyMemoryOps([op.op])
@@ -466,19 +475,12 @@ export function CompanionChat({
   const idleForMemory = status === 'ready' || status === 'error'
   // явные «запомни» / «забудь», которые кот не исполнил сам, исполняются здесь — один раз на реплику человека;
   // реплики, восстановленные из прошлой сессии, не трогаем (первый проход только запоминает, что уже было)
-  const explicitDoneRef = useRef<Set<string> | null>(null)
+  // (реплики из прошлой сессии не трогаем: при холодной загрузке Дома последняя просьба исполнялась повторно — аудит 12.11)
+  const explicitDoneRef = useRef(new Set<string>())
   useEffect(() => {
-    if (!explicitDoneRef.current && messages.length === 0) {
-      explicitDoneRef.current = new Set()
-      return
-    }
     if (!idleForMemory || messages.length === 0) return
     const lastUser = [...messages].reverse().find((m) => m.role === 'user')
-    if (!explicitDoneRef.current) {
-      explicitDoneRef.current = new Set(messages.filter((m) => m.role === 'user').map((m) => m.id))
-      return
-    }
-    if (!lastUser || explicitDoneRef.current.has(lastUser.id) || messages.at(-1)?.role !== 'assistant') return
+    if (!lastUser || !sentUserIdsRef.current.has(lastUser.id) || explicitDoneRef.current.has(lastUser.id) || messages.at(-1)?.role !== 'assistant') return
     explicitDoneRef.current.add(lastUser.id)
     void enforceExplicitMemory(messages).then((r) => {
       if (r === 'review' || r === 'forgot') void buildMemoryContext().then((m) => (memoryRef.current = m))

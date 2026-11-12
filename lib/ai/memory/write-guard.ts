@@ -1,4 +1,5 @@
 import { checkInput } from '../guards/input'
+import { contentWords, stemHits } from './stems'
 import { despaced, forMatching, matchVariants, stripInvisible } from '../guards/normalize'
 import { checkOutput } from '../guards/output'
 
@@ -119,13 +120,24 @@ export function groundedIn(evidence: string | undefined, userTexts: readonly str
   const ev = norm(evidence)
   if (ev.length < 3) return false
   const hay = norm(userTexts.join(' \n '))
-  if (hay.includes(ev)) return true
+  const at = hay.indexOf(ev)
+  if (at >= 0) {
+    // цитата вырвана из отрицания или из слов о другом человеке: «я НЕ люблю работать утром» → «люблю работать
+    // утром», «мой брат пишет диплом» → «пишет диплом» (аудит 12.11: так в память попадало обратное и чужое)
+    const before = hay.slice(0, at).trim().split(' ').slice(-3)
+    if (before.slice(-2).some((w) => NEGATION.has(w))) return false
+    if (before.some((w) => OTHER_PERSON.test(w))) return false
+    return true
+  }
   const stem = (x: string) => x.slice(0, 5)
   const words = ev.split(' ').filter((x) => x.length >= 3)
   if (words.length === 0) return false
   const have = new Set(hay.split(' ').map(stem))
   return words.filter((x) => have.has(stem(x))).length / words.length >= 2 / 3
 }
+
+const NEGATION = new Set(['не', 'ни', 'никогда', 'нельзя', 'вряд'])
+const OTHER_PERSON = /^(?:брат\p{L}{0,2}|сестр\p{L}{1,2}|мам\p{L}{1,2}|пап\p{L}{1,2}|друг\p{L}{0,2}|подруг\p{L}{1,2}|муж\p{L}{0,2}|жен\p{L}{1,2}|сын\p{L}{0,2}|доч\p{L}{1,3}|коллег\p{L}{1,2}|начальни\p{L}{1,3}|сосед\p{L}{0,3}|он|она|они)$/u
 
 const STOP = new Set('котор нужн може очен когд чтоб этот сейч всег обыч челов польз ему него него себя свой своё свою своих тоже ещё уже было будет есть '.split(' '))
 
@@ -136,14 +148,9 @@ const STOP = new Set('котор нужн може очен когд чтоб э
  */
 export function factGrounded(text: string, evidence: string | undefined, userTexts: readonly string[]): boolean {
   if (!groundedIn(evidence, userTexts)) return false
-  const norm = (s: string) => forMatching(s).replace(/[^\p{L}]+/gu, ' ').trim()
-  const stem = (x: string) => x.slice(0, 4)
-  const words = norm(text)
-    .split(' ')
-    .filter((x) => x.length >= 4 && !STOP.has(stem(x)))
+  const words = contentWords(text.replace(/\p{N}+/gu, ' '), (w) => STOP.has(w.slice(0, 4)))
   if (words.length === 0) return false
-  const have = new Set(norm(userTexts.join(' ')).split(' ').map(stem))
-  return words.filter((x) => have.has(stem(x))).length / words.length >= 0.4
+  return stemHits(words, contentWords(userTexts.join(' '))) / words.length >= 0.4
 }
 
 /**

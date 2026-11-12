@@ -576,7 +576,10 @@ describe('явная просьба о записи → один обязате�
     const { memoryAskTool } = await import('@/lib/ai/agents/chat')
     const cat = 'Давай! С какого крошечного шага начнёшь и примерно во сколько?'
     expect(memoryAskTool('открыть файл отчёта в 10 утра. да, так и запиши', cat)).toBe('savePlan')
-    expect(memoryAskTool('запиши: завтра начну с почты', 'Как ты?')).toBe('savePlan')
+    // план — только в ответ на вопрос кота о плане: событие «завтра экзамен» идёт в память и план не затирает
+    expect(memoryAskTool('запиши: завтра начну с почты', 'Как ты?')).toBe('memory')
+    expect(memoryAskTool('запомни, что у меня завтра экзамен', cat)).toBe('memory')
+    expect(memoryAskTool('запомни, что у меня завтра экзамен', 'Привет!')).toBe('memory')
     expect(memoryAskTool('запомни: я пишу диплом про морских котиков, сдаю в мае', 'Привет!')).toBe('memory')
     expect(memoryAskTool('запомни, что я лучше работаю утром', cat)).toBe('memory')
     expect(memoryAskTool('забудь про план на завтра', cat)).toBe('memory')

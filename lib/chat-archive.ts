@@ -1,4 +1,6 @@
 import type { UIMessage } from 'ai'
+import { aboutAny, contentWords } from '@/lib/ai/memory/stems'
+import { isForgotten, peekForgotten } from '@/lib/forgotten'
 import { factKey } from '@/lib/ai/memory/fact-key'
 
 /**
@@ -54,10 +56,14 @@ export function archiveMessages(messages: readonly UIMessage[], times: Readonly<
   const archive = readArchive()
   const known = new Set(archive.map((l) => l.id))
   let added = false
+  const tombs = peekForgotten()
   for (const m of messages) {
     if (known.has(m.id) || (m.role !== 'user' && m.role !== 'assistant')) continue
     const text = textOf(m).slice(0, ARCHIVE_LIMITS.text)
     if (!text) continue
+    // забытое не возвращается в архив из переписки на экране (аудит 12.11: архив чистился, а следующее же
+    // сохранение переписки клало те же реплики обратно)
+    if (isForgotten(text, times[m.id], tombs)) continue
     archive.push({ id: m.id, role: m.role === 'user' ? 'user' : 'cat', text, at: times[m.id] ?? new Date().toISOString() })
     added = true
   }
@@ -100,18 +106,16 @@ export function searchArchive(query: string, inConversation: ReadonlySet<string>
   return searchLines(readArchive(), query, inConversation)
 }
 
-/** «забудь X»: реплики, где встречается основная часть слов забытого факта (≥ 2 основы от 5 букв), уходят из архива */
-export function forgetInArchive(factTexts: readonly string[]): void {
-  if (factTexts.length === 0) return
-  const keys = factTexts.map((t) => new Set(factKey(t).split(' ').filter((w) => w.length >= 5).map((w) => w.slice(0, 5))))
+/**
+ * «забудь X»: из архива уходят реплики о забытом. Реплика «о забытом», если в ней есть слова той же основы, что два
+ * содержательных слова факта (у факта из одного такого слова — оно одно). Факт без содержательных слов архив не
+ * трогает (аудит 12.11: «Пьёт чай» стирал архив целиком — у него не было слов от 5 букв, и порог выходил нулевым).
+ */
+export function forgetInArchive(texts: readonly string[]): void {
+  const keys = texts.map((t) => contentWords(t)).filter((k) => k.length > 0)
+  if (keys.length === 0) return
   const archive = readArchive()
-  const kept = archive.filter((l) => {
-    const ws = new Set(factKey(l.text).split(' ').filter((w) => w.length >= 5).map((w) => w.slice(0, 5)))
-    return !keys.some((k) => {
-      const common = [...k].filter((w) => ws.has(w)).length
-      return common >= Math.min(2, k.size)
-    })
-  })
+  const kept = archive.filter((l) => !aboutAny(l.text, keys))
   if (kept.length !== archive.length) writeArchive(kept)
 }
 

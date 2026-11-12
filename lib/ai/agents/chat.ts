@@ -2,7 +2,7 @@ import type { ModelMessage, TextStreamPart, ToolSet } from 'ai'
 import { emit } from '../core/hooks'
 import { streamTurn } from '../core/stream-turn'
 import type { TurnContext } from '../core/turn'
-import { asksToForget, asksToForgetAll, asksToRemember, forgetMatches } from '../memory/facts'
+import { asksToForget, asksToForgetAll, asksToRemember, forgetMatches, forgetsLast } from '../memory/facts'
 import type { MemoryProvider, MemoryWrite } from '../memory/provider'
 import { renderMemory, renderSkills } from '../memory/render'
 import { writeAllowed } from '../memory/write-guard'
@@ -127,14 +127,14 @@ export function explicitMemoryAsk(text: string): boolean {
  */
 export function memoryAskTool(userText: string, catText: string): 'memory' | 'savePlan' {
   if (asksToForget(userText)) return 'memory'
-  const planTalk = PLAN_TALK.test(catText) || PLAN_TALK.test(userText) || CLOCK.test(userText)
-  return planTalk && !ABOUT_SELF.test(userText) ? 'savePlan' : 'memory'
+  // план — только когда кот сам спрашивал про план (шаг, время) в прошлой реплике: «запомни, что у меня завтра
+  // экзамен» — событие для памяти, а не план, и согласованный план оно затирать не должно (аудит 12.11)
+  return PLAN_TALK.test(catText) && !ABOUT_SELF.test(userText) ? 'savePlan' : 'memory'
 }
 
 const PLAN_TALK = /(?<!\p{L})(?:завтра|план\p{L}*|во\s+сколько|к\s+какому\s+часу|с\s+какого\s+(?:\p{L}+\s+)?шага)(?!\p{L})/iu
-const CLOCK = /(?<!\p{L})(?:в|к|с)\s+\d{1,2}(?:[:.]\d{2})?(?:\s*(?:утра|вечера|дня|ч(?:ас\p{L}*)?))?(?!\p{L})|(?<!\p{L})(?:утром|вечером|после\s+обеда)(?!\p{L})/iu
 // «запомни, что я…» — о себе, даже если рядом время («я лучше работаю утром»)
-const ABOUT_SELF = /(?<!\p{L})(?:что\s+я|я\s+(?:лучше|всегда|обычно|никогда|люблю|не\s+люблю|пишу|учусь|работаю))(?!\p{L})/iu
+const ABOUT_SELF = /(?<!\p{L})(?:что\s+(?:я|у\s+меня|мне|мой|моя|мо[ёе])|у\s+меня\s+(?:завтра|сегодня|в\s+\p{L}+)|я\s+(?:лучше|всегда|обычно|никогда|люблю|не\s+люблю|пишу|учусь|работаю))(?!\p{L})/iu
 
 /** текст последней реплики кота перед репликой человека */
 export function lastCatText(conversation: readonly ModelMessage[]): string {
@@ -203,7 +203,8 @@ export function memoryToolCheck(turn: { facts: number; userTexts: readonly strin
       case 'forget': {
         if (!refOk || !asksToForget(last)) return false
         const text = turn.factTexts?.[Number(m.ref)]
-        return text === undefined || asksToForgetAll(last) || forgetMatches(text, last)
+        // «забудь это» без темы — о только что записанном: какой это факт, знает устройство (policy.toFactOp latestId)
+        return text === undefined || asksToForgetAll(last) || forgetsLast(last) || forgetMatches(text, last)
       }
       case 'replace':
       case 'add':

@@ -1,5 +1,5 @@
 import type { MemoryInput } from '../tools/catalog'
-import { activeFacts, applyFactOps, asksToForget, asksToForgetAll, asksToRemember, forgetMatches, FACT_LIMITS, type Fact, type FactOp, type OpResult } from './facts'
+import { activeFacts, applyFactOps, asksToForget, asksToForgetAll, asksToRemember, forgetMatches, forgetsLast, FACT_LIMITS, type Fact, type FactOp, type OpResult } from './facts'
 import { factKey } from './fact-key'
 import type { MemorySnapshot } from './schema'
 
@@ -40,7 +40,13 @@ export type RefusedWrite = 'unknown_ref' | 'not_asked_to_forget' | 'incomplete'
  */
 export function toFactOp(
   input: MemoryInput,
-  ctx: { refs: readonly string[]; lastUserText: string; textOf?: (id: string) => string | undefined },
+  ctx: {
+    refs: readonly string[]
+    lastUserText: string
+    textOf?: (id: string) => string | undefined
+    /** факт, который кот записал только что: «забудь это» без темы относится к нему */
+    latestId?: string
+  },
 ): { ok: true; op: FactOp } | { ok: false; reason: RefusedWrite } {
   const idOf = (ref: string | undefined) => (ref !== undefined && /^\d{1,2}$/.test(ref) ? ctx.refs[Number(ref)] : undefined)
   switch (input.op) {
@@ -69,9 +75,8 @@ export function toFactOp(
       if (!id) return { ok: false, reason: 'unknown_ref' }
       // забыть можно только то, о чём просят (кроме «забудь всё» словами — тогда любой)
       const text = ctx.textOf?.(id)
-      if (text !== undefined && !asksToForgetAll(ctx.lastUserText) && !forgetMatches(text, ctx.lastUserText)) {
-        return { ok: false, reason: 'not_asked_to_forget' }
-      }
+      const about = forgetsLast(ctx.lastUserText) ? id === ctx.latestId : text === undefined || forgetMatches(text, ctx.lastUserText)
+      if (!asksToForgetAll(ctx.lastUserText) && !about) return { ok: false, reason: 'not_asked_to_forget' }
       return { ok: true, op: { op: 'forget', id } }
     }
     case 'forgetAll':

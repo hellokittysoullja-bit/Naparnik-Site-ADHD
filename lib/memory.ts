@@ -6,6 +6,8 @@
  * это замена реализации, а не рефакторинг всех вызовов.
  */
 import { activeFacts, applyFactOps, FACT_CATEGORIES, type Fact, type FactOp, type OpResult } from '@/lib/ai/memory/facts'
+import { aboutAny, contentWords } from '@/lib/ai/memory/stems'
+import { addForgotten } from '@/lib/forgotten'
 import { clearArchive, forgetInArchive } from '@/lib/chat-archive'
 import { activeSkills, applySkillOps, curate, relevantSkills, type Skill, type SkillOp, type SkillOpResult } from '@/lib/ai/memory/skills'
 
@@ -175,12 +177,15 @@ const isFact: Guard<Fact> = (v): v is Fact =>
   (v.evidence === undefined || isStr(v.evidence)) &&
   (v.supersedes === undefined || isStr(v.supersedes))
 
-function write(key: string, value: unknown) {
-  if (!isBrowser()) return
+/** Записать; возвращает, легла ли запись (квота, приватный режим — false: «запомнил» тогда говорить нельзя) */
+function write(key: string, value: unknown): boolean {
+  if (!isBrowser()) return false
+  let stored = true
   try {
     window.localStorage.setItem(key, JSON.stringify(value))
   } catch {
-    // квота/приватный режим — молча пропускаем, память просто не сохранится
+    // квота/приватный режим: память не сохранилась — вызывающий узнаёт об этом по результату
+    stored = false
   }
   // Живая сцена (components/app-backdrop.tsx) рисует гряду по числу стартов,
   // но живёт в layout и НЕ перемонтируется при переходах Дом/Фокус/Мир — без
@@ -193,6 +198,7 @@ function write(key: string, value: unknown) {
   } catch {
     /* CustomEvent недоступен — сцена обновится на следующем визите */
   }
+  return stored
 }
 
 export function todayKey(d = new Date()): string {
@@ -237,7 +243,8 @@ export async function savePlan(input: {
     startTime: input.startTime,
     createdAt: new Date().toISOString(),
   }
-  write(KEYS.plan, plan)
+  // запись не легла — плана нет: вызывающий (инструмент savePlan) ответит модели отказом, кот не скажет «записал»
+  if (!write(KEYS.plan, plan)) throw new Error('storage')
   return plan
 }
 
@@ -577,22 +584,50 @@ export async function applyMemoryOps(ops: readonly FactOp[]): Promise<OpResult[]
   if (ops.length === 0) return []
   const before = peekAllFacts()
   const { facts, results } = applyFactOps(before, ops, { now: new Date().toISOString(), newId: newFactId, today: todayKey() })
-  write(KEYS.facts, facts)
-  // забытое не должно найтись и поиском по прошлым разговорам (lib/chat-archive.ts)
+  // запись не легла (хранилище переполнено или закрыто) — операции не было: кот не скажет «запомнил» (аудит 12.11:
+  // раньше ошибка записи глоталась, и ответ был «успех»)
+  if (!write(KEYS.facts, facts)) return results.map((r) => (r.ok ? { op: r.op, ok: false as const, reason: 'storage' as const } : r))
+  // забытое не должно найтись нигде: ни в архиве, ни в переписке, которая уходит модели, ни в навыках и плане
   // (только по «забудь»: уборка старых версий при лимите — не просьба человека)
   if (ops.some((o) => o.op === 'forget')) {
     const left = new Set(facts.map((f) => f.id))
-    forgetInArchive(before.filter((f) => !left.has(f.id)).map((f) => f.text))
+    forgetTopics(before.filter((f) => !left.has(f.id)).map((f) => f.text))
   }
-  // «забудь всё» — это и ответы знакомства, и навыки о человеке: кот больше не опирается на них (сами ответы
-  // остаются знакомству)
-  if (ops.some((o) => o.op === 'forgetAll')) {
-    write(KEYS.profileForgotten, true)
-    write(KEYS.skills, [])
-    clearArchive()
-    write(KEYS.skillShown, null)
-  }
+  // «забудь всё» — это и ответы знакомства, и навыки, и план, и всё сказанное до этой минуты
+  if (ops.some((o) => o.op === 'forgetAll')) forgetEverything()
   return results
+}
+
+/**
+ * Тема забыта: запись в списке забытого (lib/forgotten.ts — реплики о ней больше не видит кот), чистка архива,
+ * навыков и плана о том же. Темой может быть текст удалённого факта или слова самой просьбы («забудь про развод»,
+ * когда факта о разводе не было, — аудит 12.11: раньше такая просьба не чистила ничего).
+ */
+export function forgetTopics(texts: readonly string[]): void {
+  const topics = texts.map((t) => contentWords(t)).filter((k) => k.length > 0)
+  if (topics.length === 0) return
+  addForgotten(texts)
+  forgetInArchive(texts)
+  const skills = peekAllSkills()
+  const keptSkills = skills.filter((sk) => !aboutAny(`${sk.name} ${sk.when} ${sk.steps} ${sk.avoid ?? ''}`, topics))
+  if (keptSkills.length !== skills.length) write(KEYS.skills, keptSkills)
+  const plan = peekPlan()
+  if (plan && aboutAny(`${plan.task} ${plan.firstStep}`, topics)) write(KEYS.plan, null)
+}
+
+/** «Забудь всё»: факты уже стёрты; здесь — всё остальное, что кот знал о человеке со слов */
+export function forgetEverything(): void {
+  addForgotten(null)
+  write(KEYS.profileForgotten, true)
+  write(KEYS.skills, [])
+  write(KEYS.plan, null)
+  clearArchive()
+  write(KEYS.skillShown, null)
+  try {
+    window.localStorage.removeItem(STEP_QUEUE_KEY)
+  } catch {
+    /* нечего чистить */
+  }
 }
 
 // ---------- Навыки кота о человеке (lib/ai/memory/skills.ts) ----------

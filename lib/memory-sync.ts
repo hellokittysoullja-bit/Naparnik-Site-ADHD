@@ -1,10 +1,11 @@
 import type { UIMessage } from 'ai'
 import type { ExtractLine, ExtractOp } from '@/lib/ai/agents/memory-extract'
-import { asksToForget, asksToForgetAll, asksToRemember, FACT_LIMITS, forgetMatches, type FactOp } from '@/lib/ai/memory/facts'
+import { asksToForget, asksToForgetAll, asksToRemember, FACT_LIMITS, forgetMatches, forgetsLast, forgetTopic, type FactOp } from '@/lib/ai/memory/facts'
 import { factKey } from '@/lib/ai/memory/fact-key'
 import { toFactOp } from '@/lib/ai/memory/policy'
 import { memoryInput, TOOL_REFUSED } from '@/lib/ai/tools/catalog'
-import { applyMemoryOps, applySkillMemoryOps, peekFacts, peekSkills, todayKey } from '@/lib/memory'
+import { applyMemoryOps, applySkillMemoryOps, forgetTopics, peekChatTimestamps, peekFacts, peekSkills, todayKey } from '@/lib/memory'
+import { isForgotten, peekForgotten, type Tomb } from '@/lib/forgotten'
 import type { SkillOp } from '@/lib/ai/memory/skills'
 import { factRejection } from '@/lib/ai/memory/write-guard'
 
@@ -17,6 +18,8 @@ import { factRejection } from '@/lib/ai/memory/write-guard'
 const CURSOR_KEY = 'naparnik:memCursor'
 const MIN_USER_CHARS = 8
 const MAX_LINES = 16
+/** реплика в выжимке — не длиннее этого: простыня на 30 КБ давала 413, курсор не двигался, и выжимка вставала навсегда (аудит 12.11) */
+const MAX_LINE_CHARS = 1200
 
 let inFlight = false
 
@@ -47,19 +50,52 @@ const textOf = (m: UIMessage) =>
  * разговоре середина терялась навсегда, аудит 12.11) и id последней отправленной реплики — до неё сдвинется курсор.
  * Курсор не найден (история обрезана до 30 реплик) — весь доступный хвост.
  */
-export function pendingChunk(messages: readonly UIMessage[], cursor: string | null): { lines: ExtractLine[]; upTo: string | null } {
+export function pendingChunk(
+  messages: readonly UIMessage[],
+  cursor: string | null,
+  hidden: (m: UIMessage) => boolean = () => false,
+): { lines: ExtractLine[]; upTo: string | null } {
   const at = cursor ? messages.findIndex((m) => m.id === cursor) : -1
-  const fresh = messages.slice(at + 1).filter((m) => m.role === 'user' || m.role === 'assistant')
+  let fresh = messages.slice(at + 1).filter((m) => m.role === 'user' || m.role === 'assistant')
+  // «забудь …» отменяет сказанное выше: ревью не видит ничего до последней такой просьбы включительно (аудит 12.11:
+  // «переезжаю в Казань» и «забудь про переезд» попадали в один кусок, и ревью возвращало переезд в память)
+  const lastForget = fresh.findLastIndex((m) => m.role === 'user' && asksToForget(textOf(m)))
+  const skipped = lastForget >= 0 ? fresh[lastForget].id : null
+  if (lastForget >= 0) fresh = fresh.slice(lastForget + 1)
   const chunk: { id: string; line: ExtractLine }[] = []
+  let seen: string | null = skipped
   for (const m of fresh) {
-    const text = textOf(m)
-    if (!text) continue
     if (chunk.length === MAX_LINES) break
+    seen = m.id
+    const text = textOf(m).slice(0, MAX_LINE_CHARS)
+    if (!text || hidden(m)) continue
     chunk.push({ id: m.id, line: { role: m.role === 'user' ? 'user' : 'cat', text } })
   }
-  const upTo = chunk.at(-1)?.id ?? fresh.at(-1)?.id ?? null
+  const upTo = seen
   const lines = chunk.map((c) => c.line)
   return { lines: lines.some((l) => l.role === 'user' && l.text.length >= MIN_USER_CHARS) ? lines : [], upTo }
+}
+
+/**
+ * Реплики, которые кот больше не видит (lib/forgotten.ts): старше просьбы «забудь» и о забытой теме, либо старше
+ * «забудь всё»; и сами прошлые просьбы забыть — в них названо забытое. Последняя реплика человека видна всегда: это
+ * текущий ход. Используют отправка разговора модели, фоновое ревью и архив.
+ */
+export function hiddenFromModel(
+  messages: readonly UIMessage[],
+  times: Readonly<Record<string, string>> = peekChatTimestamps(),
+  tombs: readonly Tomb[] = peekForgotten(),
+): Set<string> {
+  const out = new Set<string>()
+  if (tombs.length === 0) return out
+  const lastUser = messages.findLast((m) => m.role === 'user')?.id
+  for (const m of messages) {
+    if (m.id === lastUser || (m.role !== 'user' && m.role !== 'assistant')) continue
+    const text = textOf(m)
+    const at = times[m.id]
+    if (isForgotten(text, at, tombs) || (m.role === 'user' && at !== undefined && asksToForget(text))) out.add(m.id)
+  }
+  return out
 }
 
 /**
@@ -103,7 +139,8 @@ export async function syncMemory(messages: readonly UIMessage[], opts: { keepali
   try {
     // за один раз — до трёх кусков подряд (длинный разговор до затишья)
     for (let round = 0; round < 3; round++) {
-      const { lines, upTo } = pendingChunk(messages, readCursor())
+      const hidden = hiddenFromModel(messages)
+      const { lines, upTo } = pendingChunk(messages, readCursor(), (m) => hidden.has(m.id))
       if (!upTo) break
       if (lines.length === 0) {
         writeCursor(upTo)
@@ -187,13 +224,23 @@ export function purgeForgottenChips<M extends UIMessage>(messages: readonly M[],
  *  - «запомни X» — сразу фоновое ревью этого куска (не ждём 90 с тишины): ревью записывает надёжно, по тем же правилам;
  *  - «забудь X» — правило без модели: забываются факты, у которых есть общая основа слова с просьбой; «забудь всё» — всё.
  */
-export function explicitForgetOps(userText: string, facts: readonly { id: string; text: string }[]): FactOp[] {
+export function explicitForgetOps(userText: string, facts: readonly { id: string; text: string }[], justSaved: readonly string[] = []): FactOp[] {
   if (!asksToForget(userText)) return []
-  if (asksToForgetAll(userText)) return facts.length ? [{ op: 'forgetAll' }] : []
+  // «забудь всё» исполняется всегда: без фактов остаются навыки, архив, ответы знакомства (аудит 12.11)
+  if (asksToForgetAll(userText)) return [{ op: 'forgetAll' }]
+  // «забудь это» сразу после «запомнил: …» — о том, что кот только что записал
+  if (forgetsLast(userText)) {
+    const keys = new Set(justSaved.map(factKey))
+    return facts.filter((f) => keys.has(factKey(f.text))).map((f) => ({ op: 'forget' as const, id: f.id }))
+  }
   return facts.filter((f) => forgetMatches(f.text, userText)).map((f) => ({ op: 'forget' as const, id: f.id }))
 }
 
 export type ExplicitResult = 'none' | 'handled-by-cat' | 'review' | 'forgot'
+
+type MemoryPart = { type: string; input?: { op?: unknown; text?: unknown }; output?: unknown }
+const memoryParts = (m: UIMessage) => m.parts.filter((p) => p.type === 'tool-memory' || p.type === 'tool-savePlan') as MemoryPart[]
+const done = (p: MemoryPart) => p.output !== undefined && p.output !== TOOL_REFUSED
 
 /** Последняя просьба человека и ответ кота после неё: была ли явная просьба о памяти и исполнил ли её кот */
 export async function enforceExplicitMemory(messages: readonly UIMessage[]): Promise<ExplicitResult> {
@@ -201,17 +248,32 @@ export async function enforceExplicitMemory(messages: readonly UIMessage[]): Pro
   while (i >= 0 && messages[i].role !== 'user') i--
   if (i < 0 || i === messages.length - 1) return 'none'
   const userText = textOf(messages[i])
-  if (!asksToRemember(userText) && !asksToForget(userText)) return 'none'
-  const catDid = messages
-    .slice(i + 1)
-    .some((m) => m.parts.some((p) => (p.type === 'tool-memory' || p.type === 'tool-savePlan') && (p as { output?: unknown }).output !== TOOL_REFUSED))
-  if (catDid) return 'handled-by-cat'
-  if (asksToForget(userText)) {
-    const ops = explicitForgetOps(userText, peekFacts())
-    if (ops.length === 0) return 'none'
-    await applyMemoryOps(ops)
-    return 'forgot'
+  const wantsForget = asksToForget(userText)
+  const wantsRemember = asksToRemember(userText)
+  if (!wantsForget && !wantsRemember) return 'none'
+  // исполнил ли кот — по виду операции: «забудь X и запомни Y», где кот только записал Y, оставляло X (аудит 12.11)
+  const after = messages.slice(i + 1).flatMap(memoryParts).filter(done)
+  const catForgot = after.some((p) => p.type === 'tool-memory' && (p.input?.op === 'forget' || p.input?.op === 'forgetAll'))
+  const catSaved = after.some((p) => p.type === 'tool-savePlan' || p.input?.op === 'add' || p.input?.op === 'replace')
+  let result: ExplicitResult = 'handled-by-cat'
+  if (wantsForget && !catForgot) {
+    // что кот записал в ответе перед этой просьбой («забудь это»)
+    const prev = messages.slice(0, i).findLast((m) => m.role === 'assistant')
+    const justSaved = prev
+      ? memoryParts(prev)
+          .filter((p) => done(p) && p.type === 'tool-memory' && (p.input?.op === 'add' || p.input?.op === 'replace') && typeof p.input.text === 'string')
+          .map((p) => p.input!.text as string)
+      : []
+    const ops = explicitForgetOps(userText, peekFacts(), justSaved)
+    if (ops.length > 0) await applyMemoryOps(ops)
+    // тема, о которой не было факта («забудь про развод»): всё равно уходит из переписки для модели, архива, навыков
+    const topic = forgetTopic(userText)
+    if (ops.length === 0 && topic.length > 0) forgetTopics([topic.join(' ')])
+    if (ops.length > 0 || topic.length > 0) result = 'forgot'
   }
-  await syncMemory(messages)
-  return 'review'
+  if (wantsRemember && !catSaved) {
+    await syncMemory(messages)
+    if (result !== 'forgot') result = 'review'
+  }
+  return result
 }

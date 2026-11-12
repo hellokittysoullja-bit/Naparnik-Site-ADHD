@@ -1,4 +1,5 @@
 import { factKey } from './fact-key'
+import { contentWords, stemHits } from './stems'
 
 /**
  * Факты о человеке (ярус Т3, research/20-ai-harness/memory-personalization.md §3–§4) — одно хранилище правил для
@@ -67,7 +68,7 @@ export type FactOp =
 
 export type OpResult =
   | { op: FactOp; ok: true; id?: string }
-  | { op: FactOp; ok: false; reason: 'duplicate' | 'empty' | 'unknown_ref' | 'full' }
+  | { op: FactOp; ok: false; reason: 'duplicate' | 'empty' | 'unknown_ref' | 'full' | 'storage' }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -192,6 +193,15 @@ export function applyFactOps(
         continue
       }
       const id = opts.newId()
+      // новое не о том же (ни одной общей основы со старым) — модель перепутала номер: старый факт остаётся, новое
+      // ложится отдельным фактом «о себе» (аудит 12.11: «Переезжает в Казань» вставало на место «Не любит, когда
+      // торопят», наследовало категорию «как говорить» и становилось невытесняемым)
+      // (замена, оформленная как просит промпт — «теперь X (раньше Y)», — остаётся заменой и без общих слов)
+      if (stemHits(contentWords(text), contentWords(old.text)) === 0 && !/(?<!\p{L})(?:теперь|раньше|уже\s+не|больше\s+не)(?!\p{L})/iu.test(text)) {
+        facts.push({ id, category: 'about', text, source: 'stated', createdAt: opts.now, updatedAt: opts.now, expiresOn: expiryFor('about', op.expiresOn, today), status: 'active' })
+        results.push({ op, ok: true, id })
+        continue
+      }
       old.status = 'superseded'
       old.updatedAt = opts.now
       facts.push({
@@ -281,21 +291,25 @@ export function asksToForgetAll(userText: string): boolean {
   return FORGET_ALL.test(userText.normalize('NFKC').toLowerCase().replace(/ё/g, 'е'))
 }
 
-const FORGET_WORDS = /^(?:забуд|забыв|забыт|помни|запом|удали|сотри|стер|выкин|перес|больш|вспом|напом|пожал|прост|вообщ|котор|этот|этом|рассказ|говор|сказа)/
+const FORGET_WORDS = /^(?:забуд|забыв|забыт|помни|запом|удали|сотри|стер|выкин|перес|больш|вспом|напом|пожал|прост|вообщ|котор|рассказ|говор|сказа|памят|голов)/
+
+/** слова просьбы «забудь …» без слов самой просьбы */
+export function forgetTopic(userText: string): string[] {
+  return contentWords(userText, (w) => FORGET_WORDS.test(w))
+}
 
 /**
  * Забыть можно только то, о чём человек просит (набор задач 12.11: «забудь, что я рассказывал про переезд» при
- * факте «начинать помогает чай» стирало чай). Хотя бы одна основа слова (первые 4 буквы, слова от 4 букв, кроме
- * слов самой просьбы) общая у факта и у просьбы.
+ * факте «начинать помогает чай» стирало чай). Хотя бы одно содержательное слово факта и просьбы — одной основы
+ * (memory/stems.ts: «Машу» находит «Маша», «маму» — «мама»; аудит 12.11 — раньше имена в падеже не совпадали).
  */
 export function forgetMatches(factText: string, userText: string): boolean {
-  const stems = (s: string) =>
-    factKey(s)
-      .split(' ')
-      .filter((w) => w.length >= 4 && !FORGET_WORDS.test(w))
-      .map((w) => w.slice(0, 4))
-  const asked = new Set(stems(userText))
-  return stems(factText).some((w) => asked.has(w))
+  return stemHits(contentWords(factText), forgetTopic(userText)) > 0
+}
+
+/** «Забудь это», «не запоминай это», «забудь последнее» — без темы: речь о том, что кот только что запомнил */
+export function forgetsLast(userText: string): boolean {
+  return asksToForget(userText) && !asksToForgetAll(userText) && forgetTopic(userText).length === 0
 }
 
 /** Явная просьба запомнить — запись получает приоритет (не вытесняется) */
