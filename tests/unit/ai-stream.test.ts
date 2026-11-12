@@ -201,7 +201,7 @@ describe('потоковый ход', () => {
 
 describe('реестр инструментов', () => {
   it('задача видит только свои инструменты', () => {
-    expect(Object.keys(tools.forTask('chat')).sort()).toEqual(['memory', 'savePlan', 'startFocus'])
+    expect(Object.keys(tools.forTask('chat')).sort()).toEqual(['memory', 'recall', 'savePlan', 'startFocus'])
     expect(Object.keys(tools.forTask('session-voice'))).toEqual([])
   })
 })

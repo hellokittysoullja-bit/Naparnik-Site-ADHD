@@ -65,6 +65,10 @@ export type MemoryInput = z.infer<typeof memoryInput>
 /** Старые разговоры на устройствах хранят вызовы прежнего инструмента — схема нужна, чтобы показать их чип */
 export const rememberFactInput = z.object({ fact: factText })
 
+export const recallInput = z.object({
+  query: safeText(120).describe('Что вспомнить, своими словами: «диплом, что решили про введение»'),
+})
+
 export const startFocusInput = z.object({
   firstStep: safeText(160).describe('Первый крошечный физический шаг, например «открыть файл отчёта»'),
   // приведение, а не отказ (Hermes: coercion схемы): модель может сказать 20 — человек получит ближайшую из трёх
@@ -98,6 +102,16 @@ export const tools = new ToolRegistry()
     input: memoryInput,
     executor: 'client',
     clientResult: 'Готово, память обновлена.',
+    tasks: ['chat'],
+  })
+  .register({
+    name: 'recall',
+    description:
+      'Вспомнить прошлые разговоры с этим человеком, которых нет в текущей переписке. Вызывай, только когда человек сам ссылается на прошлое («помнишь, я говорил…», «как в прошлый раз», «что мы решили про…») или без этого не понять, о чём речь. Вернёт короткую выжимку или «ничего не нашёл».',
+    input: recallInput,
+    executor: 'client',
+    clientResult: 'Поиск по прошлым разговорам выполнен.',
+    clientOutputAsData: { maxChars: 600 },
     tasks: ['chat'],
   })
   .register({

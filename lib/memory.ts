@@ -6,6 +6,7 @@
  * это замена реализации, а не рефакторинг всех вызовов.
  */
 import { activeFacts, applyFactOps, FACT_CATEGORIES, type Fact, type FactOp, type OpResult } from '@/lib/ai/memory/facts'
+import { clearArchive, forgetInArchive } from '@/lib/chat-archive'
 import { activeSkills, applySkillOps, curate, relevantSkills, type Skill, type SkillOp, type SkillOpResult } from '@/lib/ai/memory/skills'
 
 export type Plan = {
@@ -574,13 +575,21 @@ export function peekFacts(): Fact[] {
  */
 export async function applyMemoryOps(ops: readonly FactOp[]): Promise<OpResult[]> {
   if (ops.length === 0) return []
-  const { facts, results } = applyFactOps(peekAllFacts(), ops, { now: new Date().toISOString(), newId: newFactId, today: todayKey() })
+  const before = peekAllFacts()
+  const { facts, results } = applyFactOps(before, ops, { now: new Date().toISOString(), newId: newFactId, today: todayKey() })
   write(KEYS.facts, facts)
+  // забытое не должно найтись и поиском по прошлым разговорам (lib/chat-archive.ts)
+  // (только по «забудь»: уборка старых версий при лимите — не просьба человека)
+  if (ops.some((o) => o.op === 'forget')) {
+    const left = new Set(facts.map((f) => f.id))
+    forgetInArchive(before.filter((f) => !left.has(f.id)).map((f) => f.text))
+  }
   // «забудь всё» — это и ответы знакомства, и навыки о человеке: кот больше не опирается на них (сами ответы
   // остаются знакомству)
   if (ops.some((o) => o.op === 'forgetAll')) {
     write(KEYS.profileForgotten, true)
     write(KEYS.skills, [])
+    clearArchive()
     write(KEYS.skillShown, null)
   }
   return results

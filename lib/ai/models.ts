@@ -72,6 +72,7 @@ const ROUTES: Record<TaskName, readonly (keyof typeof PROFILES)[]> = {
   breakdown: ['primary', 'fallback'],
   'onboarding-first-step': ['primary', 'fallback'],
   'memory-extract': ['primary', 'fallback'],
+  recall: ['primary', 'fallback'],
 }
 
 /**

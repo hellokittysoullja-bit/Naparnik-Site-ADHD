@@ -1,5 +1,5 @@
 import { convertToModelMessages, validateUIMessages, type ModelMessage, type UIMessage } from 'ai'
-import { clean } from '../context'
+import { clean, dataBlock } from '../context'
 import { TOOL_REFUSED, tools } from '../tools/catalog'
 import { coerceToolInput } from '../tools/registry'
 
@@ -31,7 +31,12 @@ function sanitizeToolPart(p: Part & { type: `tool-${string}` }): Part | null {
   if (x.state !== 'output-available') return null
   // браузер шлёт один из двух наших ответов; модели уходит наш же текст, а не присланный
   const refused = (p as { output?: unknown }).output === TOOL_REFUSED
-  const output = refused ? DEVICE_REFUSED : spec.clientResult
+  const sent = (p as { output?: unknown }).output
+  const output = refused
+    ? DEVICE_REFUSED
+    : spec.clientOutputAsData && typeof sent === 'string' && clean(sent, spec.clientOutputAsData.maxChars)
+      ? dataBlock('memory', { 'вспомнил из прошлых разговоров': clean(sent, spec.clientOutputAsData.maxChars) })
+      : spec.clientResult
   return { type: p.type, toolCallId: x.toolCallId, state: 'output-available', input: input.data, output } as Part
 }
 

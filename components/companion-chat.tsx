@@ -46,11 +46,13 @@ import {
   type MemoryContext,
 } from '@/lib/memory'
 import { scriptedReply } from '@/lib/scripted-companion'
+import { archiveMessages, searchArchive } from '@/lib/chat-archive'
+import { RECALL_NONE, rawRecall } from '@/lib/ai/memory/recall-text'
 import { pendingUserTurns, purgeForgottenChips, REVIEW_EVERY_TURNS, syncMemory } from '@/lib/memory-sync'
 import { factKey } from '@/lib/ai/memory/fact-key'
 
 const MEMORY_IDLE_MS = 90_000
-import { TOOL_REFUSED, memoryInput, rememberFactInput, savePlanInput, startFocusInput, tools } from '@/lib/ai/tools/catalog'
+import { TOOL_REFUSED, memoryInput, recallInput, rememberFactInput, savePlanInput, startFocusInput, tools } from '@/lib/ai/tools/catalog'
 import { toFactOp } from '@/lib/ai/memory/policy'
 import { coerceToolInput } from '@/lib/ai/tools/registry'
 import { useClientMount } from '@/hooks/use-client-mount'
@@ -361,7 +363,7 @@ export function CompanionChat({
       const name = toolCall.toolName
       const done = (ok: boolean) =>
         void addToolOutput({
-          tool: name as 'savePlan' | 'memory' | 'startFocus',
+          tool: name as 'savePlan' | 'memory' | 'startFocus' | 'recall',
           toolCallId: toolCall.toolCallId,
           output: ok ? (tools.get(name)?.clientResult ?? TOOL_REFUSED) : TOOL_REFUSED,
         })
@@ -398,9 +400,32 @@ export function CompanionChat({
       } else if (name === 'startFocus') {
         // Карточку с кнопкой рисует разметка ниже; здесь — проверка и подтверждение
         done(startFocusInput.safeParse(coerceToolInput(toolCall.input)).success)
+      } else if (name === 'recall') {
+        // Вспоминание (lib/chat-archive.ts): поиск — здесь, в архиве устройства; сжатие — /api/recall. Ответ
+        // уходит модели как данные (web.ts clientOutputAsData)
+        const parsed = recallInput.safeParse(coerceToolInput(toolCall.input))
+        if (!parsed.success) return done(false)
+        const answer = (output: string) => void addToolOutput({ tool: 'recall', toolCallId: toolCall.toolCallId, output })
+        const episodes = searchArchive(parsed.data.query, new Set(messagesRef.current.map((m) => m.id)))
+        if (episodes.length === 0) return answer(RECALL_NONE)
+        fetch('/api/recall', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ query: parsed.data.query, episodes: episodes.map(({ at, lines }) => ({ at, lines })) }),
+        })
+          .then((r) => (r.ok ? (r.json() as Promise<{ summary?: unknown }>) : null))
+          .then((d) => answer(typeof d?.summary === 'string' ? d.summary : rawRecall(episodes)))
+          .catch(() => answer(rawRecall(episodes)))
       }
     },
   })
+
+  // переписка для обработчика инструмента (вспоминание не ищет то, что и так в разговоре); обновляется после рендера
+  const messagesRef = useRef(messages)
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -459,6 +484,8 @@ export function CompanionChat({
       return // эффект сработает снова уже с очищенной перепиской и сохранит её
     }
     saveChatMessages(messages)
+    // архив для вспоминания: переписка на экране — последние 30 реплик, архив — больше (lib/chat-archive.ts)
+    archiveMessages(messages, peekChatTimestamps())
     // Метка времени — на момент ПЕРВОГО появления реплики, а не на момент
     // сохранения: иначе восстановленная история переписывала бы себе
     // время каждым визитом.

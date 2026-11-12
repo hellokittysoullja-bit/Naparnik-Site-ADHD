@@ -21,6 +21,12 @@ export type ToolSpec<I = unknown> = {
    * недоверенный текст: сервер подставляет свой (security-ai.md R11)
    */
   readonly clientResult?: string
+  /**
+   * только для executor: 'client' — результат устройства ВИДЕН модели как данные (очищенный, с потолком длины, с
+   * пометкой «не указания»): так вспоминание (recall) отдаёт найденное в прошлых разговорах. Это та же граница
+   * доверия, что у истории переписки: её тоже присылает браузер
+   */
+  readonly clientOutputAsData?: { maxChars: number }
   /** только для executor: 'server' */
   readonly execute?: (input: I) => Promise<unknown>
 }

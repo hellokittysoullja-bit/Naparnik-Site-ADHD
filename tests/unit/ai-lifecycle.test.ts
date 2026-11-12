@@ -202,7 +202,7 @@ describe('инструменты: негодные вызовы и аргуме�
     }
     await run(0)
     await run(2)
-    expect(m.doStreamCalls[0].tools?.length).toBe(3)
+    expect(m.doStreamCalls[0].tools?.length).toBe(4)
     expect(m.doStreamCalls[1].tools ?? []).toHaveLength(0)
   })
 })
