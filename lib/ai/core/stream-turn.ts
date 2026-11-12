@@ -517,9 +517,13 @@ class Race {
   private relaunchFailed(a: Attempt): void {
     if (this.winner || this.settled || this.all.aborted) return
     const left = this.input.commitTimeoutMs - (Date.now() - this.ctx.startedAt)
-    // модель не смогла вызвать обязательный инструмент — пусть ответит как умеет: обязательность снимаем для всех
-    // следующих попыток, эту модель запускаем сразу (лучше ответ словами, чем заготовка)
+    // модель не вызвала обязательный инструмент. Провайдеры нарушают tool_choice по-разному и не всегда (набор задач
+    // 12.11: Gemini иногда отвечает текстом, DeepSeek на том же ходе вызывает): сначала требование передаётся
+    // следующей модели цепочки сразу, без ожидания страховки; только когда нарушили все — обязательность снимаем, и
+    // эта модель отвечает как умеет (лучше ответ словами, чем заготовка)
     if (a.skippedRequiredTool && this.req.requiredTool) {
+      // следующую модель запустит вызывающий (launchNext после relaunchFailed); ещё идущая может послушаться
+      if (this.launched < this.req.chain.length || this.attempts.some((x) => !x.dead)) return
       this.req = { ...this.req, requiredTool: undefined }
       return this.startAttempt(a.step, true, true)
     }

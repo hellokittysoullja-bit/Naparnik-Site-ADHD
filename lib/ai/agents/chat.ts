@@ -99,7 +99,16 @@ export async function chatTurn(input: {
     noGreeting: input.conversation.some((m) => m.role === 'assistant') && !GREETS.test(input.userTexts.at(-1) ?? ''),
     // явная просьба «запомни» / «забудь» — первый шаг обязан вызвать память (Hermes: маршрутизация намерения до
     // модели); после результата инструмента (автокруг) — уже нет, иначе модель вызывала бы его по кругу
-    requiredTool: explicitMemoryAsk(input.userTexts.at(-1) ?? '') && actedSinceUser(input.conversation).length === 0 ? 'any' : undefined,
+    // согласие начать на предложение кота («Готов?» → «ок, давай») — кнопка старта обязательна: набор задач 12.11,
+    // модель отвечала «Отлично, открывай!» без кнопки, и человеку нечего было нажать
+    requiredTool:
+      actedSinceUser(input.conversation).length > 0 || input.conversation.at(-1)?.role !== 'user'
+        ? undefined
+        : explicitMemoryAsk(input.userTexts.at(-1) ?? '')
+          ? 'any'
+          : acceptsStart(input.userTexts.at(-1) ?? '', lastCatText(input.conversation))
+            ? 'startFocus'
+            : undefined,
     ...TURN_LIMITS,
     signal: input.signal,
   })
@@ -109,6 +118,31 @@ export async function chatTurn(input: {
 /** Человек прямо просит сделать что-то с памятью */
 export function explicitMemoryAsk(text: string): boolean {
   return asksToRemember(text) || asksToForget(text)
+}
+
+/** текст последней реплики кота перед репликой человека */
+export function lastCatText(conversation: readonly ModelMessage[]): string {
+  for (let i = conversation.length - 1; i >= 0; i--) {
+    const m = conversation[i]
+    if (m.role !== 'assistant') continue
+    if (typeof m.content === 'string') return m.content
+    return m.content.map((p) => (p.type === 'text' ? p.text : '')).join(' ')
+  }
+  return ''
+}
+
+const START_OFFER = /(?:готов[аы]?|начн[её]м|начинаем|попробуем|погнали|поехали|запускаем|стартуем|сядем)\s*[?!.]*\s*$/iu
+const YES = /^(?:ну\s+)?(?:да|ага|ок(?:ей)?|okay|ok|давай|готов[аы]?|погнали|поехали|го|можно|начинаем|начнём|начнем|хорошо|ладно)(?=$|[\s,.!])/iu
+const NOT_NOW = /(?:^|[\s,])(?:не|нет|потом|позже|завтра|подожди|стоп|сначала)(?=$|[\s,.!?])|\?/iu
+
+/**
+ * Человек соглашается начать прямо сейчас на предложение кота: кот спросил «Готов?» / «Начнём?», ответ короткий и
+ * без оговорок («ок, давай, готов прямо сейчас»). «Давай, но сначала чай» и «а что если не выйдет?» — не согласие.
+ */
+export function acceptsStart(userText: string, catText: string): boolean {
+  const t = userText.trim()
+  if (!t || t.length > 60 || !START_OFFER.test(catText.trim())) return false
+  return YES.test(t) && !NOT_NOW.test(t)
 }
 
 /** какой инструмент делает правдой какое заявление: память — «забыл/запомнил» и «записал», план — только «записал» */

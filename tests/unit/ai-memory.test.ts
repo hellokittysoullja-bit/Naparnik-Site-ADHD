@@ -366,6 +366,16 @@ describe('честность о действиях: «забыл / запомн�
     ]
     const parts = await collect(await turn('забудь про диплом'))
     expect(shown(parts)).toBe('Скажи, что именно забыть?')
+    // «забудь» — вызов обязателен: лжец отвечает текстом в обход обязательности, его ход отбрасывается целиком
+    expect(events).toContainEqual(expect.objectContaining({ type: 'model.end', model: 'liar', result: 'error' }))
+  })
+  it('без обязательного вызова «забыл» без вызова ловит проверка утверждений', async () => {
+    chain.steps = [
+      { id: 'liar', model: scripted(say('Принято, забыл про диплом.'), []) },
+      { id: 'honest', model: scripted(say('Хорошо, диплом уже не горит.'), []) },
+    ]
+    const parts = await collect(await turn('диплом больше не актуален'))
+    expect(shown(parts)).toBe('Хорошо, диплом уже не горит.')
     expect(events).toContainEqual(expect.objectContaining({ type: 'model.end', model: 'liar', result: 'claim' }))
   })
   it('«Запомнил.» перед вызовом придерживается и выходит вместе с вызовом', async () => {
@@ -460,6 +470,25 @@ describe('модель ответила только запрещённым вы
     expect(calls.at(-1)).not.toContain('memory')
     expect(events).toContainEqual(expect.objectContaining({ type: 'tool.retry', without: ['memory'] }))
   })
+  it('первая модель нарушила обязательность — требование сразу уходит следующей модели цепочки, а не снимается', async () => {
+    const seen: unknown[] = []
+    const obeys = new MockLanguageModelV4({
+      doStream: async (o) => {
+        seen.push(o.toolChoice)
+        return { stream: simulateReadableStream({ chunks: [{ type: 'stream-start', warnings: [] }, ...memoryCall({ op: 'add', category: 'task', text: 'Пишет диплом', evidence: 'пишу диплом' }).slice(3)] as never[] }) }
+      },
+    })
+    chain.steps = [
+      { id: 'a', model: scripted(say('Давай запишем это в память.'), []) },
+      { id: 'b', model: obeys },
+    ]
+    const t0 = Date.now()
+    const parts = await collect(await chatTurn({ ctx: newTurn({ task: 'chat', sessionId: 'w' }), memory: new InProcessMemory(() => NOW), mode: 'companion', conversation: [{ role: 'user', content: 'запомни: я пишу диплом' }], userTexts: ['запомни: я пишу диплом'] }))
+    expect(seen[0]).toEqual({ type: 'required' })
+    expect(parts.some((p) => p.type === 'tool-call' && (p as { toolName?: string }).toolName === 'memory')).toBe(true)
+    expect(parts.some((p) => p.type === 'text-delta' && /запишем/.test(p.text ?? ''))).toBe(false)
+    expect(Date.now() - t0).toBeLessThan(1500) // не ждали страховку
+  })
 })
 
 describe('явная просьба о памяти — вызов обязателен (Hermes: маршрутизация намерения)', () => {
@@ -499,5 +528,44 @@ describe('явная просьба о памяти — вызов обязат�
     const parts = await collect(await chatTurn({ ctx: newTurn({ task: 'chat', sessionId: 'v' }), memory: new InProcessMemory(() => NOW), mode: 'companion', conversation: [{ role: 'user', content: 'запомни, что я пью риталин' }], userTexts: ['запомни, что я пью риталин'] }))
     expect(parts.filter((p) => p.type === 'text-delta').map((p) => p.text).join('')).toBe('Слушай, давай лучше начнём с одного дела.')
     expect(parts.some((p) => p.type === 'error')).toBe(false)
+  })
+})
+
+describe('согласие начать → кнопка старта обязательна (набор задач 12.11, chat.ready-now)', () => {
+  it('acceptsStart: короткое «да» на «Готов?» — согласие; оговорка, вопрос или не то предложение — нет', async () => {
+    const { acceptsStart } = await import('@/lib/ai/agents/chat')
+    const offer = 'Давай с самого простого: просто *открыть документ* курсовой. Готов?'
+    expect(acceptsStart('ок, давай, готов прямо сейчас', offer)).toBe(true)
+    expect(acceptsStart('давай', 'Начнём?')).toBe(true)
+    expect(acceptsStart('Погнали!', 'Попробуем?')).toBe(true)
+    expect(acceptsStart('давай, но сначала чай', offer)).toBe(false)
+    expect(acceptsStart('давай потом', offer)).toBe(false)
+    expect(acceptsStart('а если не выйдет?', offer)).toBe(false)
+    expect(acceptsStart('не готов', offer)).toBe(false)
+    expect(acceptsStart('давай', 'Как тебе такой план?')).toBe(false)
+  })
+  it('на «ок, давай» после «Готов?» модели передаётся обязательный startFocus', async () => {
+    const seen: unknown[] = []
+    const m = new MockLanguageModelV4({
+      doStream: async (o) => {
+        seen.push(o.toolChoice)
+        return { stream: simulateReadableStream({ chunks: [{ type: 'stream-start', warnings: [] }, ...say('Погнали.')] as never[] }) }
+      },
+    })
+    chain.steps = [{ id: 'm', model: m }]
+    await collect(
+      await chatTurn({
+        ctx: newTurn({ task: 'chat', sessionId: 'r' }),
+        memory: new InProcessMemory(() => NOW),
+        mode: 'companion',
+        conversation: [
+          { role: 'user', content: 'не могу начать курсовую' },
+          { role: 'assistant', content: 'Давай с самого простого: открыть документ. Готов?' },
+          { role: 'user', content: 'ок, давай' },
+        ],
+        userTexts: ['не могу начать курсовую', 'ок, давай'],
+      }),
+    )
+    expect(seen[0]).toEqual({ type: 'tool', toolName: 'startFocus' })
   })
 })
