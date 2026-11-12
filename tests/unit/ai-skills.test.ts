@@ -124,3 +124,25 @@ describe('навыки в выжимке и в промпте', () => {
     expect(r.ops.map((o) => (o.op === 'skill' ? o.name : o.op))).toEqual(['Не торопить'])
   })
 })
+
+describe('навыки: отбор и учёт (аудит 12.11)', () => {
+  const sk = (o: Partial<Skill>): Skill => ({ id: 'a', name: 'Телефон', when: 'когда залипает в телефон', steps: 'убрать телефон', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', uses: 0, wins: 0, status: 'active', ...o })
+  it('служебное «когда» не раскрывает навык; слово темы в падеже — раскрывает', () => {
+    const skills = [sk({})]
+    expect(relevantSkills(skills, 'когда уже выходные')).toEqual([])
+    expect(relevantSkills(skills, 'опять сижу в телефоне').map((s) => s.id)).toEqual(['a'])
+  })
+  it('при равенстве совпадений порядок один и тот же с любыми счётчиками (сервер и устройство выбирают одно)', () => {
+    const list = [sk({ id: 'a' }), sk({ id: 'b', name: 'Телефон вечером', wins: 9, uses: 9 }), sk({ id: 'c', name: 'Телефон утром', wins: 3, uses: 3 })]
+    const zeroed = list.map((s) => ({ ...s, wins: 0, uses: 0 }))
+    expect(relevantSkills(list, 'залип в телефон').map((s) => s.id)).toEqual(relevantSkills(zeroed, 'залип в телефон').map((s) => s.id))
+  })
+  it('новый непроверенный навык не отправляет в архив проверенный', () => {
+    const topics = ['диплом горит', 'уборка кухни', 'звонок врачу', 'письмо начальнику', 'отчёт продажи', 'стирка бельё', 'зарядка утром', 'счета оплата', 'книга чтение', 'проект презентация']
+    const proven = Array.from({ length: SKILL_LIMITS.active }, (_, i) => sk({ id: `p${i}`, name: topics[i], when: topics[i], steps: `шаг для ${topics[i]}`, uses: 10, wins: 4, lastUsedAt: '2026-11-11T00:00:00Z' }))
+    const fresh = sk({ id: 'new', name: 'Совсем другое', when: 'редкая новая история', updatedAt: '2026-11-12T00:00:00Z' })
+    const kept = activeSkills(curate([...proven, fresh], '2026-11-12')).map((s) => s.id)
+    expect(kept).not.toContain('new')
+    expect(kept).toHaveLength(SKILL_LIMITS.active)
+  })
+})

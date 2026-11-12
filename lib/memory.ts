@@ -679,15 +679,21 @@ export function markSkillsShown(lastUserText: string): void {
   const now = new Date().toISOString()
   const ids = new Set(shown.map((s) => s.id))
   write(KEYS.skills, all.map((s) => (ids.has(s.id) ? { ...s, uses: s.uses + 1, lastUsedAt: now } : s)))
-  write(KEYS.skillShown, { ids: [...ids], at: Date.now() })
+  // все навыки, показанные за последние полчаса, а не только из последнего хода: старт обычно случается через
+  // несколько реплик после совета (аудит 12.11)
+  const recent = peekSkillShown().filter((x) => !ids.has(x.id))
+  write(KEYS.skillShown, [...recent, ...[...ids].map((id) => ({ id, at: Date.now() }))])
+}
+
+function peekSkillShown(): { id: string; at: number }[] {
+  const raw = read<unknown>(KEYS.skillShown, null, (v): v is unknown => true)
+  if (!Array.isArray(raw)) return []
+  return raw.filter((x): x is { id: string; at: number } => isObj(x) && isStr(x.id) && isNum(x.at) && Date.now() - x.at <= SKILL_WIN_MS)
 }
 
 function creditSkills(): void {
-  const shown = read<{ ids: string[]; at: number } | null>(KEYS.skillShown, null, (v): v is { ids: string[]; at: number } =>
-    isObj(v) && Array.isArray(v.ids) && v.ids.every(isStr) && isNum(v.at),
-  )
-  if (!shown || Date.now() - shown.at > SKILL_WIN_MS) return
-  const ids = new Set(shown.ids)
+  const ids = new Set(peekSkillShown().map((x) => x.id))
+  if (ids.size === 0) return
   write(KEYS.skills, peekAllSkills().map((s) => (ids.has(s.id) ? { ...s, wins: s.wins + 1 } : s)))
   write(KEYS.skillShown, null)
 }

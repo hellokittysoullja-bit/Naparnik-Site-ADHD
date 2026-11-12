@@ -316,8 +316,6 @@ export function CompanionChat({
       prepareSendMessagesRequest: ({ id, messages: all, body, trigger, messageId }) => {
         const lastUser = [...all].reverse().find((m) => m.role === 'user')
         lastUserTextRef.current = lastUser?.parts.map((p) => (p.type === 'text' ? p.text : '')).join(' ') ?? ''
-        // навыки, которые сервер раскроет под эту реплику, — «применён» (счётчики для Curator)
-        if (trigger === 'submit-message' && all.at(-1)?.role === 'user') markSkillsShown(lastUserTextRef.current)
         // реплика отправлена в этой сессии: только такие просьбы «запомни / забудь» исполняются правилом без модели
         if (lastUser) sentUserIdsRef.current.add(lastUser.id)
         // забытое кот не видит: реплики о забытой теме старше просьбы не уходят модели (lib/forgotten.ts)
@@ -482,10 +480,13 @@ export function CompanionChat({
     const lastUser = [...messages].reverse().find((m) => m.role === 'user')
     if (!lastUser || !sentUserIdsRef.current.has(lastUser.id) || explicitDoneRef.current.has(lastUser.id) || messages.at(-1)?.role !== 'assistant') return
     explicitDoneRef.current.add(lastUser.id)
+    // навыки, которые сервер раскрыл под эту реплику, — «применён» (счётчики для Curator); только когда модель
+    // действительно ответила: раньше счётчик рос при отправке, и заготовка при сбое считалась применением
+    if (status === 'ready') markSkillsShown(lastUser.parts.map((p) => (p.type === 'text' ? p.text : '')).join(' '))
     void enforceExplicitMemory(messages).then((r) => {
       if (r === 'review' || r === 'forgot') void buildMemoryContext().then((m) => (memoryRef.current = m))
     })
-  }, [messages, idleForMemory])
+  }, [messages, idleForMemory, status])
   useEffect(() => {
     if (!idleForMemory || messages.length === 0) return
     const run = (keepalive = false) =>

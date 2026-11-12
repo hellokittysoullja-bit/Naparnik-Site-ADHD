@@ -1,4 +1,5 @@
 import { factKey } from './fact-key'
+import { contentWords, stemHits } from './stems'
 import { similarity } from './facts'
 
 /**
@@ -126,7 +127,9 @@ function daysBetween(fromIso: string, toDay: string): number {
  * потом свежесть. > 0 — a полезнее b
  */
 function byWorth(a: Skill, b: Skill): number {
-  const rate = (s: Skill) => (s.uses > 0 ? s.wins / s.uses : 0.5)
+  // сглаженная доля: один случай не делает навык лучшим или худшим; новый, ещё не применявшийся (0,34) не вытесняет
+  // проверенный (4 старта из 10 → 0,42) — аудит 12.11: раньше у нового было 0,5, и он отправлял в архив рабочий
+  const rate = (s: Skill) => (s.uses > 0 ? (s.wins + 1) / (s.uses + 2) : 0.34)
   return rate(a) - rate(b) || a.uses - b.uses || (a.lastUsedAt ?? a.updatedAt).localeCompare(b.lastUsedAt ?? b.updatedAt)
 }
 
@@ -165,13 +168,16 @@ export function curate(skills: readonly Skill[], today: string): Skill[] {
  * (основы слов от 4 букв), не больше двух. Остальные — одной строкой в индексе.
  */
 export function relevantSkills(skills: readonly Skill[], lastUserText: string): Skill[] {
-  const stems = (s: string) => new Set(factKey(s).split(' ').filter((w) => w.length >= 4).map((w) => w.slice(0, 4)))
-  const said = stems(lastUserText)
-  if (said.size === 0) return []
+  // содержательные слова по общей основе (memory/stems.ts): служебное «когда» есть почти в каждом навыке и раньше
+  // раскрывало навык на любую реплику со словом «когда» (аудит 12.11)
+  const said = contentWords(lastUserText)
+  if (said.length === 0) return []
+  // при равенстве — порядок списка: сервер счётчиков не знает, а устройство должно отметить «применён» ровно те
+  // навыки, которые сервер раскрыл модели (раньше устройство разрешало ничью по wins и засчитывало не те)
   return activeSkills(skills)
-    .map((s) => ({ s, hits: [...stems(`${s.name} ${s.when}`)].filter((w) => said.has(w)).length }))
+    .map((s, i) => ({ s, i, hits: stemHits(contentWords(`${s.name} ${s.when}`), said) }))
     .filter((x) => x.hits > 0)
-    .sort((a, b) => b.hits - a.hits || b.s.wins - a.s.wins)
+    .sort((a, b) => b.hits - a.hits || a.i - b.i)
     .slice(0, SKILL_LIMITS.expanded)
     .map((x) => x.s)
 }
