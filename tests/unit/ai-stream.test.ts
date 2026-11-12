@@ -310,3 +310,35 @@ describe('перезапуск упавшей модели, не дожидая�
     expect(calls).toBe(2)
   })
 })
+
+describe('деньги хода (аудит 12.11, research/21-agent-audit/1-harness-core.md)', () => {
+  it('«основная медленная»: сразу стартует только вторая модель, третья ждёт обычную задержку', async () => {
+    const { registerRequestMiddleware } = await import('@/lib/ai/core/middleware')
+    const undo = registerRequestMiddleware({ name: 'test-first-hedge', onRequest: (req) => void (req.firstHedgeMs = 0) })
+    chain.steps = [
+      { id: 'a', model: streaming(text('Первая. Она медленная.'), { initialDelayInMs: 120 }) },
+      { id: 'b', model: streaming(text('Вторая. Она быстрее.'), { initialDelayInMs: 60 }) },
+      { id: 'c', model: streaming(text('Третья. Не нужна.')) },
+    ]
+    const r = await collect(run({ hedgeAfterMs: 400 }))
+    undo()
+    expect(r.shown).toBe('Вторая. Она быстрее.')
+    expect(events.filter((e) => e.type === 'model.start').map((e) => (e as { model: string }).model)).toEqual(['a', 'b'])
+    expect(events.find((e) => e.type === 'turn.end')).toMatchObject({ attempts: 2 })
+  })
+  it('общий потолок запусков: цепочка из двух не делает больше четырёх вызовов, человек получает заготовку', async () => {
+    const boom = () =>
+      new MockLanguageModelV4({
+        doStream: async () => {
+          throw Object.assign(new Error('503'), { statusCode: 503 })
+        },
+      })
+    chain.steps = [
+      { id: 'a', model: boom() },
+      { id: 'b', model: boom() },
+    ]
+    await collect(run({ commitTimeoutMs: 6000, totalTimeoutMs: 8000, hedgeAfterMs: 50 }))
+    expect(events.filter((e) => e.type === 'model.start').length).toBeLessThanOrEqual(4)
+    expect(events.filter((e) => e.type === 'turn.end')).toHaveLength(1)
+  })
+})

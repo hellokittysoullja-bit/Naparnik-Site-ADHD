@@ -26,6 +26,8 @@ export type TurnRequest = {
   requiredTool?: string
   /** через сколько мс без фиксации запускать следующую модель */
   hedgeAfterMs: number
+  /** задержка только перед ВТОРОЙ моделью (адаптивная страховка: 0, когда основная стабильно медленная) */
+  firstHedgeMs?: number
 }
 
 export type RequestInfo = { ctx: TurnContext; input: InputVerdict }
@@ -69,6 +71,7 @@ const copy = (r: TurnRequest): TurnRequest => ({
   tools: r.tools ? { ...r.tools } : undefined,
   requiredTool: r.requiredTool,
   hedgeAfterMs: r.hedgeAfterMs,
+  firstHedgeMs: r.firstHedgeMs,
 })
 
 /** глубокая копия; содержимое, которое нельзя клонировать (URL, поток), копируется по ссылке — ход не падает */

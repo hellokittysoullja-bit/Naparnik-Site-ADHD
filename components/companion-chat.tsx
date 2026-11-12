@@ -505,6 +505,45 @@ export function CompanionChat({
     }
   }, [messages, idleForMemory])
 
+  // Реплика человека сохраняется сразу, не дожидаясь ответа кота (аудит 12.11: ушёл на «Мир», пока кот думал, —
+  // реплика пропадала отовсюду: из переписки, архива и памяти). Недописанный ответ кота не сохраняем.
+  const statusRef = useRef(status)
+  useEffect(() => {
+    statusRef.current = status
+  }, [status])
+  useEffect(() => {
+    if (!chatRestoredRef.current || status !== 'submitted') return
+    const upTo = messages.findLastIndex((m) => m.role === 'user')
+    if (upTo >= 0) saveChatMessages(messages.slice(0, upTo + 1))
+  }, [messages, status])
+  useEffect(
+    () => () => {
+      // уход с экрана посреди ответа: сохраняем всё до последней реплики человека включительно
+      if (statusRef.current !== 'submitted' && statusRef.current !== 'streaming') return
+      const all = messagesRef.current
+      const upTo = all.findLastIndex((m) => m.role === 'user')
+      if (upTo >= 0) saveChatMessages(all.slice(0, upTo + 1))
+    },
+    [],
+  )
+  // Вторая вкладка написала в переписку или память — эта вкладка подхватывает, а не затирает своей копией при
+  // следующем сохранении (аудит 12.11: две вкладки стирали реплики друг друга)
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'naparnik:chat' && statusRef.current !== 'submitted' && statusRef.current !== 'streaming') {
+        void getChatMessages<(typeof messages)[number]>().then((saved) => {
+          const mine = messagesRef.current
+          if (saved.length > 0 && (saved.length !== mine.length || saved.at(-1)?.id !== mine.at(-1)?.id)) setMessages(saved)
+        })
+      } else if (e.key === 'naparnik:facts' || e.key === 'naparnik:skills' || e.key === 'naparnik:plan' || e.key === 'naparnik:forgotten') {
+        void buildMemoryContext().then((m) => (memoryRef.current = m))
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Сохраняем после каждого завершённого обмена (не во время стриминга)
   useEffect(() => {
     if (!chatRestoredRef.current) return

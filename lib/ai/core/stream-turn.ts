@@ -141,10 +141,15 @@ function withoutTools(req: TurnRequest, rejected: ReadonlySet<string>): TurnRequ
  * повтор после сбоя провайдера: один раз, пауза 0,6–0,9 с, только если до предела фиксации ≥ 2,5 с (обычный ответ
  * Gemini — около 2 с; при 4 с у дробления с пределом 8 с повтор не успевал — набор задач 12.11)
  */
+/** сколько запусков сверх длины цепочки допускается за ход */
+const MAX_EXTRA_ATTEMPTS = 2
 export const RETRY = { rounds: 1, baseMs: 600, jitterMs: 300, minLeftMs: 2500 } as const
 
 /** сеть, 429 и 5xx — повод повторить; 4xx (кроме 429) — нет: запрос негоден, повтор даст то же */
-function retryable(a: { result?: AttemptResult; errorStatus?: number; textLength?: number; truncated?: boolean }): boolean {
+function retryable(a: { result?: AttemptResult; errorStatus?: number; textLength?: number; truncated?: boolean; skippedRequiredTool?: boolean }): boolean {
+  // модель ответила словами вместо обязательного вызова — это её выбор, а не сбой сети: повтор даст то же и сожжёт
+  // единственную попытку повтора (аудит 12.11)
+  if (a.skippedRequiredTool) return false
   // провайдер оборвал ответ почти сразу (AnyModel 12.11: finish=length на 16 токенах при лимите 400) — сбой, не модель
   if (a.result === 'length' || (a.truncated && a.result === 'empty')) return (a.textLength ?? 0) < 120
   if (a.result !== 'error') return false
@@ -518,10 +523,16 @@ class Race {
     const chain = this.req.chain
     if (this.winner || this.settled || this.launched >= chain.length || this.all.aborted) return this.giveUpIfExhausted()
     this.startAttempt(chain[this.launched++], this.launched > 1)
-    if (this.launched < chain.length) this.hedgeTimer = setTimeout(() => this.launchNext(), this.req.hedgeAfterMs)
+    // «основная медленная» (firstHedgeMs = 0) ускоряет только ВТОРУЮ модель; третья ждёт обычную задержку. Раньше ноль
+    // стоял у всех, и все три модели стартовали в один тик — ход стоил втрое (аудит 12.11)
+    const wait = this.launched === 1 ? (this.req.firstHedgeMs ?? this.req.hedgeAfterMs) : this.req.hedgeAfterMs
+    if (this.launched < chain.length) this.hedgeTimer = setTimeout(() => this.launchNext(), wait)
   }
 
   private startAttempt(step: TurnRequest['chain'][number], hedge: boolean, retry = this.retryRound > 0): void {
+    // общий потолок платных вызовов на ход: пути перезапуска независимы (повтор сбоя, повтор без инструмента, снятие
+    // обязательности) и в сумме давали до 6 запусков при цепочке из трёх (аудит 12.11)
+    if (this.attempts.length >= this.req.chain.length + MAX_EXTRA_ATTEMPTS) return
     const a = new Attempt(step, this.guardOpts, this.input.whole, this.personMedical, this.input.toolCheck, this.input.claims?.unlocks, this.toolChoice() !== undefined)
     this.attempts.push(a)
     emit({ type: 'model.start', model: a.step.id, hedge, ...(retry ? { retry: true } : {}) }, this.ctx)
@@ -551,8 +562,11 @@ class Race {
       this.violations++
       if (this.launched < this.req.chain.length && this.violations < 2) return
       this.req = { ...this.req, requiredTool: undefined }
+      // не успеть до предела фиксации — не запускать (платный вызов впустую)
+      if (left < RETRY.minLeftMs) return
       return this.startAttempt(a.step, true, true)
     }
+    if (a.skippedRequiredTool) return
     if (a.result === 'empty' && a.rejectedTools.size > 0 && !this.toolRetried && this.req.tools && left >= RETRY.minLeftMs) {
       this.toolRetried = true
       const rejected = a.rejectedTools
@@ -753,7 +767,9 @@ class Race {
     if (!this.turnEnded) {
       this.turnEnded = true
       emit(
-        { type: 'turn.end', outcome, model: a?.step.id, ms: Date.now() - this.ctx.startedAt, inTokens: a?.usage.in, outTokens: a?.usage.out },
+        // attempts — сколько платных вызовов сделал ход: токены известны только у победителя (у отменённых нет finish),
+        // и без этого числа перерасход страховки в журнале не виден (аудит 12.11)
+        { type: 'turn.end', outcome, model: a?.step.id, ms: Date.now() - this.ctx.startedAt, inTokens: a?.usage.in, outTokens: a?.usage.out, attempts: this.attempts.length },
         this.ctx,
       )
       this.onSettled({ outcome, model: a?.step.id })

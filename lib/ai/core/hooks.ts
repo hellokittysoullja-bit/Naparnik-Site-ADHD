@@ -30,7 +30,7 @@ export type HarnessEvent =
   | { type: 'memory.proposed'; kind: string }
   /** итог записи серверным хранилищем: сейчас только сбой (accepted: false) */
   | { type: 'memory.write'; kind: string; accepted: boolean }
-  | { type: 'turn.end'; outcome: TurnOutcome; model?: string; ms: number; inTokens?: number; outTokens?: number }
+  | { type: 'turn.end'; outcome: TurnOutcome; model?: string; ms: number; inTokens?: number; outTokens?: number; attempts?: number }
 
 export type Observer = (event: HarnessEvent, ctx: TurnContext) => void
 
