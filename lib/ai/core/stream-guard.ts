@@ -1,4 +1,4 @@
-import { checkOutput, type OutputOpts, type OutputViolation } from '../guards/output'
+import { checkOutput, undash, type OutputOpts, type OutputViolation } from '../guards/output'
 
 /**
  * Проверка ответа ПО ХОДУ печати (чат печатает ответ по мере генерации).
@@ -72,7 +72,7 @@ export class SentenceGuard {
   }
 
   private release(cut: number, final: boolean): GuardStep {
-    let chunk = this.pending.slice(0, cut).replace(/\*\*/g, '*')
+    let chunk = undash(this.pending.slice(0, cut).replace(/\*\*/g, '*'))
     // кавычки-обёртки снимаются, только если обёрнута ВСЯ реплика (её начало ещё не показано — см. push)
     if (final && !this.opened && OPEN_QUOTE.test(chunk) && CLOSE_QUOTE.test(chunk)) {
       const inner = chunk.replace(OPEN_QUOTE, '').replace(CLOSE_QUOTE, '')

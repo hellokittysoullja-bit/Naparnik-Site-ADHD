@@ -87,7 +87,7 @@ describe('проверка по предложениям', () => {
     expect(wrapped.end()).toEqual({ kind: 'release', text: 'Привет! Начнём.' })
     const quoted = new SentenceGuard({ maxChars: 200 })
     quoted.push('«Открыть файл» — хороший шаг. ')
-    expect(quoted.end()).toEqual({ kind: 'release', text: '«Открыть файл» — хороший шаг.' })
+    expect(quoted.end()).toEqual({ kind: 'release', text: '«Открыть файл», хороший шаг.' }) // тире по правилу владельца становится запятой
   })
   it('строка с двоеточием не уходит без следующей строки', () => {
     const g = new SentenceGuard({ maxChars: 200 })

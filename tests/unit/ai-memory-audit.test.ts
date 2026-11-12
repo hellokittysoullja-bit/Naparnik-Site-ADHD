@@ -190,3 +190,30 @@ describe('заготовки без ИИ: не врут о памяти и не 
     for (let i = 0; i < 30; i++) expect(scriptedReply('отчёт по практике', null, 14).text).not.toMatch(/записал/)
   })
 })
+
+describe('правило владельца 12.11: никаких тире в речи кота', () => {
+  it('тире между словами становится запятой, дефис в словах остаётся', async () => {
+    const { undash } = await import('@/lib/ai/guards/output')
+    expect(undash('Как дела с дипломом — продвинулся?')).toBe('Как дела с дипломом, продвинулся?')
+    expect(undash('Скука – худшее топливо.')).toBe('Скука, худшее топливо.')
+    expect(undash('Давай, — начнём.')).toBe('Давай, начнём.')
+    expect(undash('— Привет-привет! Давай-ка начнём.')).toBe('Привет-привет! Давай-ка начнём.')
+    expect(undash('Только одно —')).toBe('Только одно')
+  })
+  it('в наших текстах для модели и в заготовках кота тире нет', async () => {
+    const { personaBase } = await import('@/lib/ai/prompt/persona')
+    const { CHAT_SYSTEM, FOCUS_CHAT_SYSTEM } = await import('@/lib/ai/prompt/tasks/chat')
+    const { CRISIS_REPLY } = await import('@/lib/ai/crisis')
+    for (const t of [personaBase, CHAT_SYSTEM, FOCUS_CHAT_SYSTEM, CRISIS_REPLY]) expect(t).not.toMatch(/ [—–] /)
+    const { scriptedReply } = await import('@/lib/scripted-companion')
+    for (const q of ['привет', 'не могу начать', 'залип в телефон', 'всё навалилось', 'не получилось', 'мне плохо', 'сделал!', 'что на острове', 'кто ты', 'спасибо', 'пока', 'отчёт', 'как дела'])
+      for (let i = 0; i < 8; i++) expect(scriptedReply(q, null, 20).text, q).not.toMatch(/ [—–] /)
+  })
+  it('поток чата: тире не доходит до человека', async () => {
+    const { SentenceGuard } = await import('@/lib/ai/core/stream-guard')
+    const g = new SentenceGuard({ maxChars: 500 })
+    const a = g.push('Как дела с дипломом — продвинулся? ')
+    const b = g.end()
+    expect([a, b].map((s) => (s.kind === 'release' ? s.text : '')).join('')).toBe('Как дела с дипломом, продвинулся?')
+  })
+})
