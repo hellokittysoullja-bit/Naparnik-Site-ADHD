@@ -105,8 +105,11 @@ const usageOf = (part: Part & { type: 'finish' }): Usage => ({
   cached: part.totalUsage?.inputTokenDetails?.cacheReadTokens,
 })
 
-/** повтор цепочки после сбоя провайдера: один раз, пауза 0,6–0,9 с, только если до предела фиксации ≥ 4 с */
-export const RETRY = { rounds: 1, baseMs: 600, jitterMs: 300, minLeftMs: 4000 } as const
+/**
+ * повтор после сбоя провайдера: один раз, пауза 0,6–0,9 с, только если до предела фиксации ≥ 2,5 с (обычный ответ
+ * Gemini — около 2 с; при 4 с у дробления с пределом 8 с повтор не успевал — набор задач 12.11)
+ */
+export const RETRY = { rounds: 1, baseMs: 600, jitterMs: 300, minLeftMs: 2500 } as const
 
 /** сеть, 429 и 5xx — повод повторить; 4xx (кроме 429) — нет: запрос негоден, повтор даст то же */
 function retryable(a: { result?: AttemptResult; errorStatus?: number; textLength?: number; truncated?: boolean }): boolean {
@@ -481,7 +484,13 @@ class Race {
     if (a.result === 'empty' && a.rejectedTools.size > 0 && !this.toolRetried && this.req.tools && left >= RETRY.minLeftMs) {
       this.toolRetried = true
       const rejected = a.rejectedTools
-      this.req = { ...this.req, tools: Object.fromEntries(Object.entries(this.req.tools).filter(([name]) => !rejected.has(name))) }
+      // модель знает из правил, что инструмент есть, и без прямой строки снова пытается его вызвать (набор задач:
+      // повтор без инструмента возвращал пустоту) — для этого повтора говорим прямо
+      this.req = {
+        ...this.req,
+        instructions: `${this.req.instructions}\n\nСейчас инструменты ${[...rejected].join(', ')} недоступны: ответь человеку словами, без вызовов.`,
+        tools: Object.fromEntries(Object.entries(this.req.tools).filter(([name]) => !rejected.has(name))),
+      }
       emit({ type: 'tool.retry', without: [...rejected] }, this.ctx)
       return this.startAttempt(a.step, true, true)
     }
@@ -603,7 +612,11 @@ class Race {
     const left = this.input.commitTimeoutMs - (Date.now() - this.ctx.startedAt)
     if (left < RETRY.minLeftMs) return false
     this.toolRetried = true
-    this.req = { ...this.req, tools: Object.fromEntries(Object.entries(this.req.tools).filter(([name]) => !rejected.has(name))) }
+    this.req = {
+      ...this.req,
+      instructions: `${this.req.instructions}\n\nСейчас инструменты ${[...rejected].join(', ')} недоступны: ответь человеку словами, без вызовов.`,
+      tools: Object.fromEntries(Object.entries(this.req.tools).filter(([name]) => !rejected.has(name))),
+    }
     emit({ type: 'tool.retry', without: [...rejected] }, this.ctx)
     this.launched = 0
     this.launchNext()
