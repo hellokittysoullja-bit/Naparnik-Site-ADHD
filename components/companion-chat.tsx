@@ -45,7 +45,7 @@ import {
   type MemoryContext,
 } from '@/lib/memory'
 import { scriptedReply } from '@/lib/scripted-companion'
-import { purgeForgottenChips, syncMemory } from '@/lib/memory-sync'
+import { pendingUserTurns, purgeForgottenChips, REVIEW_EVERY_TURNS, syncMemory } from '@/lib/memory-sync'
 import { factKey } from '@/lib/ai/memory/fact-key'
 
 const MEMORY_IDLE_MS = 90_000
@@ -431,6 +431,8 @@ export function CompanionChat({
       void syncMemory(messages, { keepalive }).then((n) => {
         if (n > 0) void buildMemoryContext().then((m) => (memoryRef.current = m))
       })
+    // долгий разговор без пауз: ревью каждые 10 ходов человека, не дожидаясь тишины
+    if (pendingUserTurns(messages) >= REVIEW_EVERY_TURNS) run()
     const timer = window.setTimeout(() => run(), MEMORY_IDLE_MS)
     const onHide = () => {
       if (document.visibilityState === 'hidden') run(true)

@@ -105,6 +105,16 @@ const usageOf = (part: Part & { type: 'finish' }): Usage => ({
   cached: part.totalUsage?.inputTokenDetails?.cacheReadTokens,
 })
 
+/** повтор цепочки после сбоя провайдера: один раз, пауза 0,6–0,9 с, только если до предела фиксации ≥ 4 с */
+export const RETRY = { rounds: 1, baseMs: 600, jitterMs: 300, minLeftMs: 4000 } as const
+
+/** сеть, 429 и 5xx — повод повторить; 4xx (кроме 429) — нет: запрос негоден, повтор даст то же */
+function retryable(a: { result?: AttemptResult; errorStatus?: number }): boolean {
+  if (a.result !== 'error') return false
+  const s = a.errorStatus
+  return s === undefined || s === 408 || s === 429 || s >= 500
+}
+
 /** сбой проверки агента — вызов не проходит (fail-closed: лучше не записать, чем записать непроверенное) */
 function safeCheck(check: (name: string, input: unknown) => boolean, name: string, input: unknown): boolean {
   try {
@@ -130,6 +140,8 @@ class Attempt {
   private full = ''
   /** форма ошибки провайдера для журнала (без тела запроса и ответа) */
   errorStatus?: number
+  /** чем закончилась попытка (для решения о повторе) */
+  result?: AttemptResult
 
   constructor(
     readonly step: ModelStep,
@@ -349,6 +361,11 @@ class Race {
   private readonly attempts: Attempt[] = []
   private winner: Attempt | null = null
   private launched = 0
+  /** сколько раз цепочка повторялась после сбоя провайдера (не больше RETRY.rounds) */
+  private retryRound = 0
+  private retryTimer?: ReturnType<typeof setTimeout>
+  /** повтор запланирован: «все упали» сейчас не значит «сдаёмся» */
+  private retryPending = false
   /** исход решён: новые попытки не запускаются, части проигравших игнорируются */
   private settled = false
   private closed = false
@@ -416,7 +433,7 @@ class Race {
     if (this.winner || this.settled || this.launched >= chain.length || this.all.aborted) return this.giveUpIfExhausted()
     const a = new Attempt(chain[this.launched++], this.guardOpts, this.input.whole, this.personMedical, this.input.toolCheck, this.input.claims?.unlocks)
     this.attempts.push(a)
-    emit({ type: 'model.start', model: a.step.id, hedge: this.launched > 1 }, this.ctx)
+    emit({ type: 'model.start', model: a.step.id, hedge: this.launched > 1, ...(this.retryRound > 0 ? { retry: true } : {}) }, this.ctx)
     void this.run(a)
     if (this.launched < chain.length) this.hedgeTimer = setTimeout(() => this.launchNext(), this.req.hedgeAfterMs)
   }
@@ -447,8 +464,10 @@ class Race {
         if (r.done) return this.finishWinner(a, 'ok')
       }
       this.fail(a, 'error') // поток кончился без finish (обрыв)
-    } catch {
+    } catch (e) {
       if (a.dead) return
+      const status = (e as { statusCode?: unknown } | null)?.statusCode
+      if (typeof status === 'number') a.errorStatus ??= status
       const timedOut = this.all.aborted
       if (a === this.winner) this.finishWinner(a, timedOut ? 'timeout' : 'error')
       else {
@@ -499,7 +518,32 @@ class Race {
   }
 
   private giveUpIfExhausted(): void {
-    if (!this.winner && this.launched >= this.req.chain.length && this.attempts.every((a) => a.dead)) this.giveUp()
+    if (this.winner || this.settled || this.retryPending || this.launched < this.req.chain.length || !this.attempts.every((a) => a.dead)) return
+    if (this.retryLater()) return
+    this.giveUp()
+  }
+
+  /**
+   * Повтор после сбоя провайдера (Hermes: ретраи с паузой на сеть и 429/5xx). Все модели цепочки упали именно сбоем,
+   * а не отказом проверки или таймаутом — значит, провайдер «моргнул»: пауза с разбросом и ещё один проход цепочки,
+   * если до предела фиксации остаётся время. Отказ проверки вывода не повторяем: модель ответила, ответ негоден.
+   */
+  private retryLater(): boolean {
+    if (this.retryRound >= RETRY.rounds || this.all.aborted) return false
+    const failed = this.attempts.filter((a) => a.result !== 'cancelled')
+    if (failed.length === 0 || !failed.every(retryable)) return false
+    const delay = RETRY.baseMs * 2 ** this.retryRound + Math.floor(Math.random() * RETRY.jitterMs)
+    const left = this.input.commitTimeoutMs - (Date.now() - this.ctx.startedAt)
+    if (left < delay + RETRY.minLeftMs) return false
+    this.retryRound++
+    this.retryPending = true
+    this.retryTimer = setTimeout(() => {
+      this.retryPending = false
+      if (this.settled || this.winner) return
+      this.launched = 0
+      this.launchNext()
+    }, delay)
+    return true
   }
 
   /** сработал сигнал: человек отменил запрос или вышло общее время хода */
@@ -515,6 +559,7 @@ class Race {
   private endAttempt(a: Attempt, result: AttemptResult): void {
     if (a.dead) return
     a.dead = true
+    a.result = result
     a.ctrl.abort()
     emit(
       {
@@ -528,6 +573,7 @@ class Race {
   /** исход хода: turn.end и закрытие потока — ровно один раз */
   private settle(outcome: Outcome, a?: Attempt): void {
     this.settled = true
+    clearTimeout(this.retryTimer)
     clearTimeout(this.hedgeTimer)
     clearTimeout(this.commitTimer)
     this.detach()

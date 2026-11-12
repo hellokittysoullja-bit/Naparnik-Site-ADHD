@@ -217,3 +217,17 @@ describe('правило владельца 12.11: никаких тире в р
     expect([a, b].map((s) => (s.kind === 'release' ? s.text : '')).join('')).toBe('Как дела с дипломом, продвинулся?')
   })
 })
+
+describe('фоновое ревью каждые 10 ходов', () => {
+  it('считает реплики человека после курсора', async () => {
+    const { pendingUserTurns, REVIEW_EVERY_TURNS } = await import('@/lib/memory-sync')
+    const msgs: UIMessage[] = Array.from({ length: 24 }, (_, i) => ({ id: `x${i}`, role: i % 2 ? 'assistant' : 'user', parts: [{ type: 'text', text: 'реплика' }] }))
+    const store = new Map<string, string>()
+    vi.stubGlobal('window', { localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) } })
+    expect(pendingUserTurns(msgs)).toBe(12)
+    store.set('naparnik:memCursor', 'x9')
+    expect(pendingUserTurns(msgs)).toBe(7)
+    expect(REVIEW_EVERY_TURNS).toBe(10)
+    vi.unstubAllGlobals()
+  })
+})

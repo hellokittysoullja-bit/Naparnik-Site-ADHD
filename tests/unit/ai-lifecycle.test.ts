@@ -111,11 +111,12 @@ describe('отмена и обрыв', () => {
     expect(parts.at(-1)?.type).toBe('finish')
     expect(ends()).toEqual([expect.objectContaining({ outcome: 'aborted', model: 'a' })])
   })
-  it('все модели упали сразу — заготовка сразу, а не через время ожидания', async () => {
+  it('все модели упали сразу — один повтор после короткой паузы, затем заготовка, а не ожидание до предела', async () => {
     chain.steps = [{ id: 'a', model: failing(new Error('x')) }, { id: 'b', model: failing(new Error('y')) }]
     const t0 = Date.now()
     const r = await collect(streamTurn(turn({ commitTimeoutMs: 5000, totalTimeoutMs: 6000 })))
-    expect(Date.now() - t0).toBeLessThan(500)
+    // пауза повтора 0,6–0,9 с (core/stream-turn.ts RETRY), а не 5 с предела фиксации
+    expect(Date.now() - t0).toBeLessThan(1500)
     expect(r.parts.some((p) => p.type === 'error')).toBe(true)
     expect(ends()).toEqual([expect.objectContaining({ outcome: 'fallback' })])
   })

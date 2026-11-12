@@ -60,6 +60,18 @@ export function pendingChunk(messages: readonly UIMessage[], cursor: string | nu
   return { lines: lines.some((l) => l.role === 'user' && l.text.length >= MIN_USER_CHARS) ? lines : [], upTo }
 }
 
+/**
+ * Фоновое ревью по счёту ходов (Hermes: каждые ~10 ходов отдельный дешёвый вызов смотрит последние ходы): долгий
+ * разговор без пауз тоже доходит до памяти, а не только затихший. Сколько реплик человека после курсора.
+ */
+export const REVIEW_EVERY_TURNS = 10
+
+export function pendingUserTurns(messages: readonly UIMessage[]): number {
+  const cursor = readCursor()
+  const at = cursor ? messages.findIndex((m) => m.id === cursor) : -1
+  return messages.slice(at + 1).filter((m) => m.role === 'user').length
+}
+
 /** Операция выжимки → операция устройства, через те же проверки, что вызов инструмента памяти в чате */
 export function toDeviceOp(op: ExtractOp, refs: readonly string[]): FactOp | null {
   // выжимка только добавляет и заменяет (удаляет только человек в разговоре)

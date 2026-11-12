@@ -223,3 +223,48 @@ describe('обрыв по лимиту длины', () => {
     expect(r.shown).toBe('Понимаю. Бывает, что всё валится.')
   })
 })
+
+describe('повтор после сбоя провайдера (Hermes: ретраи с паузой на сеть и 429/5xx)', () => {
+  // модель, которая первые n вызовов падает с кодом, потом отвечает
+  function flaky(failures: number, status: number, reply = 'Привет, начнём.') {
+    let calls = 0
+    const m = new MockLanguageModelV4({
+      doStream: async () => {
+        calls++
+        if (calls <= failures) throw Object.assign(new Error('провайдер'), { statusCode: status })
+        return { stream: simulateReadableStream({ chunks: [{ type: 'stream-start', warnings: [] }, ...text(reply)] as never[] }) }
+      },
+    })
+    return { m, calls: () => calls }
+  }
+  it('обе модели упали с 503 — после паузы цепочка повторяется один раз и человек получает ответ', async () => {
+    const a = flaky(1, 503)
+    const b = flaky(1, 503)
+    chain.steps = [{ id: 'a', model: a.m }, { id: 'b', model: b.m }]
+    const r = await collect(run({ commitTimeoutMs: 6000, totalTimeoutMs: 8000 }))
+    expect(r.error).toBe(false)
+    expect(r.shown).toBe('Привет, начнём.')
+    expect(events).toContainEqual(expect.objectContaining({ type: 'model.start', retry: true }))
+  })
+  it('400 (запрос негоден) не повторяется: сразу заготовка', async () => {
+    const a = flaky(5, 400)
+    chain.steps = [{ id: 'a', model: a.m }]
+    const r = await collect(run({ commitTimeoutMs: 6000, totalTimeoutMs: 8000 }))
+    expect(r.error).toBe(true)
+    expect(a.calls()).toBe(1)
+  })
+  it('повтор только один: упорный 429 — заготовка, без бесконечной петли', async () => {
+    const a = flaky(9, 429)
+    chain.steps = [{ id: 'a', model: a.m }]
+    const r = await collect(run({ commitTimeoutMs: 6000, totalTimeoutMs: 8000 }))
+    expect(r.error).toBe(true)
+    expect(a.calls()).toBe(2)
+  })
+  it('если до предела фиксации мало времени, повтора нет', async () => {
+    const a = flaky(1, 503)
+    chain.steps = [{ id: 'a', model: a.m }]
+    const r = await collect(run({ commitTimeoutMs: 2000, totalTimeoutMs: 3000 }))
+    expect(r.error).toBe(true)
+    expect(a.calls()).toBe(1)
+  })
+})
