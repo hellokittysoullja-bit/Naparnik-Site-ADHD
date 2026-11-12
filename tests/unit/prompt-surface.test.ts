@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { BREAKDOWN_SYSTEM } from '@/lib/ai/agents/breakdown'
+import { EXTRACT_SYSTEM } from '@/lib/ai/agents/memory-extract'
 import { MOMENTS, sessionVoiceSystem } from '@/lib/ai/agents/session-voice'
 import { CHAT_SYSTEM, FOCUS_CHAT_SYSTEM } from '@/lib/ai/prompt/tasks/chat'
 import { systemFor } from '@/lib/ai/prompt/assemble'
@@ -18,6 +19,8 @@ function surface() {
     'chat/companion': systemFor(CHAT_SYSTEM),
     'chat/focus': systemFor(FOCUS_CHAT_SYSTEM),
     breakdown: systemFor(BREAKDOWN_SYSTEM),
+    // служебная задача: без характера кота (run-turn.ts bare)
+    'memory-extract': EXTRACT_SYSTEM,
   }
   for (const m of MOMENTS) system[`session-voice/${m}`] = systemFor(sessionVoiceSystem(m))
   const toolSchemas = Object.fromEntries(

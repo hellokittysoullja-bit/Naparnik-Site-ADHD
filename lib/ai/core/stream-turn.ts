@@ -48,7 +48,17 @@ export type StreamTurnInput = {
    * whole — разовые задачи (голос сессии, дробление): ответ держится целиком, проверяется и принимается задачей
    * (accept) — только тогда фиксируется; негодный ответ тихо уходит следующей модели.
    */
-  whole?: { accept: (text: string) => boolean }
+  whole?: { accept: (text: string) => boolean; internal?: boolean }
+  /**
+   * Проверка вызова инструмента по смыслу хода, сверх схемы: то, что знает только агент (какой список памяти видела
+   * модель, что сказал человек). false — вызов отбрасывается так же, как негодный по схеме
+   */
+  toolCheck?: (name: string, input: unknown) => boolean
+  /**
+   * Действия, о которых кот вправе говорить в прошедшем времени («забыл», «сохранил»), только если они случились:
+   * вызов одного из tools в этой попытке или (allowedFromStart) результат такого вызова уже в истории хода
+   */
+  claims?: { tools: readonly string[]; allowedFromStart: boolean }
   signal?: AbortSignal
 }
 
@@ -95,6 +105,15 @@ const usageOf = (part: Part & { type: 'finish' }): Usage => ({
   cached: part.totalUsage?.inputTokenDetails?.cacheReadTokens,
 })
 
+/** сбой проверки агента — вызов не проходит (fail-closed: лучше не записать, чем записать непроверенное) */
+function safeCheck(check: (name: string, input: unknown) => boolean, name: string, input: unknown): boolean {
+  try {
+    return check(name, input)
+  } catch {
+    return false
+  }
+}
+
 class Attempt {
   readonly ctrl = new AbortController()
   readonly t0 = Date.now()
@@ -115,18 +134,29 @@ class Attempt {
   constructor(
     readonly step: ModelStep,
     private readonly opts: OutputOpts,
-    private readonly whole?: { accept: (text: string) => boolean },
+    private readonly whole?: { accept: (text: string) => boolean; internal?: boolean },
     /** человек сам назвал лекарство — его слова в плане не нарушение */
     private readonly personMedical = false,
+    private readonly toolCheck?: (name: string, input: unknown) => boolean,
+    private readonly claimTools: readonly string[] = [],
   ) {
-    this.guard = new SentenceGuard(opts)
+    // заявление «забыл/сохранил» проверяется по этой попытке: её собственный вызов инструмента его разрешает
+    const base = opts.claim
+    this.guard = new SentenceGuard(base ? { ...opts, claim: { allowed: () => base.allowed() || this.acted } } : opts)
   }
+
+  /** попытка уже вызвала инструмент, о действии которого можно говорить («забыл», «сохранил») */
+  private acted = false
 
   /** режим whole: проверить и принять ответ целиком в конце генерации */
   private finishWhole(finish: Part): { out: Part[]; fail?: AttemptResult; done?: boolean } {
     const text = tidy(this.full)
-    const verdict = checkOutput(text, this.opts)
-    if (!verdict.ok) return { out: [], fail: verdict.reason }
+    // служебная задача (выжимка памяти): ответ не показывается человеку, задача сама проверяет каждую строку теми же
+    // правилами — одна негодная строка не должна губить весь ответ
+    if (!this.whole!.internal) {
+      const verdict = checkOutput(text, this.opts)
+      if (!verdict.ok) return { out: [], fail: verdict.reason }
+    } else if (text.length > this.opts.maxChars) return { out: [], fail: 'length' }
     let accepted = false
     try {
       accepted = this.whole!.accept(text)
@@ -203,6 +233,25 @@ class Attempt {
         if (!toolArgsOk(part.input, { echo: this.opts.echo, medical: this.personMedical })) {
           onTool(part.toolName, false)
           return { out }
+        }
+        if (this.toolCheck && !safeCheck(this.toolCheck, part.toolName, part.input)) {
+          onTool(part.toolName, false)
+          return { out }
+        }
+        this.toolCalled = true // до закрытия текста: пустой текст рядом с вызовом — норма
+        if (this.claimTools.includes(part.toolName)) {
+          this.acted = true
+          // придержанное «Запомнил.» теперь правда — выпускаем его до вызова: текст уже закончен — закрываем
+          // его сейчас, ещё идёт — выпускаем законченные предложения
+          if (this.endedText) {
+            const closed = this.closeText(false)
+            if (closed.fail) return closed
+            out.push(...closed.out)
+          } else {
+            const held = this.guard.push('')
+            if (held.kind === 'violation') return { out, fail: held.reason }
+            if (held.kind === 'release' && this.openText) out.push({ type: 'text-delta', id: this.openText, text: held.text } as Part)
+          }
         }
         out.push(part)
         this.toolCalled = true
@@ -336,6 +385,7 @@ class Race {
       maxChars: input.maxChars,
       echo: echoWords(input.echoTexts ?? input.userTexts),
       leak: leakPrint(this.req.instructions),
+      claim: input.claims ? { allowed: () => input.claims!.allowedFromStart } : undefined,
     }
     this.personMedical = mentionsMedical(input.echoTexts ?? input.userTexts)
     const total = AbortSignal.timeout(input.totalTimeoutMs)
@@ -362,7 +412,7 @@ class Race {
     clearTimeout(this.hedgeTimer)
     const chain = this.req.chain
     if (this.winner || this.settled || this.launched >= chain.length || this.all.aborted) return this.giveUpIfExhausted()
-    const a = new Attempt(chain[this.launched++], this.guardOpts, this.input.whole, this.personMedical)
+    const a = new Attempt(chain[this.launched++], this.guardOpts, this.input.whole, this.personMedical, this.input.toolCheck, this.input.claims?.tools)
     this.attempts.push(a)
     emit({ type: 'model.start', model: a.step.id, hedge: this.launched > 1 }, this.ctx)
     void this.run(a)

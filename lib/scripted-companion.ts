@@ -218,7 +218,7 @@ const RX = {
 
 export function scriptedReply(
   userText: string,
-  memory: MemoryContextPayload | null,
+  memory: Pick<MemoryContextPayload, 'plan' | 'recentFinds' | 'patterns'> | null,
   hour: number,
 ): ScriptedReply {
   const text = userText.trim()

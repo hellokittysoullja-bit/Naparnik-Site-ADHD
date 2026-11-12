@@ -1,24 +1,23 @@
 import type { TurnContext } from '../core/turn'
-import { applyWrites } from './policy'
+import { applyWrites, snapshotFacts, type MemoryState, type MemoryWrite } from './policy'
 import { parseSnapshot, type MemorySnapshot } from './schema'
+
+export type { MemoryWrite }
 
 /**
  * Поставщик памяти (Hermes agent/memory_provider.py: prefetch → sync turn; конец разговора (on_session_end) появится вместе с
  * серверным хранилищем; Mastra Memory:
  * thread/resource). Ядро зависит только от этого интерфейса, хранилище подставляется адаптером:
- *  - сейчас — ClientSnapshotMemory: снимок присылает устройство, записи исполняет устройство (инструмент rememberFact);
+ *  - сейчас — ClientSnapshotMemory: снимок присылает устройство, записи исполняет устройство (инструмент memory);
  *  - позже — серверное хранилище (база, бот): тот же интерфейс, ядро и маршруты не меняются.
  */
 export interface MemoryProvider {
   readonly name: string
   /** до вызова модели: что известно о человеке к этому ходу */
   prefetch(ctx: TurnContext): Promise<MemorySnapshot | null>
-  /** после хода: принять предложенные моделью записи (уже проверенные ядром) */
-  onTurnEnd?(ctx: TurnContext, writes: readonly MemoryWrite[]): Promise<void>
+  /** после хода: принять предложенные моделью записи (уже проверенные ядром); lastUserText — для правила «забудь» */
+  onTurnEnd?(ctx: TurnContext, writes: readonly MemoryWrite[], turn: { lastUserText: string }): Promise<void>
 }
-
-/** Запись, которую предложила модель: схема инструмента (tools/catalog.ts) → правила записи (memory/policy.ts) */
-export type MemoryWrite = { kind: 'fact'; text: string } | { kind: 'plan'; task: string; firstStep: string; startTime?: string }
 
 /** Устройство — хранилище: читаем присланный снимок; записи исполняет клиент, сервер их только проверяет */
 export class ClientSnapshotMemory implements MemoryProvider {
@@ -43,19 +42,23 @@ export class InProcessMemory implements MemoryProvider {
   // может не быть (нет VISIT_SECRET — channels/telegram.ts pseudonym), а память от секрета для журнала зависеть не
   // должна. Боевой адаптер получит ключ явно — этот остаётся эталоном для тестов.
   readonly name = 'in-process'
-  private readonly store = new Map<string, MemorySnapshot>()
-  constructor(private readonly today: () => string = () => new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)) {}
+  private readonly store = new Map<string, MemoryState>()
+  private seq = 0
+  constructor(private readonly now: () => string = () => new Date().toISOString()) {}
   private key(ctx: TurnContext): string {
     if (!ctx.sessionId) throw new Error('InProcessMemory needs ctx.sessionId')
     return ctx.sessionId
   }
   async prefetch(ctx: TurnContext): Promise<MemorySnapshot | null> {
-    return this.store.get(this.key(ctx)) ?? null
+    const state = this.store.get(this.key(ctx))
+    if (!state) return null
+    return { ...EMPTY_SNAPSHOT, plan: state.plan, facts: snapshotFacts(state.facts, this.now().slice(0, 10)) }
   }
-  async onTurnEnd(ctx: TurnContext, writes: readonly MemoryWrite[]): Promise<void> {
+  async onTurnEnd(ctx: TurnContext, writes: readonly MemoryWrite[], turn: { lastUserText: string }): Promise<void> {
     if (writes.length === 0) return
-    const base = this.store.get(this.key(ctx)) ?? EMPTY_SNAPSHOT
-    this.store.set(this.key(ctx), applyWrites(base, writes, this.today()).next)
+    const base = this.store.get(this.key(ctx)) ?? { facts: [], plan: null }
+    const { next } = applyWrites(base, writes, { now: this.now(), lastUserText: turn.lastUserText, newId: () => `f${++this.seq}` })
+    this.store.set(this.key(ctx), next)
   }
 }
 
@@ -63,7 +66,7 @@ export const EMPTY_SNAPSHOT: MemorySnapshot = {
   plan: null,
   recentStarts: [],
   patterns: { totalStarts: 0, runningDays: 0, favoriteHour: null, lastStartDate: null },
-  notes: [],
+  facts: [],
 }
 
 /** Разовые задачи без памяти (голос сессии, дробление) */

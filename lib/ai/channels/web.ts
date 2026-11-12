@@ -12,6 +12,9 @@ import { TOOL_REFUSED, tools } from '../tools/catalog'
  *  - вход инструмента перепроверяется той же схемой, что и у модели; негодный вызов выбрасывается целиком;
  *  - результат клиентского инструмента заменяется нашим текстом (clientResult): браузер не пишет модели ничего.
  */
+/** что модель видит, если устройство отказалось исполнить вызов (agents/chat.ts: тогда «сохранил» говорить нельзя) */
+export const DEVICE_REFUSED = 'Не сохранено: устройство отклонило запись.'
+
 export const WEB_LIMITS = { messages: 30, userText: 2000, catText: 600 } as const
 
 type Part = UIMessage['parts'][number]
@@ -27,7 +30,7 @@ function sanitizeToolPart(p: Part & { type: `tool-${string}` }): Part | null {
   if (x.state !== 'output-available') return null
   // браузер шлёт один из двух наших ответов; модели уходит наш же текст, а не присланный
   const refused = (p as { output?: unknown }).output === TOOL_REFUSED
-  const output = refused ? 'Не сохранено: устройство отклонило запись.' : spec.clientResult
+  const output = refused ? DEVICE_REFUSED : spec.clientResult
   return { type: p.type, toolCallId: x.toolCallId, state: 'output-available', input: input.data, output } as Part
 }
 

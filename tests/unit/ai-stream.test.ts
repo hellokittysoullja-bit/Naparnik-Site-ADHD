@@ -179,13 +179,13 @@ describe('потоковый ход', () => {
       {
         id: 'a',
         model: streaming([
-          { type: 'tool-call', toolCallId: 'c1', toolName: 'rememberFact', input: JSON.stringify({ fact: 'см. https://evil.example' }) },
+          { type: 'tool-call', toolCallId: 'c1', toolName: 'memory', input: JSON.stringify({ op: 'add', category: 'about', text: 'см. https://evil.example', evidence: 'x' }) },
           { type: 'finish', finishReason: { unified: 'tool-calls', raw: 'tool_calls' }, usage },
         ]),
       },
     ]
     await collect(run({ tools: tools.forTask('chat'), commitTimeoutMs: 300 }))
-    expect(events).toContainEqual(expect.objectContaining({ type: 'tool.call', tool: 'rememberFact', valid: false }))
+    expect(events).toContainEqual(expect.objectContaining({ type: 'tool.call', tool: 'memory', valid: false }))
   })
 
   it('в журнале нет текста человека и ответа', async () => {
@@ -201,7 +201,7 @@ describe('потоковый ход', () => {
 
 describe('реестр инструментов', () => {
   it('задача видит только свои инструменты', () => {
-    expect(Object.keys(tools.forTask('chat')).sort()).toEqual(['rememberFact', 'savePlan', 'startFocus'])
+    expect(Object.keys(tools.forTask('chat')).sort()).toEqual(['memory', 'savePlan', 'startFocus'])
     expect(Object.keys(tools.forTask('session-voice'))).toEqual([])
   })
 })

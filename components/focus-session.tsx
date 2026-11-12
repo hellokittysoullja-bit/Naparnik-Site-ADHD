@@ -485,7 +485,7 @@ export function FocusSession() {
     startedAtRef.current = Date.now()
 
     // Старт записывается в момент старта: инициация — и есть валюта
-    const entry = await recordStart({ label: task, fromPlan })
+    const entry = await recordStart({ label: task, fromPlan, planned: minutes })
     trackEvent('session_started')
     startIdRef.current = entry.id
 

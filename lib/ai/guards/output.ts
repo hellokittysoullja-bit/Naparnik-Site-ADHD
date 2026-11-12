@@ -125,7 +125,7 @@ const IDENTITY = new RegExp(
 
 const NO_ECHO: ReadonlySet<string> = new Set()
 
-export type OutputViolation = 'shame' | 'medical' | 'language' | 'empty' | 'length' | 'link' | 'phone' | 'leak' | 'identity'
+export type OutputViolation = 'shame' | 'medical' | 'language' | 'empty' | 'length' | 'link' | 'phone' | 'leak' | 'identity' | 'claim'
 export type OutputVerdict = { ok: true } | { ok: false; reason: OutputViolation }
 
 export type OutputOpts = {
@@ -134,7 +134,16 @@ export type OutputOpts = {
   echo?: ReadonlySet<string>
   /** отпечаток системной инструкции (leakPrint): пересказ правил дословно — мимо (OWASP LLM07) */
   leak?: LeakPrint
+  /**
+   * Честность о действиях: «забыл», «запомнил», «сохранил» можно сказать, только если действие правда было (вызов
+   * инструмента в этой попытке или его результат в истории хода). Иначе кот сказал бы «забыл», а память осталась
+   * бы прежней (живой прогон 12.11: «Принято, забыл про диплом.» без вызова)
+   */
+  claim?: { allowed: () => boolean }
 }
+
+// «забыл / запомнил / стёр / удалил / записал / сохранил» от первого лица, прошедшее время; «не забыл» — не заявление
+const ACTION_CLAIM = /(?<!(?<!\p{L})не\s)(?<!\p{L})(?:забыл|запомнил|ст[её]р|стерла|удалил|записал|сохранил)(?:а|и)?(?!\p{L})/iu
 
 export function checkOutput(text: string, opts: OutputOpts): OutputVerdict {
   const raw = text.trim()
@@ -149,6 +158,7 @@ export function checkOutput(text: string, opts: OutputOpts): OutputVerdict {
   if (hit((t) => SHAME.some((r) => r.test(t)))) return { ok: false, reason: 'shame' }
   const { leak } = opts
   if (leak && hit((t) => leaks(t, leak))) return { ok: false, reason: 'leak' }
+  if (opts.claim && hit((t) => ACTION_CLAIM.test(t)) && !opts.claim.allowed()) return { ok: false, reason: 'claim' }
   if (foreignWord(raw, opts.echo ?? NO_ECHO)) return { ok: false, reason: 'language' }
   return { ok: true }
 }
@@ -208,10 +218,15 @@ export function mentionsMedical(texts: readonly string[]): boolean {
  * промпты. Каждая строка проходит те же правила, что текст ответа (без утечки и общей длины). Дело человека кот
  * записывает его словами, поэтому латинские слова человека (echo) и названные им самим лекарства допустимы.
  */
+// Служебные поля-перечисления (инструмент memory: op, category, ref): значение задаёт схема (enum / номер), человеку
+// оно не показывается — «add» и «task» не английская речь кота
+const STRUCTURAL_KEYS: ReadonlySet<string> = new Set(['op', 'category', 'ref'])
+
 export function toolArgsOk(input: unknown, person: { echo?: ReadonlySet<string>; medical?: boolean } = {}): boolean {
   if (!input || typeof input !== 'object') return true
-  return Object.values(input as Record<string, unknown>).every((v) => {
+  return Object.entries(input as Record<string, unknown>).every(([k, v]) => {
     if (typeof v !== 'string') return true
+    if (STRUCTURAL_KEYS.has(k) && /^[a-zA-Z0-9]{1,12}$/.test(v)) return true
     const verdict = checkOutput(v, { maxChars: 400, echo: person.echo })
     return verdict.ok || (verdict.reason === 'medical' && person.medical === true)
   })

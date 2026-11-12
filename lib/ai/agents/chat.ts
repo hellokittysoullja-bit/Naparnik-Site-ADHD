@@ -2,15 +2,19 @@ import type { ModelMessage, TextStreamPart, ToolSet } from 'ai'
 import { emit } from '../core/hooks'
 import { streamTurn } from '../core/stream-turn'
 import type { TurnContext } from '../core/turn'
+import { asksToForget } from '../memory/facts'
 import type { MemoryProvider, MemoryWrite } from '../memory/provider'
 import { renderMemory } from '../memory/render'
+import { factRejection, groundedIn } from '../memory/write-guard'
 import type { MemorySnapshot } from '../memory/schema'
 import { assemble } from '../prompt/assemble'
 import { KNOWLEDGE } from '../knowledge/catalog'
 import { renderKnowledge, selectKnowledge } from '../knowledge/select'
 import { fitConversation } from '../prompt/context-budget'
 import { CHAT_SYSTEM, FOCUS_CHAT_SYSTEM, situation } from '../prompt/tasks/chat'
-import { rememberFactInput, savePlanInput, tools } from '../tools/catalog'
+import { memoryInput, savePlanInput, tools } from '../tools/catalog'
+import { echoWords } from '../guards/output'
+import { DEVICE_REFUSED } from '../channels/web'
 
 type Part = TextStreamPart<ToolSet>
 
@@ -86,10 +90,64 @@ export async function chatTurn(input: {
     // ранние уже получили свой ответ; латинские слова — из всего разговора
     userTexts: input.userTexts.slice(-2),
     echoTexts: input.userTexts,
+    toolCheck: memoryToolCheck({ facts: snapshot?.facts?.length ?? 0, userTexts: input.userTexts }),
+    // «забыл/запомнил/сохранил» — только если это правда случилось: в этом ответе или в автокруге после инструмента
+    claims: { tools: CLAIM_TOOLS, allowedFromStart: actedSinceUser(input.conversation) },
     ...TURN_LIMITS,
     signal: input.signal,
   })
-  return stream.pipeThrough(memoryLifecycle(input.ctx, input.memory))
+  return stream.pipeThrough(memoryLifecycle(input.ctx, input.memory, input.userTexts.at(-1) ?? ''))
+}
+
+const CLAIM_TOOLS = ['memory', 'savePlan'] as const
+
+/** После последней реплики человека уже был результат инструмента памяти или плана (автокруг клиента) */
+export function actedSinceUser(conversation: readonly ModelMessage[]): boolean {
+  let i = conversation.length - 1
+  while (i >= 0 && conversation[i].role !== 'user') i--
+  return conversation.slice(i + 1).some(
+    (m) =>
+      m.role === 'tool' &&
+      Array.isArray(m.content) &&
+      m.content.some(
+        (p) =>
+          p.type === 'tool-result' &&
+          (CLAIM_TOOLS as readonly string[]).includes(p.toolName) &&
+          // отказ устройства — действия не было
+          !JSON.stringify(p.output).includes(DEVICE_REFUSED),
+      ),
+  )
+}
+
+/**
+ * Проверка вызова памяти по смыслу хода (сверх схемы, которая уже отсекла запрещённое содержание):
+ *  - номер факта — из показанного списка;
+ *  - «забыть» — только если человек в последней реплике сам попросил;
+ *  - новый или изменённый факт обоснован словами человека в этом разговоре (Hermes background_review.py:370-396
+ *    «сохраняй только то, что обосновано репликой»): модель не запишет то, что придумала сама или прочла в памяти.
+ * Устройство повторяет первые две проверки само: оно знает свой список точнее.
+ */
+export function memoryToolCheck(turn: { facts: number; userTexts: readonly string[] }) {
+  const last = turn.userTexts.at(-1) ?? ''
+  const echo = echoWords(turn.userTexts)
+  return (name: string, raw: unknown): boolean => {
+    if (name !== 'memory') return true
+    const r = memoryInput.safeParse(raw)
+    if (!r.success) return false
+    const m = r.data
+    const refOk = m.ref !== undefined && Number(m.ref) < turn.facts
+    switch (m.op) {
+      case 'forgetAll':
+        return asksToForget(last)
+      case 'forget':
+        return refOk && asksToForget(last)
+      case 'replace':
+      case 'add':
+        if (m.op === 'replace' && !refOk) return false
+        // латинские слова человека («Notion») в факте допустимы, как и в ответе кота
+        return factRejection(m.text ?? '', { echo }) === null && groundedIn(m.evidence, turn.userTexts.slice(-6))
+    }
+  }
 }
 
 /**
@@ -98,7 +156,7 @@ export async function chatTurn(input: {
  * изменений; сбой памяти ответ не ломает (fail-open). У памяти на устройстве записи исполняет клиент — здесь они
  * только попадают в журнал; у серверного хранилища (бот, база) — записываются этим шагом.
  */
-function memoryLifecycle(ctx: TurnContext, memory: MemoryProvider): TransformStream<Part, Part> {
+function memoryLifecycle(ctx: TurnContext, memory: MemoryProvider, lastUserText: string): TransformStream<Part, Part> {
   const writes: MemoryWrite[] = []
   let handed = false
   // записи отдаются поставщику ровно один раз — и когда ход закончился, и когда человек закрыл вкладку посреди
@@ -107,7 +165,7 @@ function memoryLifecycle(ctx: TurnContext, memory: MemoryProvider): TransformStr
     if (handed || writes.length === 0 || !memory.onTurnEnd) return
     handed = true
     try {
-      await memory.onTurnEnd(ctx, writes)
+      await memory.onTurnEnd(ctx, writes, { lastUserText })
     } catch {
       emit({ type: 'memory.write', kind: 'error', accepted: false }, ctx)
     }
@@ -132,9 +190,9 @@ function memoryLifecycle(ctx: TurnContext, memory: MemoryProvider): TransformStr
 
 /** Вызов инструмента → запись памяти. Вход уже проверен схемой инструмента (tools/catalog.ts) */
 export function toMemoryWrite(tool: string, input: unknown): MemoryWrite | null {
-  if (tool === 'rememberFact') {
-    const r = rememberFactInput.safeParse(input)
-    return r.success ? { kind: 'fact', text: r.data.fact } : null
+  if (tool === 'memory') {
+    const r = memoryInput.safeParse(input)
+    return r.success ? { kind: 'memory', input: r.data } : null
   }
   if (tool === 'savePlan') {
     const r = savePlanInput.safeParse(input)

@@ -99,14 +99,54 @@ describe('memory: переписка', () => {
   })
 })
 
-describe('memory: заметки кота без дублей (тот же ключ, что у правил памяти обвязки)', () => {
-  it('тот же факт иначе написанным не записывается второй раз; потолок — последние шесть', async () => {
-    await memory.addNote('Пишет диплом.')
-    await memory.addNote('пишет  ДИПЛОМ')
-    expect((await memory.getNotes()).map((n) => n.text)).toEqual(['Пишет диплом.'])
-    for (let i = 1; i <= 7; i++) await memory.addNote(`факт ${i}`)
-    const notes = (await memory.getNotes()).map((n) => n.text)
-    expect(notes).toHaveLength(memory.MAX_NOTES)
-    expect(notes.at(-1)).toBe('факт 7')
+describe('memory: факты о человеке на устройстве', () => {
+  it('прежние заметки один раз переносятся в факты «о себе», без дублей', async () => {
+    store.data.set('naparnik:notes', JSON.stringify([{ text: 'Пишет диплом.', createdAt: '2026-11-01T00:00:00Z' }, { text: 'Пишет диплом.', createdAt: '2026-11-02T00:00:00Z' }, { text: 'Любит чай' }]))
+    const facts = memory.peekFacts()
+    expect(facts.map((f) => [f.category, f.text])).toEqual([['about', 'Пишет диплом.'], ['about', 'Любит чай']])
+    // второй раз не переносит: ключ фактов уже есть
+    expect(memory.peekFacts().map((f) => f.id)).toEqual(facts.map((f) => f.id))
+  })
+  it('операции памяти: дубль не пишется, «забудь» стирает', async () => {
+    await memory.applyMemoryOps([{ op: 'add', category: 'task', text: 'Пишет диплом', source: 'stated' }])
+    const [r] = await memory.applyMemoryOps([{ op: 'add', category: 'task', text: 'пишет  ДИПЛОМ', source: 'stated' }])
+    expect(r).toMatchObject({ ok: false, reason: 'duplicate' })
+    const id = memory.peekFacts()[0].id
+    await memory.applyMemoryOps([{ op: 'forget', id }])
+    expect(memory.peekFacts()).toEqual([])
+  })
+  it('битая запись факта выбрасывается по одной, остальные живут', () => {
+    const ok = { id: 'a', category: 'task', text: 'Пишет диплом', source: 'stated', createdAt: 'x', updatedAt: 'x', status: 'active' }
+    store.data.set('naparnik:facts', JSON.stringify([ok, { id: 'b', category: 'ВЗЛОМ', text: 'x' }, 'мусор']))
+    expect(memory.peekFacts().map((f) => f.id)).toEqual(['a'])
+  })
+  it('контекст для разговора: факты и их id в одном порядке, ответы знакомства — ключами', () => {
+    store.data.set('naparnik:onboarding', JSON.stringify({ step: 9, sphere: 'study', blocker: 'phone', motive: null }))
+    const ok = (id: string, text: string) => ({ id, category: 'task', text, source: 'stated', createdAt: '2026-11-01T00:00:00Z', updatedAt: 'x', status: 'active' })
+    store.data.set('naparnik:facts', JSON.stringify([ok('a', 'Пишет диплом'), { ...ok('b', 'Старое'), status: 'superseded' }, ok('c', 'Любит чай')]))
+    const ctx = memory.peekMemoryContext()
+    expect(ctx.facts.map((f) => f.text)).toEqual(['Пишет диплом', 'Любит чай'])
+    expect(ctx.factIds).toEqual(['a', 'c'])
+    expect(ctx.profile).toEqual({ sphere: 'study', hanging: undefined, blocker: 'phone', motive: undefined })
+  })
+})
+
+describe('memory: выводы по стартам (только с основанием)', () => {
+  const start = (iso: string, planned?: number, minutes = 0) => ({ id: iso, date: iso.slice(0, 10), startedAt: iso, label: 'x', fromPlan: false, minutes, planned })
+  it('окно старта: меньше пяти стартов — вывода нет; вечерние старты — окно вокруг них', () => {
+    const local = (d: number, h: number) => new Date(2026, 10, d, h, 10).toISOString()
+    expect(memory.windowOf([1, 2, 3, 4].map((d) => start(local(d, 19))), '2026-11-12')).toBeNull()
+    const starts = [start(local(1, 19)), start(local(2, 20)), start(local(3, 19)), start(local(4, 18)), start(local(5, 9)), start(local(6, 19))]
+    expect(memory.windowOf(starts, '2026-11-12')).toEqual({ from: 18, to: 20, n: 5, of: 6 })
+  })
+  it('разбросанные старты — окна нет (доля меньше 40 %)', () => {
+    const local = (d: number, h: number) => new Date(2026, 10, d, h, 10).toISOString()
+    const starts = [0, 4, 8, 12, 16, 20].map((h, i) => start(local(i + 1, h)))
+    expect(memory.windowOf(starts, '2026-11-12')).toBeNull()
+  })
+  it('доводит до конца: только длительности с тремя и более сессиями; старые старты без выбора не считаются', () => {
+    const s = (planned: number | undefined, minutes: number) => start(`2026-11-05T10:00:00Z`, planned, minutes)
+    const starts = [s(15, 15), s(15, 14.5), s(15, 3), s(15, 15), s(25, 25), s(25, 0), s(undefined, 25)]
+    expect(memory.durationsOf(starts)).toEqual([{ minutes: 15, done: 3, of: 4 }])
   })
 })

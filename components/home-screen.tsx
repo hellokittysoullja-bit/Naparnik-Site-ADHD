@@ -325,7 +325,7 @@ function readHomeData() {
 
 /** Дом первого визита — запасной вариант, если память не прочиталась вовсе */
 function emptyHomeData(): ReturnType<typeof readHomeData> {
-  const patterns: Patterns = { totalStarts: 0, runningDays: 0, favoriteHour: null, lastStartDate: null, daysAway: null };
+  const patterns: Patterns = { totalStarts: 0, runningDays: 0, favoriteHour: null, lastStartDate: null, daysAway: null, startWindow: null, durations: [] };
   return {
     lastStepLabel: null,
     queuedStep: null,

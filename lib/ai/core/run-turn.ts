@@ -15,6 +15,11 @@ export type TurnInput<T> = {
   ctx: TurnContext
   /** системная часть задачи: что делать в этом режиме (стабильна — кэшируется провайдером) */
   system: string
+  /**
+   * служебная задача (фоновая выжимка памяти): системная часть — только правила задачи, без характера кота; ответ
+   * человеку не показывается, поэтому общую проверку вывода заменяет построчная проверка самой задачи
+   */
+  bare?: boolean
   /** данные человека — уже собранные dataMessage(); в роли user только они (security-ai.md R16) */
   data: string
   /** тексты человека для проверки входа (кризис, взлом промпта) */
@@ -43,7 +48,7 @@ export async function runTurn<T>(input: TurnInput<T>): Promise<TurnResult<T>> {
   const messages: ModelMessage[] = [{ role: 'user', content: input.data }]
   const { stream, result } = raceTurn({
     ctx: input.ctx,
-    instructions: systemFor(input.system),
+    instructions: input.bare ? input.system : systemFor(input.system),
     messages,
     userTexts: input.userTexts,
     commitTimeoutMs: input.timeoutMs,
@@ -51,7 +56,7 @@ export async function runTurn<T>(input: TurnInput<T>): Promise<TurnResult<T>> {
     hedgeAfterMs: input.hedgeAfterMs ?? DEFAULT_HEDGE_MS,
     maxOutputTokens: input.maxOutputTokens,
     maxChars: input.maxChars,
-    whole: { accept: (text) => input.parse(text) !== null },
+    whole: { accept: (text) => input.parse(text) !== null, internal: input.bare },
     signal: input.signal,
   })
   let text = ''

@@ -30,7 +30,7 @@ import { EmphasisText } from '@/components/emphasis-text'
 import { SPRING_ITEM, SPRING_SNAPPY, stagger } from '@/lib/motion'
 import Link from 'next/link'
 import {
-  addNote,
+  applyMemoryOps,
   buildMemoryContext,
   getChatMessages,
   getChatTimestamps,
@@ -44,7 +44,11 @@ import {
   type MemoryContext,
 } from '@/lib/memory'
 import { scriptedReply } from '@/lib/scripted-companion'
-import { TOOL_REFUSED, rememberFactInput, savePlanInput, startFocusInput, tools } from '@/lib/ai/tools/catalog'
+import { syncMemory } from '@/lib/memory-sync'
+
+const MEMORY_IDLE_MS = 90_000
+import { TOOL_REFUSED, memoryInput, rememberFactInput, savePlanInput, startFocusInput, tools } from '@/lib/ai/tools/catalog'
+import { toFactOp } from '@/lib/ai/memory/policy'
 import { useClientMount } from '@/hooks/use-client-mount'
 import type { UIMessage } from 'ai'
 
@@ -222,6 +226,10 @@ export function CompanionChat({
   )
   const [input, setInput] = useState('')
   const memoryRef = useRef<MemoryContext | null>(boot?.memory ?? null)
+  // Какой список фактов и какая реплика человека ушли с последним запросом: номер факта в вызове памяти относится
+  // к показанному модели списку, а «забудь» проверяется по словам человека (lib/ai/memory/policy.ts toFactOp)
+  const sentFactIdsRef = useRef<string[]>([])
+  const lastUserTextRef = useRef('')
   const reduceMotion = useReducedMotion()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   // Счётчик отправок — ключ для "запуска" стрелки: старая улетает вверх,
@@ -288,16 +296,19 @@ export function CompanionChat({
     ...(boot && boot.chat.length > 0 ? { messages: boot.chat } : {}),
     transport: new DefaultChatTransport({
       api: '/api/companion',
-      body: () => ({
-        mode,
-        memory: memoryRef.current,
-        clientHour: new Date().getHours(),
-      }),
+      body: () => {
+        const memory = memoryRef.current
+        sentFactIdsRef.current = memory?.factIds ?? []
+        // id фактов — внутренняя связь устройства, серверу и модели не нужна
+        return { mode, memory: memory && { ...memory, factIds: undefined }, clientHour: new Date().getHours() }
+      },
       // На сервер — только последние 30 реплик (столько же хранится): в длинном разговоре полная история
       // упиралась бы в потолок тела запроса (lib/api-guard.ts), и ИИ молча уходил бы в скрипт до перезагрузки
-      prepareSendMessagesRequest: ({ id, messages: all, body, trigger, messageId }) => ({
-        body: { ...body, id, messages: all.slice(-30), trigger, messageId },
-      }),
+      prepareSendMessagesRequest: ({ id, messages: all, body, trigger, messageId }) => {
+        const lastUser = [...all].reverse().find((m) => m.role === 'user')
+        lastUserTextRef.current = lastUser?.parts.map((p) => (p.type === 'text' ? p.text : '')).join(' ') ?? ''
+        return { body: { ...body, id, messages: all.slice(-30), trigger, messageId } }
+      },
     }),
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
     // Graceful degradation: LLM недоступен (нет ключа, лимит, сеть) —
@@ -344,7 +355,7 @@ export function CompanionChat({
       const name = toolCall.toolName
       const done = (ok: boolean) =>
         void addToolOutput({
-          tool: name as 'savePlan' | 'rememberFact' | 'startFocus',
+          tool: name as 'savePlan' | 'memory' | 'startFocus',
           toolCallId: toolCall.toolCallId,
           output: ok ? (tools.get(name)?.clientResult ?? TOOL_REFUSED) : TOOL_REFUSED,
         })
@@ -364,13 +375,18 @@ export function CompanionChat({
             done(true)
           })
           .catch(() => done(false))
-      } else if (name === 'rememberFact') {
-        const parsed = rememberFactInput.safeParse(toolCall.input)
+      } else if (name === 'memory') {
+        // схема ещё раз проверяет содержание (здоровье, контакты, «указания коту»), toFactOp — номер факта и
+        // просьбу «забудь»: устройство — хозяин своей памяти и последний, кто решает, что в неё попадёт
+        const parsed = memoryInput.safeParse(toolCall.input)
         if (!parsed.success) return done(false)
-        addNote(parsed.data.fact)
-          .then(async () => {
+        const op = toFactOp(parsed.data, { refs: sentFactIdsRef.current, lastUserText: lastUserTextRef.current })
+        if (!op.ok) return done(false)
+        applyMemoryOps([op.op])
+          .then(async ([r]) => {
             memoryRef.current = await buildMemoryContext()
-            done(true)
+            // «уже помню» — тоже успех: модель не должна думать, что запись не удалась
+            done(r?.ok === true || (!r.ok && r.reason === 'duplicate'))
           })
           .catch(() => done(false))
       } else if (name === 'startFocus') {
@@ -402,6 +418,26 @@ export function CompanionChat({
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Фоновая выжимка памяти (lib/memory-sync.ts): разговор затих на 90 с — или человек ушёл со вкладки — кусок
+  // после прошлой выжимки уходит на сервер, проверенные факты ложатся в память устройства. Пока кот отвечает — ждём.
+  const idleForMemory = status === 'ready' || status === 'error'
+  useEffect(() => {
+    if (!idleForMemory || messages.length === 0) return
+    const run = (keepalive = false) =>
+      void syncMemory(messages, { keepalive }).then((n) => {
+        if (n > 0) void buildMemoryContext().then((m) => (memoryRef.current = m))
+      })
+    const timer = window.setTimeout(() => run(), MEMORY_IDLE_MS)
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') run(true)
+    }
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onHide)
+    }
+  }, [messages, idleForMemory])
 
   // Сохраняем после каждого завершённого обмена (не во время стриминга)
   useEffect(() => {
@@ -1083,8 +1119,27 @@ export function CompanionChat({
                   )
                 }
 
+                if (part.type === 'tool-memory' && part.state === 'output-available' && part.output !== TOOL_REFUSED) {
+                  const m = memoryInput.safeParse(part.input)
+                  if (!m.success) return null
+                  const label =
+                    m.data.op === 'forgetAll' ? 'забыл всё' : m.data.op === 'forget' ? 'забыл' : `запомнил: ${m.data.text}`
+                  return (
+                    <span
+                      key={i}
+                      className="ml-10 flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-muted-foreground"
+                    >
+                      <Sparkles className="size-3" aria-hidden="true" />
+                      {label}
+                    </span>
+                  )
+                }
+
+                // прежний инструмент (до 12.11): старые разговоры на устройстве показывают свои чипы как раньше
                 if (part.type === 'tool-rememberFact' && part.state === 'output-available') {
-                  const { fact } = part.input as { fact: string }
+                  const parsedFact = rememberFactInput.safeParse(part.input)
+                  if (!parsedFact.success) return null
+                  const { fact } = parsedFact.data
                   return (
                     <span
                       key={i}

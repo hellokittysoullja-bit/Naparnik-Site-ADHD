@@ -85,6 +85,9 @@ export class SentenceGuard {
       return { kind: 'hold' }
     }
     const verdict = checkOutput(candidate, this.opts)
+    // «Запомнил.» до вызова инструмента: ждём вызова (тогда это правда), а не бракуем — модели часто пишут слово
+    // раньше вызова. Не дождались до конца текста — нарушение: неправду не показываем
+    if (!verdict.ok && verdict.reason === 'claim' && !final) return { kind: 'hold' }
     if (!verdict.ok) return { kind: 'violation', reason: verdict.reason }
     this.pending = this.pending.slice(cut)
     if (!this.opened) chunk = chunk.trimStart()
