@@ -1,4 +1,4 @@
-import { checkOutput, stripGreeting, stripPetNames, undash, type OutputOpts, type OutputViolation } from '../guards/output'
+import { checkOutput, plainWords, stripGreeting, stripPetNames, undash, type OutputOpts, type OutputViolation } from '../guards/output'
 
 /**
  * Проверка ответа ПО ХОДУ печати (чат печатает ответ по мере генерации).
@@ -21,6 +21,10 @@ const SENTENCE_END = /(?<!(?:^|\n)[ \t]*\d{1,3})[.!?…](?=\s)|(?<!:[ \t]*)\n/g
 const LAST_SENTENCE_END = /[.!?…](?![\s\S]*[.!?…])/
 const OPEN_QUOTE = /^\s*["«„]/
 const CLOSE_QUOTE = /["»“]\s*$/
+
+const FIRST_RELEASE_SENTENCES = 2
+/** нарушения стиля: после первого выпуска негодное предложение пропускается, а не обрывает ответ */
+const SKIPPABLE: ReadonlySet<OutputViolation> = new Set<OutputViolation>(['bureaucratese', 'absence'])
 
 export type GuardStep =
   | { kind: 'release'; text: string }
@@ -47,7 +51,16 @@ export class SentenceGuard {
       return this.pending.length > this.opts.maxChars ? { kind: 'violation', reason: 'length' } : { kind: 'hold' }
     }
     let cut = -1
-    for (const m of this.pending.matchAll(SENTENCE_END)) cut = (m.index ?? 0) + m[0].length
+    let ends = 0
+    for (const m of this.pending.matchAll(SENTENCE_END)) {
+      cut = (m.index ?? 0) + m[0].length
+      ends++
+    }
+    // Первый выпуск — когда готовы ДВА предложения (или текст кончился — тогда выпускает end()). Нарушение во втором
+    // предложении иначе обрезало бы ответ после первого: человек видел «О, про морских котиков!» и всё (аудит 12.11:
+    // 14 % показанных ответов оборваны так). Теперь оно бракует попытку до показа, и ход берёт следующая модель.
+    // Цена — первое слово позже на одно предложение (~0,3–0,8 с)
+    if (!this.opened && ends < FIRST_RELEASE_SENTENCES) cut = -1
     if (cut <= 0) {
       // защита от бесконечного «предложения»: проверяем и на длину, не дожидаясь точки
       return this.released.length + this.pending.length > this.opts.maxChars
@@ -72,7 +85,7 @@ export class SentenceGuard {
   }
 
   private release(cut: number, final: boolean): GuardStep {
-    let chunk = stripPetNames(undash(this.pending.slice(0, cut).replace(/\*\*/g, '*')))
+    let chunk = plainWords(stripPetNames(undash(this.pending.slice(0, cut).replace(/\*\*/g, '*'))))
     // кавычки-обёртки снимаются, только если обёрнута ВСЯ реплика (её начало ещё не показано — см. push)
     if (final && !this.opened && OPEN_QUOTE.test(chunk) && CLOSE_QUOTE.test(chunk)) {
       const inner = chunk.replace(OPEN_QUOTE, '').replace(CLOSE_QUOTE, '')
@@ -88,6 +101,12 @@ export class SentenceGuard {
     // «Запомнил.» до вызова инструмента: ждём вызова (тогда это правда), а не бракуем — модели часто пишут слово
     // раньше вызова. Не дождались до конца текста — нарушение: неправду не показываем
     if (!verdict.ok && verdict.reason === 'claim' && !final) return { kind: 'hold' }
+    // казённая фраза в середине уже начатого ответа: пропускаем это предложение и идём дальше (следующее может быть
+    // шагом или вопросом, ради которых ответ писался), а не обрываем весь ответ
+    if (!verdict.ok && this.opened && SKIPPABLE.has(verdict.reason) && checkOutput(this.released.trim() || 'а', this.opts).ok) {
+      this.pending = this.pending.slice(cut)
+      return { kind: 'hold' }
+    }
     if (!verdict.ok) return { kind: 'violation', reason: verdict.reason }
     this.pending = this.pending.slice(cut)
     if (!this.opened) chunk = chunk.trimStart()

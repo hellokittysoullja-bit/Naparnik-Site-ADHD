@@ -222,8 +222,9 @@ describe('текст: блоки, списки, кавычки', () => {
     expect(g.push('Шаги:\n1. Открыть').kind).toBe('hold')
     const d = new SentenceGuard({ maxChars: 300 })
     expect(d.push('Хватит 2.').kind).toBe('hold')
-    expect(d.push('5 минуты. Дальше').kind).toBe('release')
-    expect(d.text).toBe('Хватит 2.5 минуты.')
+    expect(d.push('5 минуты. Дальше').kind).toBe('hold')
+    expect(d.push(' проще. И').kind).toBe('release')
+    expect(d.text).toBe('Хватит 2.5 минуты. Дальше проще.')
   })
   it('реплика в кавычках, оборванная по длине, сохраняет законченные предложения', () => {
     const g = new SentenceGuard({ maxChars: 300 })

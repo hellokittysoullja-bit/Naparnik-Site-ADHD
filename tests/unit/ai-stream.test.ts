@@ -72,13 +72,33 @@ describe('проверка по предложениям', () => {
   it('держит текст до конца предложения и выпускает проверенное', () => {
     const g = new SentenceGuard({ maxChars: 200 })
     expect(g.push('Давай начнём')).toEqual({ kind: 'hold' })
-    expect(g.push(' с файла. Отк')).toEqual({ kind: 'release', text: 'Давай начнём с файла.' })
-    expect(g.end()).toEqual({ kind: 'release', text: ' Отк' })
+    // первый выпуск ждёт второго предложения: нарушение в нём должно браковать попытку, а не обрывать ответ
+    expect(g.push(' с файла. Отк')).toEqual({ kind: 'hold' })
+    expect(g.push('рой его. Я')).toEqual({ kind: 'release', text: 'Давай начнём с файла. Открой его.' })
+    expect(g.push(' рядом. И')).toEqual({ kind: 'release', text: ' Я рядом.' })
+    expect(g.end()).toEqual({ kind: 'release', text: ' И' })
+  })
+  it('короткий ответ из одного предложения выходит в конце текста', () => {
+    const g = new SentenceGuard({ maxChars: 200 })
+    expect(g.push('Давай начнём с файла.')).toEqual({ kind: 'hold' })
+    expect(g.end()).toEqual({ kind: 'release', text: 'Давай начнём с файла.' })
+  })
+  it('казённая фраза в середине начатого ответа пропускается, ответ продолжается (аудит 12.11)', () => {
+    const g = new SentenceGuard({ maxChars: 300, plainSpeech: true })
+    expect(g.push('Ого, целый абзац. Это мощно. ').kind).toBe('release')
+    expect(g.push('В рамках этого осуществим отдых. ')).toEqual({ kind: 'hold' })
+    expect(g.push('Какой шаг дальше? ')).toEqual({ kind: 'release', text: ' Какой шаг дальше?' })
+  })
+  it('частые казённые слова заменяются живыми, а не бракуют ответ', () => {
+    const g = new SentenceGuard({ maxChars: 300, plainSpeech: true })
+    expect(g.push('Что у тебя на повестке дня? Давай зафиксируем первый шаг. ')).toEqual({ kind: 'release', text: 'Что у тебя на очереди? Давай запишем первый шаг.' })
   })
   it('не выпускает предложение со стыдом и меняет двойные звёздочки на одиночные', () => {
     const g = new SentenceGuard({ maxChars: 200 })
-    expect(g.push('Это **первый шаг**. ')).toEqual({ kind: 'release', text: 'Это *первый шаг*.' })
+    expect(g.push('Это **первый шаг**. Он маленький. ')).toEqual({ kind: 'release', text: 'Это *первый шаг*. Он маленький.' })
     expect(g.push('Соберись уже. ').kind).toBe('violation')
+    // стыд во втором предложении — попытка негодна до показа
+    expect(new SentenceGuard({ maxChars: 200 }).push('Это шаг. Соберись уже. ').kind).toBe('violation')
   })
   it('кавычки снимает, только если обёрнута вся реплика; цитата в начале остаётся', () => {
     const wrapped = new SentenceGuard({ maxChars: 200 })
@@ -96,7 +116,7 @@ describe('проверка по предложениям', () => {
   })
   it('латинские слова человека разрешены, чужие — нет', () => {
     const g = new SentenceGuard({ maxChars: 200, echo: new Set(['notion']) })
-    expect(g.push('Открой Notion. ').kind).toBe('release')
+    expect(g.push('Открой Notion. Там твой план. ').kind).toBe('release')
     expect(g.push('It is fine. ').kind).toBe('violation')
   })
 })
@@ -122,9 +142,9 @@ describe('потоковый ход', () => {
   })
 
   it('нарушение после фиксации — обрезка по последнему проверенному предложению', async () => {
-    chain.steps = [{ id: 'a', model: streaming(text('Ты молодец, что пришёл. ', 'Прими таблетку и садись.')) }]
+    chain.steps = [{ id: 'a', model: streaming(text('Ты молодец, что пришёл. ', 'Это уже старт. ', 'Прими таблетку и садись.')) }]
     const r = await collect(run())
-    expect(r.shown).toBe('Ты молодец, что пришёл.')
+    expect(r.shown).toBe('Ты молодец, что пришёл. Это уже старт.')
     expect(r.parts.at(-1)?.type).toBe('finish')
     expect(r.error).toBe(false)
   })
