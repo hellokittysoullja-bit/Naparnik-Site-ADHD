@@ -473,7 +473,7 @@ describe('явная просьба о памяти — вызов обязат�
     })
     chain.steps = [{ id: 'm', model: m }]
     await collect(await chatTurn({ ctx: newTurn({ task: 'chat', sessionId: 'q' }), memory: new InProcessMemory(() => NOW), mode: 'companion', conversation: [{ role: 'user', content: 'запомни: я пишу диплом' }], userTexts: ['запомни: я пишу диплом'] }))
-    expect(seen[0]).toEqual({ type: 'tool', toolName: 'memory' })
+    expect(seen[0]).toEqual({ type: 'required' }) // обязателен какой-нибудь инструмент: память или план выбирает модель
     seen.length = 0
     chain.steps = [{ id: 'm', model: scripted(say('Готово.'), []) }]
     const auto = new MockLanguageModelV4({ doStream: async (o) => (seen.push(o.toolChoice), { stream: simulateReadableStream({ chunks: [{ type: 'stream-start', warnings: [] }, ...say('Слушай, с чего начнём?')] as never[] }) }) })
@@ -492,7 +492,7 @@ describe('явная просьба о памяти — вызов обязат�
         autoRounds: 1,
       }),
     )
-    expect(seen[0]).not.toEqual({ type: 'tool', toolName: 'memory' })
+    expect(seen[0]).not.toEqual({ type: 'required' })
   })
   it('модель не вызвала обязательный инструмент — та же модель сразу без обязательности, человек получает слова', async () => {
     chain.steps = [{ id: 'm', model: scripted(say('Слушай, давай лучше начнём с одного дела.'), []) }]

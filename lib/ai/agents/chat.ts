@@ -99,7 +99,7 @@ export async function chatTurn(input: {
     noGreeting: input.conversation.some((m) => m.role === 'assistant') && !GREETS.test(input.userTexts.at(-1) ?? ''),
     // явная просьба «запомни» / «забудь» — первый шаг обязан вызвать память (Hermes: маршрутизация намерения до
     // модели); после результата инструмента (автокруг) — уже нет, иначе модель вызывала бы его по кругу
-    requiredTool: explicitMemoryAsk(input.userTexts.at(-1) ?? '') && !actedSinceUser(input.conversation).includes('memory') ? 'memory' : undefined,
+    requiredTool: explicitMemoryAsk(input.userTexts.at(-1) ?? '') && actedSinceUser(input.conversation).length === 0 ? 'any' : undefined,
     ...TURN_LIMITS,
     signal: input.signal,
   })

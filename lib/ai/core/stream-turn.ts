@@ -64,7 +64,8 @@ export type StreamTurnInput = {
   /**
    * Обязательный инструмент на этом ходе (Hermes: маршрутизация явных намерений до модели). Человек прямо просит
    * «запомни» / «забудь» — модель обязана вызвать инструмент памяти, а не пообещать словами (набор задач 12.11:
-   * «Давай зафиксируем это в памяти» без вызова)
+   * «Давай зафиксируем это в памяти» без вызова). 'any' — обязателен какой-нибудь из доступных инструментов: «да, так
+   * и запиши» после плана — это savePlan, а не память, выбирает модель
    */
   requiredTool?: string
   signal?: AbortSignal
@@ -132,7 +133,7 @@ function withoutTools(req: TurnRequest, rejected: ReadonlySet<string>): TurnRequ
     ...req,
     instructions: `${req.instructions}\n\n${note}`,
     tools: Object.fromEntries(Object.entries(req.tools ?? {}).filter(([name]) => !rejected.has(name))),
-    requiredTool: req.requiredTool && rejected.has(req.requiredTool) ? undefined : req.requiredTool,
+    requiredTool: req.requiredTool && (req.requiredTool === 'any' || rejected.has(req.requiredTool)) ? undefined : req.requiredTool,
   }
 }
 
@@ -551,9 +552,11 @@ class Race {
         instructions: this.req.instructions,
         messages: this.req.messages,
         tools: this.req.tools,
-        ...(this.req.requiredTool && this.req.tools?.[this.req.requiredTool]
-          ? { toolChoice: { type: 'tool' as const, toolName: this.req.requiredTool } }
-          : {}),
+        ...(this.req.requiredTool === 'any' && this.req.tools && Object.keys(this.req.tools).length
+          ? { toolChoice: 'required' as const }
+          : this.req.requiredTool && this.req.tools?.[this.req.requiredTool]
+            ? { toolChoice: { type: 'tool' as const, toolName: this.req.requiredTool } }
+            : {}),
         maxOutputTokens: this.input.maxOutputTokens,
         maxRetries: 0,
         abortSignal: AbortSignal.any([this.all, a.ctrl.signal]),

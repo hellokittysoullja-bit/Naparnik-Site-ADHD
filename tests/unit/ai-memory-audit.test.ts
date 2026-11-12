@@ -307,3 +307,12 @@ describe('явные «запомни» / «забудь» исполняютс�
     expect(explicitForgetOps('надо удалить фото с телефона', facts)).toEqual([])
   })
 })
+
+describe('кот не ждал и не скучал (CP08)', () => {
+  it('«думал, куда же ты пропал», «ждал тебя» — не показываются', () => {
+    const cat = (t: string) => checkOutput(t, { maxChars: 400, plainSpeech: true })
+    expect(cat('Я тут сидел на берегу и думал, куда же ты пропал.')).toMatchObject({ ok: false, reason: 'absence' })
+    expect(cat('Я скучал по тебе!')).toMatchObject({ ok: false, reason: 'absence' })
+    expect(cat('Куда пропал телефон? Давай найдём и положим в другую комнату.').ok).toBe(true)
+  })
+})

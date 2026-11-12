@@ -204,7 +204,7 @@ export async function enforceExplicitMemory(messages: readonly UIMessage[]): Pro
   if (!asksToRemember(userText) && !asksToForget(userText)) return 'none'
   const catDid = messages
     .slice(i + 1)
-    .some((m) => m.parts.some((p) => p.type === 'tool-memory' && (p as { output?: unknown }).output !== TOOL_REFUSED))
+    .some((m) => m.parts.some((p) => (p.type === 'tool-memory' || p.type === 'tool-savePlan') && (p as { output?: unknown }).output !== TOOL_REFUSED))
   if (catDid) return 'handled-by-cat'
   if (asksToForget(userText)) {
     const ops = explicitForgetOps(userText, peekFacts())
