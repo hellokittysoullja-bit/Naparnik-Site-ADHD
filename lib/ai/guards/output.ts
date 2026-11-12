@@ -219,6 +219,21 @@ export function claimKind(text: string): ClaimKind | null {
   return null
 }
 
+/**
+ * Разбор ярлыка, которым человек назвал себя сам, — не стыд: «Ну, ленивым себя называть дело привычное, только давай
+ * без ярлыков» (набор задач 12.11: такая фраза обрывала ответ после «Приветик.»). Предложение, где ярлык назван
+ * ярлыком или словом «называть / считать себя», в проверку стыда не идёт; «ты ленивый» без этого — идёт.
+ */
+const REFRAME = /(?<!\p{L})(?:ярлык\p{L}*|себя\s+(?:\p{L}+\s+){0,2}(?:называ|счита|руга)\p{L}*|(?:называ|счита|руга)\p{L}*\s+себя)(?!\p{L})/iu
+const LABEL_AT_YOU = /(?<!\p{L})ты\s+(?:\p{L}+\s+)?(?:ленив|лентя|бездельн)|(?:ленив|лентя|бездельн)\p{L}*\s+ты(?!\p{L})/iu
+function withoutReframes(text: string): string {
+  return text
+    .split(/(?<=[.!?…])\s+|\n+/)
+    // «Ленивый ты, хоть себя так и не называй» — ярлык прямо в лицо: такое предложение проверяется как обычно
+    .filter((sentence) => !REFRAME.test(sentence) || LABEL_AT_YOU.test(sentence))
+    .join(' ')
+}
+
 export function checkOutput(text: string, opts: OutputOpts): OutputVerdict {
   const raw = text.trim()
   if (!raw) return { ok: false, reason: 'empty' }
@@ -231,7 +246,7 @@ export function checkOutput(text: string, opts: OutputOpts): OutputVerdict {
   if (hit((t) => MEDICAL.some((r) => r.test(t)))) return { ok: false, reason: 'medical' }
   // слова в кавычках — цитата человека, а не ярлык от кота: «„ленивый и безответственный“ это не про тебя» (набор
   // задач 12.11: такой ответ отбрасывался как стыд). Сказать от себя «ты ленивый» в кавычках модели незачем
-  if (matchVariants(unquote(raw)).some((t) => SHAME.some((r) => r.test(t)))) return { ok: false, reason: 'shame' }
+  if (matchVariants(unquote(withoutReframes(raw))).some((t) => SHAME.some((r) => r.test(t)))) return { ok: false, reason: 'shame' }
   const { leak } = opts
   if (leak && hit((t) => leaks(t, leak))) return { ok: false, reason: 'leak' }
   if (opts.plainSpeech && hit((t) => BUREAUCRATESE.test(t))) return { ok: false, reason: 'bureaucratese' }
