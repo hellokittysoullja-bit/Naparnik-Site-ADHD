@@ -50,6 +50,11 @@ export const memoryInput = z
     ref: z.string().regex(/^\d{1,2}$/).optional().describe('Для replace и forget: номер факта из блока памяти'),
     text: factText.optional().describe('Для add и replace: одно предложение без подлежащего, понятно без разговора: «Пишет диплом про…», «Легче начинает после душа» (не «Человек…», не «Пользователь…»)'),
     evidence: safeText(FACT_LIMITS.evidence).optional().describe('Для add и replace: короткая цитата человека, на которой основан факт'),
+    until: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe('Для события или расписания: до какой даты это актуально, ГГГГ-ММ-ДД (например, дата экзамена)'),
   })
   .refine((m) => m.op !== 'add' || (m.category && m.text && m.evidence), 'add: нужны category, text и evidence')
   .refine((m) => m.op !== 'replace' || (m.ref && m.text && m.evidence), 'replace: нужны ref, text и evidence')

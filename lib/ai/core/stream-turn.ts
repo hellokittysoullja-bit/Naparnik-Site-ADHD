@@ -1,7 +1,7 @@
 import { streamText, type ModelMessage, type TextStreamPart, type ToolSet } from 'ai'
 import { CRISIS_REPLY } from '../crisis'
 import { checkInput } from '../guards/input'
-import { checkOutput, echoWords, leakPrint, mentionsMedical, tidy, toolArgsOk, type OutputOpts } from '../guards/output'
+import { checkOutput, echoWords, leakPrint, mentionsMedical, tidy, toolArgsOk, type ClaimKind, type OutputOpts } from '../guards/output'
 import { modelChain, type ModelStep } from '../models'
 import { emit, type AttemptResult } from './hooks'
 import './latency' // наблюдатель задержек и адаптивная страховка подключаются вместе с ядром
@@ -58,7 +58,7 @@ export type StreamTurnInput = {
    * Действия, о которых кот вправе говорить в прошедшем времени («забыл», «сохранил»), только если они случились:
    * вызов одного из tools в этой попытке или (allowedFromStart) результат такого вызова уже в истории хода
    */
-  claims?: { tools: readonly string[]; allowedFromStart: boolean }
+  claims?: { unlocks: Readonly<Record<string, readonly ClaimKind[]>>; fromStart: readonly ClaimKind[] }
   signal?: AbortSignal
 }
 
@@ -138,15 +138,16 @@ class Attempt {
     /** человек сам назвал лекарство — его слова в плане не нарушение */
     private readonly personMedical = false,
     private readonly toolCheck?: (name: string, input: unknown) => boolean,
-    private readonly claimTools: readonly string[] = [],
+    private readonly claimUnlocks: Readonly<Record<string, readonly ClaimKind[]>> = {},
   ) {
-    // заявление «забыл/сохранил» проверяется по этой попытке: её собственный вызов инструмента его разрешает
+    // заявление «забыл/сохранил» проверяется по этой попытке: её собственный вызов инструмента его разрешает —
+    // только своё: план не разрешает «забыл про диплом» (аудит 12.11)
     const base = opts.claim
-    this.guard = new SentenceGuard(base ? { ...opts, claim: { allowed: () => base.allowed() || this.acted } } : opts)
+    this.guard = new SentenceGuard(base ? { ...opts, claim: { allowed: (k) => base.allowed(k) || this.acted.has(k) } } : opts)
   }
 
-  /** попытка уже вызвала инструмент, о действии которого можно говорить («забыл», «сохранил») */
-  private acted = false
+  /** какие заявления уже правда в этой попытке (вызов инструмента прошёл все проверки) */
+  private readonly acted = new Set<ClaimKind>()
 
   /** режим whole: проверить и принять ответ целиком в конце генерации */
   private finishWhole(finish: Part): { out: Part[]; fail?: AttemptResult; done?: boolean } {
@@ -239,8 +240,9 @@ class Attempt {
           return { out }
         }
         this.toolCalled = true // до закрытия текста: пустой текст рядом с вызовом — норма
-        if (this.claimTools.includes(part.toolName)) {
-          this.acted = true
+        const unlocks = this.claimUnlocks[part.toolName]
+        if (unlocks?.length) {
+          for (const k of unlocks) this.acted.add(k)
           // придержанное «Запомнил.» теперь правда — выпускаем его до вызова: текст уже закончен — закрываем
           // его сейчас, ещё идёт — выпускаем законченные предложения
           if (this.endedText) {
@@ -385,7 +387,7 @@ class Race {
       maxChars: input.maxChars,
       echo: echoWords(input.echoTexts ?? input.userTexts),
       leak: leakPrint(this.req.instructions),
-      claim: input.claims ? { allowed: () => input.claims!.allowedFromStart } : undefined,
+      claim: input.claims ? { allowed: (k: ClaimKind) => input.claims!.fromStart.includes(k) } : undefined,
     }
     this.personMedical = mentionsMedical(input.echoTexts ?? input.userTexts)
     const total = AbortSignal.timeout(input.totalTimeoutMs)
@@ -412,7 +414,7 @@ class Race {
     clearTimeout(this.hedgeTimer)
     const chain = this.req.chain
     if (this.winner || this.settled || this.launched >= chain.length || this.all.aborted) return this.giveUpIfExhausted()
-    const a = new Attempt(chain[this.launched++], this.guardOpts, this.input.whole, this.personMedical, this.input.toolCheck, this.input.claims?.tools)
+    const a = new Attempt(chain[this.launched++], this.guardOpts, this.input.whole, this.personMedical, this.input.toolCheck, this.input.claims?.unlocks)
     this.attempts.push(a)
     emit({ type: 'model.start', model: a.step.id, hedge: this.launched > 1 }, this.ctx)
     void this.run(a)

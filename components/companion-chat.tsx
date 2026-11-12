@@ -32,6 +32,7 @@ import Link from 'next/link'
 import {
   applyMemoryOps,
   buildMemoryContext,
+  peekAllFacts,
   getChatMessages,
   getChatTimestamps,
   peekChatMessages,
@@ -44,7 +45,8 @@ import {
   type MemoryContext,
 } from '@/lib/memory'
 import { scriptedReply } from '@/lib/scripted-companion'
-import { syncMemory } from '@/lib/memory-sync'
+import { purgeForgottenChips, syncMemory } from '@/lib/memory-sync'
+import { factKey } from '@/lib/ai/memory/fact-key'
 
 const MEMORY_IDLE_MS = 90_000
 import { TOOL_REFUSED, memoryInput, rememberFactInput, savePlanInput, startFocusInput, tools } from '@/lib/ai/tools/catalog'
@@ -444,6 +446,12 @@ export function CompanionChat({
     if (!chatRestoredRef.current) return
     if (status === 'streaming' || status === 'submitted') return
     if (messages.length === 0) return
+    // забытое не остаётся в переписке отметкой «запомнил: …» (lib/memory-sync.ts)
+    const purged = purgeForgottenChips(messages, new Set(peekAllFacts().map((f) => factKey(f.text))))
+    if (purged) {
+      setMessages(purged)
+      return // эффект сработает снова уже с очищенной перепиской и сохранит её
+    }
     saveChatMessages(messages)
     // Метка времени — на момент ПЕРВОГО появления реплики, а не на момент
     // сохранения: иначе восстановленная история переписывала бы себе
@@ -468,7 +476,7 @@ export function CompanionChat({
       if (changed) saveChatTimestamps(next)
       return changed ? next : prev
     })
-  }, [messages, status])
+  }, [messages, status, setMessages])
 
   // U4: скроллим по факту нового сообщения, а не на каждый чанк стрима —
   // scrollIntoView на каждом токене дёргал ленту.

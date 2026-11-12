@@ -53,6 +53,7 @@ export function toFactOp(
           category: input.category,
           text: input.text,
           evidence: input.evidence,
+          expiresOn: input.until,
           source: asksToRemember(ctx.lastUserText) ? 'explicit' : 'stated',
         },
       }
@@ -60,7 +61,7 @@ export function toFactOp(
       const id = idOf(input.ref)
       if (!id) return { ok: false, reason: 'unknown_ref' }
       if (!input.text) return { ok: false, reason: 'incomplete' }
-      return { ok: true, op: { op: 'replace', id, text: input.text, evidence: input.evidence } }
+      return { ok: true, op: { op: 'replace', id, text: input.text, evidence: input.evidence, expiresOn: input.until } }
     }
     case 'forget': {
       if (!asksToForget(ctx.lastUserText)) return { ok: false, reason: 'not_asked_to_forget' }

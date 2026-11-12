@@ -21,6 +21,8 @@ const labelOf = <K extends string>(table: readonly { key: K; label: string }[], 
 // вовсе (Hermes memory_tool_store.py:224-255 — [BLOCKED] при чтении), даже блоком данных
 const HIDDEN = '(подпись скрыта)'
 const plain = (s: string) => (matchVariants(s).some((v) => INSTRUCTION_LIKE.test(v)) ? HIDDEN : s)
+// даты с устройства — только датами: в поле даты не может прийти текст (аудит 12.11)
+const day = (s: string | null | undefined) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined)
 
 export function renderMemory(m: MemorySnapshot | null): string {
   if (!m) return dataBlock('memory', { 'первый разговор': true })
@@ -43,13 +45,13 @@ export function renderMemory(m: MemorySnapshot | null): string {
   }
   return dataBlock('memory', {
     // подпись однозначная: в сравнении 11.11 модель называла этим именем самого человека («Эй, Уголёк, бывает»)
-    'твоё имя (так человек назвал ТЕБЯ, кота; это не имя человека)': m.companionName ?? undefined,
+    'твоё имя (так человек назвал ТЕБЯ, кота; это не имя человека)': m.companionName ? plain(m.companionName) : undefined,
     'из знакомства': profile && Object.values(profile).some(Boolean) ? profile : undefined,
     'план на завтра': m.plan
-      ? { дата: m.plan.forDate, дело: plain(m.plan.task), 'первый шаг': plain(m.plan.firstStep), время: m.plan.startTime && plain(m.plan.startTime) }
+      ? { дата: day(m.plan.forDate), дело: plain(m.plan.task), 'первый шаг': plain(m.plan.firstStep), время: m.plan.startTime && plain(m.plan.startTime) }
       : 'нет',
     'последние старты': m.recentStarts.length
-      ? m.recentStarts.map((s) => ({ дата: s.date, дело: plain(s.label), минут: s.minutes > 0 ? Math.round(s.minutes) : undefined }))
+      ? m.recentStarts.map((s) => ({ дата: day(s.date), дело: plain(s.label), минут: s.minutes > 0 ? Math.round(s.minutes) : undefined }))
       : 'стартов ещё не было',
     // стриков нет намеренно: только накопительное число, которое не сгорает
     'всего стартов': p.totalStarts > 0 ? p.totalStarts : undefined,

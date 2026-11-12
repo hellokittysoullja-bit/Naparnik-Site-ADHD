@@ -5,7 +5,7 @@ import type { TurnContext } from '../core/turn'
 import { asksToForget } from '../memory/facts'
 import type { MemoryProvider, MemoryWrite } from '../memory/provider'
 import { renderMemory } from '../memory/render'
-import { factRejection, groundedIn } from '../memory/write-guard'
+import { writeAllowed } from '../memory/write-guard'
 import type { MemorySnapshot } from '../memory/schema'
 import { assemble } from '../prompt/assemble'
 import { KNOWLEDGE } from '../knowledge/catalog'
@@ -13,8 +13,8 @@ import { renderKnowledge, selectKnowledge } from '../knowledge/select'
 import { fitConversation } from '../prompt/context-budget'
 import { CHAT_SYSTEM, FOCUS_CHAT_SYSTEM, situation } from '../prompt/tasks/chat'
 import { memoryInput, savePlanInput, tools } from '../tools/catalog'
-import { echoWords } from '../guards/output'
 import { DEVICE_REFUSED } from '../channels/web'
+import type { ClaimKind } from '../guards/output'
 
 type Part = TextStreamPart<ToolSet>
 
@@ -92,31 +92,30 @@ export async function chatTurn(input: {
     echoTexts: input.userTexts,
     toolCheck: memoryToolCheck({ facts: snapshot?.facts?.length ?? 0, userTexts: input.userTexts }),
     // «забыл/запомнил/сохранил» — только если это правда случилось: в этом ответе или в автокруге после инструмента
-    claims: { tools: CLAIM_TOOLS, allowedFromStart: actedSinceUser(input.conversation) },
+    claims: { unlocks: CLAIM_UNLOCKS, fromStart: actedSinceUser(input.conversation) },
     ...TURN_LIMITS,
     signal: input.signal,
   })
   return stream.pipeThrough(memoryLifecycle(input.ctx, input.memory, input.userTexts.at(-1) ?? ''))
 }
 
-const CLAIM_TOOLS = ['memory', 'savePlan'] as const
+/** какой инструмент делает правдой какое заявление: память — «забыл/запомнил» и «записал», план — только «записал» */
+const CLAIM_UNLOCKS: Readonly<Record<string, readonly ClaimKind[]>> = { memory: ['memory', 'save'], savePlan: ['save'] }
 
-/** После последней реплики человека уже был результат инструмента памяти или плана (автокруг клиента) */
-export function actedSinceUser(conversation: readonly ModelMessage[]): boolean {
+/** Что уже правда после последней реплики человека: результаты инструментов памяти и плана (автокруг клиента) */
+export function actedSinceUser(conversation: readonly ModelMessage[]): ClaimKind[] {
   let i = conversation.length - 1
   while (i >= 0 && conversation[i].role !== 'user') i--
-  return conversation.slice(i + 1).some(
-    (m) =>
-      m.role === 'tool' &&
-      Array.isArray(m.content) &&
-      m.content.some(
-        (p) =>
-          p.type === 'tool-result' &&
-          (CLAIM_TOOLS as readonly string[]).includes(p.toolName) &&
-          // отказ устройства — действия не было
-          !JSON.stringify(p.output).includes(DEVICE_REFUSED),
-      ),
-  )
+  const out = new Set<ClaimKind>()
+  for (const m of conversation.slice(i + 1)) {
+    if (m.role !== 'tool' || !Array.isArray(m.content)) continue
+    for (const p of m.content) {
+      // отказ устройства — действия не было
+      if (p.type !== 'tool-result' || JSON.stringify(p.output).includes(DEVICE_REFUSED)) continue
+      for (const k of CLAIM_UNLOCKS[p.toolName] ?? []) out.add(k)
+    }
+  }
+  return [...out]
 }
 
 /**
@@ -129,7 +128,7 @@ export function actedSinceUser(conversation: readonly ModelMessage[]): boolean {
  */
 export function memoryToolCheck(turn: { facts: number; userTexts: readonly string[] }) {
   const last = turn.userTexts.at(-1) ?? ''
-  const echo = echoWords(turn.userTexts)
+  const grounds = turn.userTexts.slice(-6)
   return (name: string, raw: unknown): boolean => {
     if (name !== 'memory') return true
     const r = memoryInput.safeParse(raw)
@@ -144,8 +143,7 @@ export function memoryToolCheck(turn: { facts: number; userTexts: readonly strin
       case 'replace':
       case 'add':
         if (m.op === 'replace' && !refOk) return false
-        // латинские слова человека («Notion») в факте допустимы, как и в ответе кота
-        return factRejection(m.text ?? '', { echo }) === null && groundedIn(m.evidence, turn.userTexts.slice(-6))
+        return writeAllowed(m.text ?? '', m.evidence, grounds)
     }
   }
 }

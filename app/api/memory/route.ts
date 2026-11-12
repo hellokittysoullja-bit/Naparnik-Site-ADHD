@@ -31,6 +31,7 @@ export const POST = handle(async (req) => {
   rateLimit(req, 'memory', 6)
   const parsed = Body.safeParse(await readJsonBody(req, 24 * 1024))
   if (!parsed.success) return Response.json({ ops: [] }, { status: 400 })
-  const ops = await extractMemory({ ...parsed.data, ctx: newTurn({ task: 'memory-extract' }), signal: req.signal })
-  return Response.json({ ops })
+  const r = await extractMemory({ ...parsed.data, ctx: newTurn({ task: 'memory-extract' }), signal: req.signal })
+  // 503 — модели не ответили: устройство оставит кусок разговора на следующую попытку
+  return Response.json({ ops: r.ops }, { status: r.ok ? 200 : 503 })
 })

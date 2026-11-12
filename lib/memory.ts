@@ -61,6 +61,7 @@ const KEYS = {
   notes: 'naparnik:notes',
   facts: 'naparnik:facts',
   onboarding: 'naparnik:onboarding',
+  profileForgotten: 'naparnik:profileForgotten',
   finds: 'naparnik:finds',
   worldSeen: 'naparnik:worldSeen',
   activeSession: 'naparnik:activeSession',
@@ -569,8 +570,10 @@ export function peekFacts(): Fact[] {
  */
 export async function applyMemoryOps(ops: readonly FactOp[]): Promise<OpResult[]> {
   if (ops.length === 0) return []
-  const { facts, results } = applyFactOps(peekAllFacts(), ops, { now: new Date().toISOString(), newId: newFactId })
+  const { facts, results } = applyFactOps(peekAllFacts(), ops, { now: new Date().toISOString(), newId: newFactId, today: todayKey() })
   write(KEYS.facts, facts)
+  // «забудь всё» — это и ответы знакомства: кот больше не опирается на них (сами ответы остаются знакомству)
+  if (ops.some((o) => o.op === 'forgetAll')) write(KEYS.profileForgotten, true)
   return results
 }
 
@@ -607,7 +610,7 @@ export function peekPatterns(): Patterns {
   }
 
   const startWindow = windowOf(starts, today)
-  const durations = durationsOf(starts)
+  const durations = durationsOf(starts, read<ActiveSession | null>(KEYS.activeSession, null, isActiveSession)?.startId)
 
   const hourCounts = new Map<number, number>()
   for (const s of starts) {
@@ -671,16 +674,19 @@ export function windowOf(starts: readonly StartEntry[], today: string): Patterns
   }
   if (best < 0 || bestW / total < WINDOW_MIN_SHARE) return null
   const n = count[(best + 23) % 24] + count[best] + count[(best + 1) % 24]
+  // основание в сырых числах тоже должно быть весомым: свежесть не превращает «2 из 12» в «обычно» (аудит 12.11)
+  if (n < WINDOW_MIN_STARTS || n / starts.length < WINDOW_MIN_SHARE) return null
   return { from: (best + 23) % 24, to: (best + 1) % 24, n, of: starts.length }
 }
 
 const DURATION_MIN_SESSIONS = 3
 
 /** Доведено до конца — отработано не меньше выбранного (минута запаса на округление и закрытую вкладку) */
-export function durationsOf(starts: readonly StartEntry[]): Patterns['durations'] {
+export function durationsOf(starts: readonly StartEntry[], runningId?: string): Patterns['durations'] {
   const by = new Map<number, { done: number; of: number }>()
   for (const s of starts) {
-    if (!s.planned) continue
+    // идущая сессия ещё не «не доведена»
+    if (!s.planned || s.id === runningId) continue
     const d = by.get(s.planned) ?? { done: 0, of: 0 }
     d.of += 1
     if (s.minutes >= s.planned - 1) d.done += 1
@@ -719,7 +725,8 @@ export function peekMemoryContext(): MemoryContext {
   const plan = peekPlan()
   const starts = peekStarts()
   const patterns = peekPatterns()
-  const facts = peekFacts()
+  // не больше лимита снимка (lib/ai/memory/schema.ts): лишний факт выключил бы память целиком
+  const facts = peekFacts().slice(0, 20)
   const finds = peekFinds()
   const companionName = peekCompanionName()
   return {
@@ -741,6 +748,7 @@ export function peekMemoryContext(): MemoryContext {
 
 /** Ответы знакомства (lib/onboarding.ts хранит их сам) — только ключи; сервер проверит их по списку вариантов */
 function peekProfile(): MemoryContext['profile'] {
+  if (read<boolean>(KEYS.profileForgotten, false, (v): v is boolean => typeof v === 'boolean')) return null
   // читаем сами, без read(): чужой ключ при неожиданной форме нельзя стирать — им владеет знакомство
   let raw: unknown = null
   try {

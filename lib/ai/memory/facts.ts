@@ -61,7 +61,7 @@ export const FACT_LIMITS = {
 
 export type FactOp =
   | { op: 'add'; category: FactCategory; text: string; evidence?: string; expiresOn?: string; source: FactSource }
-  | { op: 'replace'; id: string; text: string; evidence?: string }
+  | { op: 'replace'; id: string; text: string; evidence?: string; expiresOn?: string }
   | { op: 'forget'; id: string }
   | { op: 'forgetAll' }
 
@@ -75,6 +75,14 @@ function addDays(day: string, n: number): string {
   const d = new Date(`${day}T12:00:00Z`)
   d.setUTCDate(d.getUTCDate() + n)
   return d.toISOString().slice(0, 10)
+}
+
+/** Срок факта: названная дата (не в прошлом, не дальше 400 дней), иначе событию — 30 дней, расписанию — 90 */
+function expiryFor(category: FactCategory, asked: string | undefined, today: string): string | undefined {
+  if (asked && DATE.test(asked) && asked >= today && asked <= addDays(today, 400)) return asked
+  if (category === 'event') return addDays(today, 30)
+  if (category === 'schedule') return addDays(today, FACT_LIMITS.scheduleDays)
+  return undefined
 }
 
 /** Активные факты на дату: истёкшие и заменённые в промпт не идут. Порядок — по времени создания (стабильный) */
@@ -132,10 +140,12 @@ const clip = (s: string | undefined, n: number) => (s === undefined ? undefined 
 export function applyFactOps(
   base: readonly Fact[],
   ops: readonly FactOp[],
-  opts: { now: string; newId: () => string },
+  opts: { now: string; newId: () => string; today?: string },
 ): { facts: Fact[]; results: OpResult[] } {
   let facts = base.map((f) => ({ ...f }))
-  const today = opts.now.slice(0, 10)
+  // «сегодня» — по часам человека (устройство передаёт местную дату): по UTC вечером в Нью-Йорке событие считалось бы
+  // истёкшим здесь и живым в снимке — активных фактов становилось больше лимита (аудит 12.11)
+  const today = opts.today ?? opts.now.slice(0, 10)
   const results: OpResult[] = []
 
   for (const op of ops) {
@@ -166,7 +176,8 @@ export function applyFactOps(
       results.push({ op, ok: false, reason: 'empty' })
       continue
     }
-    const evidence = clip(op.evidence, FACT_LIMITS.evidence) || undefined
+    // цитату человека не храним: она нужна только проверке основания до записи, а хранить слова человека «на всякий
+    // случай» — только риск (аудит 12.11: в цитате могли оказаться здоровье и кризис)
     const live = activeFacts(facts, today)
     const sameKey = live.find((f) => factKey(f.text) === factKey(text))
 
@@ -188,10 +199,10 @@ export function applyFactOps(
         category: old.category,
         text,
         source: old.source,
-        evidence: evidence ?? old.evidence,
         createdAt: opts.now,
         updatedAt: opts.now,
-        expiresOn: old.expiresOn,
+        // новая версия события или расписания живёт свой срок, а не остаток прежнего
+        expiresOn: expiryFor(old.category, op.expiresOn, today),
         status: 'active',
         supersedes: old.id,
       })
@@ -209,9 +220,7 @@ export function applyFactOps(
       results.push({ op, ok: false, reason: 'duplicate' })
       continue
     }
-    let expiresOn = op.expiresOn && DATE.test(op.expiresOn) ? op.expiresOn : undefined
-    if (op.category === 'event' && !expiresOn) expiresOn = addDays(today, 30)
-    if (op.category === 'schedule' && !expiresOn) expiresOn = addDays(today, FACT_LIMITS.scheduleDays)
+    const expiresOn = expiryFor(op.category, op.expiresOn, today)
     const near = live.find((f) => f.category === op.category && similarity(f.text, text) >= NEAR_DUPLICATE)
     const id = opts.newId()
     const fresh: Fact = {
@@ -219,7 +228,6 @@ export function applyFactOps(
       category: op.category,
       text,
       source: op.source,
-      evidence,
       createdAt: opts.now,
       updatedAt: opts.now,
       expiresOn,
@@ -254,9 +262,13 @@ function compact(facts: Fact[], today: string): Fact[] {
   return kept.filter((f) => !extra.has(f.id))
 }
 
-/** «Забудь»: слова человека, без которых модель не вправе удалять память (правило, не модель) */
-// «не забудь», «не дай мне забыть» — наоборот, просьба помнить
-const FORGET = /(?<!\p{L})(?<!(?<!\p{L})не\s(?:\p{L}+\s){0,2})(?:забуд\p{L}*|забыть|забывай|не\s+(?:помни|запоминай|запоминать|храни)\p{L}*|удали\p{L}*|сотри\p{L}*|стереть|выкинь\p{L}*)(?!\p{L})/iu
+/**
+ * «Забудь»: прямая просьба к коту, без которой модель не вправе удалять память (правило, не модель). Только
+ * повелительная форма и только о памяти: «надо удалить старые фото», «удалил тикток», «сотри файлы черновика»,
+ * «боюсь забыть про дедлайн», «хочу забыть этот день» — не просьба (аудит 12.11: всё это открывало стирание).
+ * «Не забудь», «не забывай» — наоборот, просьба помнить.
+ */
+const FORGET = /(?<!\p{L})(?<!не\s)(?:забудь(?:те)?|забывай(?:те)?|не\s+(?:помни|запоминай)(?:те)?|перестань\s+(?:помнить|запоминать)|больше\s+не\s+(?:вспоминай|напоминай)(?:те)?|выкинь(?:те)?\s+из\s+(?:памяти|головы)|(?:удали|сотри)(?:те)?\s+(?:\p{L}+\s+){0,2}?(?:из\s+памяти|это|всё|все|про|о|об|что))(?!\p{L})/iu
 
 export function asksToForget(userText: string): boolean {
   return FORGET.test(userText.normalize('NFKC').toLowerCase().replace(/ё/g, 'е'))

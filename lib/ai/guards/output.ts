@@ -29,7 +29,8 @@ const SHAME = [
 
 // Медицина: препараты и дозы — только врач. Кот может сказать «это вопрос к врачу», но не советовать.
 const MEDICAL = [
-  word('метилфенидат|атомоксетин|риталин|страттер|аддерол|концерт[аы](?!' + L + ')|элванс|лисдексамфетамин|модафинил'),
+  // «концерта» — препарат, только рядом с дозой или приёмом: «сходи на концерт», «концерты по пятницам» — не медицина
+  word('метилфенидат|атомоксетин|риталин|страттер|аддерол|элванс|лисдексамфетамин|модафинил|концерт[аы]\\s+\\d|(?:прими|принимай|принять|пей|пить|выпей|пропей)\\s+концерт'),
   new RegExp(String.raw`\d+\s*(?:мг|mg|мкг|миллиграмм${L}*)(?!${L})|(?<!${L})миллиграмм|дозировк|(?<!${L})доз[ауы](?!${L})`, 'iu'),
   word(String.raw`полтаблетк|пол-таблетк|(?:пропей|пропить|попей)\s+(?:курс|${L}+\s+курс)|удво(?:ить|й)\s+при[её]м`),
   word(String.raw`(?:прими|принять|пей|выпей|брось|бросить|отмени|отменить|увеличь|уменьши)\s+(?:\d+\s*)?(?:${L}+\s+)?(?:таблет|капсул|лекарств|препарат|антидепрессант)`),
@@ -139,11 +140,42 @@ export type OutputOpts = {
    * инструмента в этой попытке или его результат в истории хода). Иначе кот сказал бы «забыл», а память осталась
    * бы прежней (живой прогон 12.11: «Принято, забыл про диплом.» без вызова)
    */
-  claim?: { allowed: () => boolean }
+  claim?: { allowed: (kind: ClaimKind) => boolean }
 }
 
-// «забыл / запомнил / стёр / удалил / записал / сохранил» от первого лица, прошедшее время; «не забыл» — не заявление
-const ACTION_CLAIM = /(?<!(?<!\p{L})не\s)(?<!\p{L})(?:забыл|запомнил|ст[её]р|стерла|удалил|записал|сохранил)(?:а|и)?(?!\p{L})/iu
+/**
+ * Заявление кота о сделанном. memory — о памяти («забыл», «запомнил», «удалено», «учту», «больше не помню»); save —
+ * о записи вообще («записал», «сохранено» — так говорят и о плане). Только утверждение от себя: вопрос («Ты сохранил
+ * файл?»), слова о человеке («Ты забыл ключи — бывает», «Если забыла, с чего начать…», «Ничего страшного, что
+ * забыл») и воспоминание («Я запомнил, что ты пишешь диплом» — это «помню», а не действие) — не заявления
+ * (аудит 12.11: прежнее правило резало такие ответы до заготовки).
+ */
+export type ClaimKind = 'memory' | 'save'
+const MEMORY_CLAIM = /(?<!\p{L})(?:забыл[аи]?|забыто|запомнил[аи]?(?!\s*,?\s*что)|запомню|ст[её]р(?:ла|ли)?|удалил[аи]?|удален[оа]?|убрал[аи]?\s+из\s+памяти|выкинул[аи]?\s+из\s+(?:памяти|головы)|больше\s+не\s+(?:помню|напомню)|учту|зан[её]с(?:ла)?|отметил[аи]?\s+себе|теперь\s+буду\s+знать)(?!\p{L})/iu
+const SAVE_CLAIM = /(?<!\p{L})(?:записал[аи]?|записан[оа]?|сохранил[аи]?|сохранен[оа]?|зафиксировал[аи]?)(?!\p{L})/iu
+// чьё действие: перед словом в пределах трёх слов — «ты», «вы», «если», «что», «когда», «бывает»; «не» — вплотную
+const NOT_MINE = /(?:(?<!\p{L})(?:ты|вы|если|что|чтобы|когда|бывает|страшного|вдруг)(?!\p{L})(?:\s+\p{L}+){0,3}|(?<!\p{L})не)\s*[,—-]?\s*$/iu
+// «Забыл про дедлайн — бывает со всеми» — о человеке, утешение
+const NOT_MINE_AFTER = /(?<!\p{L})(?:бывает|ничего\s+страшного|не\s+страшно|со\s+всеми)(?!\p{L})/iu
+
+function claimIn(sentence: string, re: RegExp): boolean {
+  const s = sentence.trim()
+  if (!s || /\?\s*$/.test(s)) return false
+  const m = re.exec(s)
+  if (!m) return false
+  const before = s.slice(0, m.index)
+  const after = s.slice(m.index + m[0].length)
+  return !NOT_MINE.test(before) && !NOT_MINE_AFTER.test(after)
+}
+
+/** Какое заявление о действии есть в тексте (по предложениям); null — нет */
+export function claimKind(text: string): ClaimKind | null {
+  for (const sentence of text.split(/(?<=[.!?…])\s+|\n+/)) {
+    if (claimIn(sentence, MEMORY_CLAIM)) return 'memory'
+    if (claimIn(sentence, SAVE_CLAIM)) return 'save'
+  }
+  return null
+}
 
 export function checkOutput(text: string, opts: OutputOpts): OutputVerdict {
   const raw = text.trim()
@@ -158,7 +190,12 @@ export function checkOutput(text: string, opts: OutputOpts): OutputVerdict {
   if (hit((t) => SHAME.some((r) => r.test(t)))) return { ok: false, reason: 'shame' }
   const { leak } = opts
   if (leak && hit((t) => leaks(t, leak))) return { ok: false, reason: 'leak' }
-  if (opts.claim && hit((t) => ACTION_CLAIM.test(t)) && !opts.claim.allowed()) return { ok: false, reason: 'claim' }
+  if (opts.claim) {
+    // прочтения, где пропали знаки вопроса, сюда не годятся: «Сохранил?» — вопрос, не заявление
+    const q = (t: string) => t.split('?').length
+    const kinds = new Set(vs.filter((v) => q(v) === q(raw)).map(claimKind).filter((k): k is ClaimKind => k !== null))
+    for (const k of kinds) if (!opts.claim.allowed(k)) return { ok: false, reason: 'claim' }
+  }
   if (foreignWord(raw, opts.echo ?? NO_ECHO)) return { ok: false, reason: 'language' }
   return { ok: true }
 }

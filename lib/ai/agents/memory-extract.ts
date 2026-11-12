@@ -1,9 +1,8 @@
 import { dataBlock } from '../context'
 import { runTurn } from '../core/run-turn'
 import { newTurn, type TurnContext } from '../core/turn'
-import { echoWords } from '../guards/output'
-import { asksToForget, CATEGORY_LABEL, FACT_CATEGORIES, FACT_LIMITS, type FactCategory } from '../memory/facts'
-import { factRejection, groundedIn } from '../memory/write-guard'
+import { CATEGORY_LABEL, FACT_CATEGORIES, FACT_LIMITS, type FactCategory } from '../memory/facts'
+import { factRejection, writeAllowed } from '../memory/write-guard'
 
 /**
  * Фоновая выжимка памяти после разговора (Hermes agent/background_review.py; mem0 add-поток; решение владельца
@@ -42,9 +41,8 @@ export const EXTRACT_SYSTEM = `Режим: СЕКРЕТАРЬ ПАМЯТИ. Се
 ДОБАВИТЬ | тема | факт | цитата
 ДОБАВИТЬ | событие | факт | цитата | до ГГГГ-ММ-ДД
 ЗАМЕНИТЬ | номер | новый факт | цитата
-ЗАБЫТЬ | номер
-ЗАБЫТЬ ВСЁ
 НИЧЕГО
+Удалять факты ты не можешь: это делает только сам человек в разговоре.
 Темы: ${FACT_CATEGORIES.map((c) => CATEGORY_LABEL[c]).join(', ')}.`
 
 /** Операция выжимки в форме ответа маршрута: номер факта, а не id — его переводит устройство */
@@ -114,17 +112,14 @@ export function parseExtract(text: string): ExtractOp[] | null {
  * не лишает человека остальных.
  */
 export function vetExtract(ops: readonly ExtractOp[], ctx: { facts: number; userTexts: readonly string[]; today: string }): ExtractOp[] {
-  const echo = echoWords(ctx.userTexts)
-  const forgetAsked = ctx.userTexts.some(asksToForget)
   const refOk = (ref: string) => Number(ref) < ctx.facts
   const textOk = (text: string, evidence: string) =>
-    text.length <= FACT_LIMITS.text && evidence.length <= 200 && factRejection(text, { echo }) === null && groundedIn(evidence, ctx.userTexts)
+    text.length <= FACT_LIMITS.text && evidence.length <= 200 && writeAllowed(text, evidence, ctx.userTexts)
   const out: ExtractOp[] = []
   for (const op of ops) {
-    if (op.op === 'forgetAll' || op.op === 'forget') {
-      if (forgetAsked && (op.op === 'forgetAll' || refOk(op.ref))) out.push(op)
-      continue
-    }
+    // забывает только кот в разговоре, по прямой просьбе в последней реплике. Выжимка видит кусок разговора целиком:
+    // «надо стереть с доски» тремя репликами раньше не должно стирать память (аудит 12.11)
+    if (op.op === 'forgetAll' || op.op === 'forget') continue
     if (op.op === 'replace' && !refOk(op.ref)) continue
     if (!textOk(op.text, op.evidence)) continue
     if (op.op === 'add' && op.expiresOn && (op.expiresOn < ctx.today || op.expiresOn > addDays(ctx.today, 400))) {
@@ -136,23 +131,28 @@ export function vetExtract(ops: readonly ExtractOp[], ctx: { facts: number; user
   return out.slice(0, EXTRACT_LIMITS.ops)
 }
 
+/** Факт, который правила не пустили бы в промпт, не идёт и сюда — номер сохраняется (тот же приём, что render.ts) */
+const HIDDEN_FACT = '(скрыто)'
+
+export type ExtractResult = { ops: ExtractOp[]; ok: boolean }
+
 export async function extractMemory(input: {
   ctx?: TurnContext
   facts: readonly { category: FactCategory; text: string }[]
   lines: readonly ExtractLine[]
   today: string
   signal?: AbortSignal
-}): Promise<ExtractOp[]> {
+}): Promise<ExtractResult> {
   const userTexts = input.lines.filter((l) => l.role === 'user').map((l) => l.text)
-  if (userTexts.length === 0) return []
-  const { value } = await runTurn<ExtractOp[]>({
+  if (userTexts.length === 0) return { ops: [], ok: true }
+  const { value, outcome } = await runTurn<ExtractOp[]>({
     ctx: input.ctx ?? newTurn({ task: 'memory-extract' }),
     system: EXTRACT_SYSTEM,
     bare: true,
     data: dataBlock('memory', {
       'дата разговора': input.today,
       'текущие факты': input.facts.length
-        ? input.facts.map((f, i) => ({ '№': String(i), тема: CATEGORY_LABEL[f.category], факт: f.text }))
+        ? input.facts.map((f, i) => ({ '№': String(i), тема: CATEGORY_LABEL[f.category], факт: factRejection(f.text) === null ? f.text : HIDDEN_FACT }))
         : 'пока нет',
       'новые реплики': input.lines.map((l) => ({ кто: l.role === 'user' ? 'человек' : 'кот', текст: l.text })),
     }),
@@ -167,5 +167,7 @@ export async function extractMemory(input: {
     onCrisis: () => [],
     signal: input.signal,
   })
-  return vetExtract(value, { facts: input.facts.length, userTexts, today: input.today })
+  // модели не ответили — это не «ничего не нашли»: устройство не сдвигает курсор и пришлёт кусок ещё раз (аудит 12.11)
+  const ok = outcome === 'model' || outcome === 'crisis'
+  return { ops: ok ? vetExtract(value, { facts: input.facts.length, userTexts, today: input.today }) : [], ok }
 }
