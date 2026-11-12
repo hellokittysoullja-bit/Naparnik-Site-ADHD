@@ -60,7 +60,7 @@ it('набор задач кота', { timeout: 60 * 60_000 }, async () => {
   })
   const history = readHistory()
   const prev = history.filter((h) => h.cases >= cases.length).at(-1)
-  say(`\n${compare(prev, line, cases.map((c) => c.id))}`)
+  say(`\n${compare(prev, line, cases.map((c) => c.id), ONLY !== null)}`)
   // частичный прогон не точка сравнения: процент по пяти случаям не сравним с полным набором
   if (!ONLY) appendHistory(line)
 

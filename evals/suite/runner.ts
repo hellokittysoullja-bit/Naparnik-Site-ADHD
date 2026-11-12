@@ -288,13 +288,18 @@ export function readHistory(): HistoryLine[] {
 }
 
 /** Сравнение с прошлым полным прогоном: процент по темам, новые провалы и починенное */
-export function compare(prev: HistoryLine | undefined, now: HistoryLine, ids: string[]): string {
+export function compare(prev: HistoryLine | undefined, now: HistoryLine, ids: string[], partial = false): string {
   const pct = (x: number | null | undefined) => (x === null || x === undefined ? '—' : `${x}%`)
   const delta = (a: number | null | undefined, b: number | null | undefined) =>
     a === null || a === undefined || b === null || b === undefined ? '' : ` (${b - a >= 0 ? '+' : ''}${Math.round((b - a) * 10) / 10})`
   const lines = [`Итог ${now.sha}: ${pct(now.passRate)} (годно ${now.passed}, провал ${now.failed}, вне счёта ${now.infra})`]
   if (!prev) return [...lines, 'Прошлого прогона нет: этот станет точкой отсчёта.'].join('\n')
-  lines.push(`Было ${prev.sha} от ${prev.date.slice(0, 16).replace('T', ' ')}: ${pct(prev.passRate)}${delta(prev.passRate, now.passRate)}`)
+  // частичный прогон: общий процент несравним (другой набор случаев), сравниваются только темы
+  lines.push(
+    partial
+      ? `Было ${prev.sha} от ${prev.date.slice(0, 16).replace('T', ' ')}: частичный прогон, сравнение только по темам`
+      : `Было ${prev.sha} от ${prev.date.slice(0, 16).replace('T', ' ')}: ${pct(prev.passRate)}${delta(prev.passRate, now.passRate)}`,
+  )
   lines.push('По темам:')
   for (const [cat, c] of Object.entries(now.byCategory)) {
     const p = prev.byCategory[cat]

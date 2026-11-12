@@ -144,3 +144,6 @@ Agents SDK / Mastra → наш файл»). Разборы исходников 
 - `ANYMODEL_API_KEY=… pnpm eval:ai`: живые прогоны `evals/ai.eval.ts` (ситуации), `evals/ai-attacks.eval.ts`
   (атаки) и `evals/ai-memory.eval.ts` (память: запись, «забудь», «что помнишь», запрещённое, выжимка). Платно, в CI
   не входит.
+- `ANYMODEL_API_KEY=… pnpm eval:suite`: единый набор из 50 задач (`evals/suite.eval.ts`): процент успеха по темам,
+  сравнение с прошлым прогоном (`evals/results/history.jsonl`), траектории провалов с сырыми ответами моделей. Запускать
+  после каждой правки промпта или инструментов; как читать — `evals/README.md`.
