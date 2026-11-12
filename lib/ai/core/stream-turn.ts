@@ -200,6 +200,12 @@ class Attempt {
     private readonly personMedical = false,
     private readonly toolCheck?: (name: string, input: unknown) => boolean,
     private readonly claimUnlocks: Readonly<Record<string, readonly ClaimKind[]>> = {},
+    /**
+     * вызов инструмента обязателен: текст до вызова держится в буфере и не фиксирует попытку. Набор задач 12.11:
+     * Gemini писала «Отлично, завтра в 10 открываем файл», текст уходил человеку, и только в конце приходило «вызова
+     * не было» — план не сохранён, а следующей модели отдать ход уже нельзя
+     */
+    private readonly mustCall = false,
   ) {
     // заявление «забыл/сохранил» проверяется по этой попытке: её собственный вызов инструмента его разрешает —
     // только своё: план не разрешает «забыл про диплом» (аудит 12.11)
@@ -272,7 +278,7 @@ class Attempt {
         if (s.kind === 'violation') return { out, fail: s.reason }
         if (s.kind === 'release') {
           out.push({ ...part, text: s.text })
-          this.committed = true
+          this.commitText()
         }
         return { out }
       }
@@ -340,7 +346,14 @@ class Attempt {
         const closed = this.closeText(part.finishReason === 'length') // если finish-step не пришёл
         if (closed.fail) return closed
         out.push(...closed.out)
-        if (!this.committed) return { out, fail: 'empty' }
+        if (!this.committed) {
+          // вызов был, но его отбросили правила, — это не нарушение обязательности (повтор без инструмента)
+          if (this.mustCall && !this.toolCalled && this.rejectedTools.size === 0) {
+            this.skippedRequiredTool = true
+            return { out, fail: 'error' }
+          }
+          return { out, fail: 'empty' }
+        }
         out.push(part)
         return { out, done: true }
       }
@@ -357,6 +370,11 @@ class Attempt {
     return { out: [], fail: 'error' }
   }
 
+  /** выпущенный текст фиксирует попытку, если вызов инструмента не обязателен или уже был */
+  private commitText(): void {
+    if (!this.mustCall || this.toolCalled) this.committed = true
+  }
+
   /** закрыть отложенный текст: выпустить остаток (или отбросить недописанное при обрыве по длине) */
   closeText(truncated: boolean): { out: Part[]; fail?: AttemptResult } {
     const end = this.endedText
@@ -371,7 +389,7 @@ class Attempt {
     }
     if (s.kind === 'release') {
       out.push({ type: 'text-delta', id: (end as { id: string }).id, text: s.text } as Part)
-      this.committed = true
+      this.commitText()
     }
     out.push(end)
     this.openText = null
@@ -501,7 +519,7 @@ class Race {
   }
 
   private startAttempt(step: TurnRequest['chain'][number], hedge: boolean, retry = this.retryRound > 0): void {
-    const a = new Attempt(step, this.guardOpts, this.input.whole, this.personMedical, this.input.toolCheck, this.input.claims?.unlocks)
+    const a = new Attempt(step, this.guardOpts, this.input.whole, this.personMedical, this.input.toolCheck, this.input.claims?.unlocks, this.toolChoice() !== undefined)
     this.attempts.push(a)
     emit({ type: 'model.start', model: a.step.id, hedge, ...(retry ? { retry: true } : {}) }, this.ctx)
     void this.run(a)
@@ -548,6 +566,14 @@ class Race {
     }, delay)
   }
 
+  /** обязательный вызов для AI SDK — только если такой инструмент есть в наборе этого хода */
+  private toolChoice(): 'required' | { type: 'tool'; toolName: string } | undefined {
+    const { requiredTool, tools } = this.req
+    if (!requiredTool || !tools) return undefined
+    if (requiredTool === 'any') return Object.keys(tools).length ? 'required' : undefined
+    return tools[requiredTool] ? { type: 'tool', toolName: requiredTool } : undefined
+  }
+
   private async run(a: Attempt): Promise<void> {
     const onTool = (tool: string, valid: boolean) => emit({ type: 'tool.call', tool, executor: 'client', valid }, this.ctx)
     try {
@@ -556,11 +582,7 @@ class Race {
         instructions: this.req.instructions,
         messages: this.req.messages,
         tools: this.req.tools,
-        ...(this.req.requiredTool === 'any' && this.req.tools && Object.keys(this.req.tools).length
-          ? { toolChoice: 'required' as const }
-          : this.req.requiredTool && this.req.tools?.[this.req.requiredTool]
-            ? { toolChoice: { type: 'tool' as const, toolName: this.req.requiredTool } }
-            : {}),
+        ...(this.toolChoice() ? { toolChoice: this.toolChoice() } : {}),
         maxOutputTokens: this.input.maxOutputTokens,
         maxRetries: 0,
         abortSignal: AbortSignal.any([this.all, a.ctrl.signal]),
