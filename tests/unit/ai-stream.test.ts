@@ -268,3 +268,25 @@ describe('повтор после сбоя провайдера (Hermes: рет�
     expect(a.calls()).toBe(1)
   })
 })
+
+describe('перезапуск упавшей модели, не дожидаясь медленной (набор задач 12.11)', () => {
+  it('провайдер оборвал ответ почти сразу (length), вторая ещё думает — первая перезапускается и отвечает', async () => {
+    let calls = 0
+    const quick = new MockLanguageModelV4({
+      doStream: async () => {
+        calls++
+        const chunks =
+          calls === 1
+            ? [{ type: 'text-start', id: 't' }, { type: 'text-delta', id: 't', delta: 'Собрать' }, { type: 'text-end', id: 't' }, { type: 'finish', finishReason: { unified: 'length', raw: 'length' }, usage }]
+            : text('Давай откроем файл. Это первый шаг.')
+        return { stream: simulateReadableStream({ chunks: [{ type: 'stream-start', warnings: [] }, ...chunks] as never[] }) }
+      },
+    })
+    chain.steps = [{ id: 'quick', model: quick }, { id: 'slow', model: streaming(text('Поздний ответ.'), { initialDelayInMs: 4000 }) }]
+    const t0 = Date.now()
+    const r = await collect(run({ commitTimeoutMs: 6000, totalTimeoutMs: 8000, hedgeAfterMs: 100 }))
+    expect(r.shown).toBe('Давай откроем файл. Это первый шаг.')
+    expect(Date.now() - t0).toBeLessThan(3000)
+    expect(calls).toBe(2)
+  })
+})

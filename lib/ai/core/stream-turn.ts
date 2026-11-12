@@ -109,7 +109,9 @@ const usageOf = (part: Part & { type: 'finish' }): Usage => ({
 export const RETRY = { rounds: 1, baseMs: 600, jitterMs: 300, minLeftMs: 4000 } as const
 
 /** сеть, 429 и 5xx — повод повторить; 4xx (кроме 429) — нет: запрос негоден, повтор даст то же */
-function retryable(a: { result?: AttemptResult; errorStatus?: number }): boolean {
+function retryable(a: { result?: AttemptResult; errorStatus?: number; textLength?: number; truncated?: boolean }): boolean {
+  // провайдер оборвал ответ почти сразу (AnyModel 12.11: finish=length на 16 токенах при лимите 400) — сбой, не модель
+  if (a.result === 'length' || (a.truncated && a.result === 'empty')) return (a.textLength ?? 0) < 120
   if (a.result !== 'error') return false
   const s = a.errorStatus
   return s === undefined || s === 408 || s === 429 || s >= 500
@@ -138,6 +140,14 @@ class Attempt {
   endedText: Part | null = null
   /** режим whole: весь текст ответа до проверки */
   private full = ''
+
+  /** поток закончился по лимиту длины (причина остановки length) */
+  truncated = false
+
+  /** сколько текста модель успела написать (для решения «провайдер оборвал» или «модель упёрлась в лимит») */
+  get textLength(): number {
+    return this.full.length + this.guard.text.length
+  }
   /** форма ошибки провайдера для журнала (без тела запроса и ответа) */
   errorStatus?: number
   /** чем закончилась попытка (для решения о повторе) */
@@ -202,7 +212,10 @@ class Attempt {
         this.usage = usageOf(part)
         // оборванный по длине ответ не принимается: «Ты уже начал, и это главное, давай теперь» нельзя показывать
         // (самопроверка 12.11: у чата такая защита была, у разовых задач — нет)
-        if (part.finishReason === 'length') return { out, fail: 'length' }
+        if (part.finishReason === 'length') {
+          this.truncated = true
+          return { out, fail: 'length' }
+        }
         return this.finishWhole(part)
       }
       return { out }
@@ -232,6 +245,7 @@ class Attempt {
         this.endedText = part
         return { out }
       case 'finish-step': {
+        if (part.finishReason === 'length') this.truncated = true
         const closed = this.closeText(part.finishReason === 'length')
         if (closed.fail) return closed
         out.push(...closed.out, part)
@@ -285,6 +299,7 @@ class Attempt {
         return { out, fail: 'timeout' }
       case 'finish': {
         this.usage = usageOf(part)
+        if (part.finishReason === 'length') this.truncated = true
         const closed = this.closeText(part.finishReason === 'length') // если finish-step не пришёл
         if (closed.fail) return closed
         out.push(...closed.out)
@@ -442,11 +457,44 @@ class Race {
     clearTimeout(this.hedgeTimer)
     const chain = this.req.chain
     if (this.winner || this.settled || this.launched >= chain.length || this.all.aborted) return this.giveUpIfExhausted()
-    const a = new Attempt(chain[this.launched++], this.guardOpts, this.input.whole, this.personMedical, this.input.toolCheck, this.input.claims?.unlocks)
-    this.attempts.push(a)
-    emit({ type: 'model.start', model: a.step.id, hedge: this.launched > 1, ...(this.retryRound > 0 ? { retry: true } : {}) }, this.ctx)
-    void this.run(a)
+    this.startAttempt(chain[this.launched++], this.launched > 1)
     if (this.launched < chain.length) this.hedgeTimer = setTimeout(() => this.launchNext(), this.req.hedgeAfterMs)
+  }
+
+  private startAttempt(step: TurnRequest['chain'][number], hedge: boolean, retry = this.retryRound > 0): void {
+    const a = new Attempt(step, this.guardOpts, this.input.whole, this.personMedical, this.input.toolCheck, this.input.claims?.unlocks)
+    this.attempts.push(a)
+    emit({ type: 'model.start', model: a.step.id, hedge, ...(retry ? { retry: true } : {}) }, this.ctx)
+    void this.run(a)
+  }
+
+  /**
+   * Перезапуск упавшей модели сразу, не дожидаясь остальных (Hermes: ретрай — свойство вызова, а не всей цепочки).
+   * Набор задач 12.11: Gemini обрывалась через 4 с, DeepSeek думала до предела фиксации — повтор цепочки «когда все
+   * упали» не успевал. Два случая:
+   *  - ответ был только вызовом, который правила отбросили, — та же модель сразу, но без этих инструментов;
+   *  - сбой провайдера (сеть, 408, 429, 5xx, обрыв почти без текста) — та же модель после короткой паузы, один раз.
+   */
+  private relaunchFailed(a: Attempt): void {
+    if (this.winner || this.settled || this.all.aborted) return
+    const left = this.input.commitTimeoutMs - (Date.now() - this.ctx.startedAt)
+    if (a.result === 'empty' && a.rejectedTools.size > 0 && !this.toolRetried && this.req.tools && left >= RETRY.minLeftMs) {
+      this.toolRetried = true
+      const rejected = a.rejectedTools
+      this.req = { ...this.req, tools: Object.fromEntries(Object.entries(this.req.tools).filter(([name]) => !rejected.has(name))) }
+      emit({ type: 'tool.retry', without: [...rejected] }, this.ctx)
+      return this.startAttempt(a.step, true, true)
+    }
+    if (this.retryRound >= RETRY.rounds || !retryable(a)) return
+    const delay = RETRY.baseMs * 2 ** this.retryRound + Math.floor(Math.random() * RETRY.jitterMs)
+    if (left < delay + RETRY.minLeftMs) return
+    this.retryRound++
+    this.retryPending = true
+    this.retryTimer = setTimeout(() => {
+      this.retryPending = false
+      if (this.settled || this.winner) return
+      this.startAttempt(a.step, true, true)
+    }, delay)
   }
 
   private async run(a: Attempt): Promise<void> {
@@ -483,7 +531,10 @@ class Race {
       if (a === this.winner) this.finishWinner(a, timedOut ? 'timeout' : 'error')
       else {
         this.endAttempt(a, timedOut ? 'timeout' : 'error')
-        if (!timedOut) this.launchNext()
+        if (!timedOut) {
+          this.relaunchFailed(a)
+          this.launchNext()
+        }
         this.giveUpIfExhausted()
       }
     }
@@ -503,8 +554,9 @@ class Race {
   private fail(a: Attempt, result: AttemptResult): void {
     if (a.dead) return
     if (a === this.winner) return this.finishWinner(a, result)
-    // до фиксации: человек ничего не видел — тихо берём следующую модель
+    // до фиксации: человек ничего не видел — тихо берём следующую модель (и, если это сбой, перезапускаем упавшую)
     this.endAttempt(a, result)
+    this.relaunchFailed(a)
     this.launchNext()
     this.giveUpIfExhausted()
   }
