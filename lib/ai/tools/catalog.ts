@@ -48,7 +48,7 @@ export const memoryInput = z
       'Только для add: about — о себе (учёба, работа); task — долгое дело; obstacle — что мешает начать; helps — что помогает; people — человек из его дел (имя и роль); schedule — устойчивое расписание; style — как с ним говорить; event — датированное событие',
     ),
     ref: z.string().regex(/^\d{1,2}$/).optional().describe('Для replace и forget: номер факта из блока памяти'),
-    text: factText.optional().describe('Для add и replace: факт от третьего лица, одно предложение, понятно без разговора'),
+    text: factText.optional().describe('Для add и replace: одно предложение без подлежащего, понятно без разговора: «Пишет диплом про…», «Легче начинает после душа» (не «Человек…», не «Пользователь…»)'),
     evidence: safeText(FACT_LIMITS.evidence).optional().describe('Для add и replace: короткая цитата человека, на которой основан факт'),
   })
   .refine((m) => m.op !== 'add' || (m.category && m.text && m.evidence), 'add: нужны category, text и evidence')
