@@ -3,6 +3,8 @@
 import '@/lib/zod-jitless' // первым — см. файл
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
+import { CRISIS_REPLY } from '@/lib/ai/crisis'
+import { checkInput } from '@/lib/ai/guards/input'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from 'ai'
 import { AnimatePresence, motion, motionValue, useReducedMotion, type MotionValue } from 'motion/react'
@@ -30,8 +32,10 @@ import { EmphasisText } from '@/components/emphasis-text'
 import { SPRING_ITEM, SPRING_SNAPPY, stagger } from '@/lib/motion'
 import Link from 'next/link'
 import {
-  addNote,
+  applyMemoryOps,
   buildMemoryContext,
+  peekAllFacts,
+  markSkillsShown,
   getChatMessages,
   getChatTimestamps,
   peekChatMessages,
@@ -44,7 +48,15 @@ import {
   type MemoryContext,
 } from '@/lib/memory'
 import { scriptedReply } from '@/lib/scripted-companion'
-import { TOOL_REFUSED, rememberFactInput, savePlanInput, startFocusInput, tools } from '@/lib/ai/tools/catalog'
+import { archiveMessages, searchArchive } from '@/lib/chat-archive'
+import { RECALL_NONE, rawRecall } from '@/lib/ai/memory/recall-text'
+import { enforceExplicitMemory, hiddenFromModel, pendingUserTurns, purgeForgottenChips, REVIEW_EVERY_TURNS, syncMemory } from '@/lib/memory-sync'
+import { factKey } from '@/lib/ai/memory/fact-key'
+
+const MEMORY_IDLE_MS = 90_000
+import { TOOL_REFUSED, memoryInput, recallInput, rememberFactInput, savePlanInput, startFocusInput, tools } from '@/lib/ai/tools/catalog'
+import { toFactOp } from '@/lib/ai/memory/policy'
+import { coerceToolInput } from '@/lib/ai/tools/registry'
 import { useClientMount } from '@/hooks/use-client-mount'
 import type { UIMessage } from 'ai'
 
@@ -222,6 +234,10 @@ export function CompanionChat({
   )
   const [input, setInput] = useState('')
   const memoryRef = useRef<MemoryContext | null>(boot?.memory ?? null)
+  // Какой список фактов и какая реплика человека ушли с последним запросом: номер факта в вызове памяти относится
+  // к показанному модели списку, а «забудь» проверяется по словам человека (lib/ai/memory/policy.ts toFactOp)
+  const sentFactIdsRef = useRef<string[]>([])
+  const lastUserTextRef = useRef('')
   const reduceMotion = useReducedMotion()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   // Счётчик отправок — ключ для "запуска" стрелки: старая улетает вверх,
@@ -284,20 +300,28 @@ export function CompanionChat({
     [memoryCtx, clientHour],
   )
 
+  const sentUserIdsRef = useRef(new Set<string>())
   const { messages, sendMessage, status, addToolOutput, setMessages } = useChat({
     ...(boot && boot.chat.length > 0 ? { messages: boot.chat } : {}),
     transport: new DefaultChatTransport({
       api: '/api/companion',
-      body: () => ({
-        mode,
-        memory: memoryRef.current,
-        clientHour: new Date().getHours(),
-      }),
+      body: () => {
+        const memory = memoryRef.current
+        sentFactIdsRef.current = memory?.factIds ?? []
+        // id фактов — внутренняя связь устройства, серверу и модели не нужна
+        return { mode, memory: memory && { ...memory, factIds: undefined, skillIds: undefined }, clientHour: new Date().getHours() }
+      },
       // На сервер — только последние 30 реплик (столько же хранится): в длинном разговоре полная история
       // упиралась бы в потолок тела запроса (lib/api-guard.ts), и ИИ молча уходил бы в скрипт до перезагрузки
-      prepareSendMessagesRequest: ({ id, messages: all, body, trigger, messageId }) => ({
-        body: { ...body, id, messages: all.slice(-30), trigger, messageId },
-      }),
+      prepareSendMessagesRequest: ({ id, messages: all, body, trigger, messageId }) => {
+        const lastUser = [...all].reverse().find((m) => m.role === 'user')
+        lastUserTextRef.current = lastUser?.parts.map((p) => (p.type === 'text' ? p.text : '')).join(' ') ?? ''
+        // реплика отправлена в этой сессии: только такие просьбы «запомни / забудь» исполняются правилом без модели
+        if (lastUser) sentUserIdsRef.current.add(lastUser.id)
+        // забытое кот не видит: реплики о забытой теме старше просьбы не уходят модели (lib/forgotten.ts)
+        const hidden = hiddenFromModel(all)
+        return { body: { ...body, id, messages: all.filter((m) => !hidden.has(m.id)).slice(-30), trigger, messageId } }
+      },
     }),
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
     // Graceful degradation: LLM недоступен (нет ключа, лимит, сеть) —
@@ -310,7 +334,12 @@ export function CompanionChat({
             .filter((p) => p.type === 'text')
             .map((p) => (p.type === 'text' ? p.text : ''))
             .join(' ') ?? ''
-        const reply = scriptedReply(userText, memoryRef.current, new Date().getHours())
+        // кризис обвязка смотрит по двум последним репликам («не хочу» / «жить»): заготовка — так же
+        const lastTwo = prev
+          .filter((m) => m.role === 'user')
+          .slice(-2)
+          .map((m) => m.parts.map((p) => (p.type === 'text' ? p.text : '')).join(' '))
+        const reply = checkInput(lastTwo).crisis ? { text: CRISIS_REPLY } : scriptedReply(userText, memoryRef.current, new Date().getHours())
 
         const parts: (typeof prev)[number]['parts'] = [{ type: 'text', text: reply.text }]
         if (reply.startStep) {
@@ -344,13 +373,13 @@ export function CompanionChat({
       const name = toolCall.toolName
       const done = (ok: boolean) =>
         void addToolOutput({
-          tool: name as 'savePlan' | 'rememberFact' | 'startFocus',
+          tool: name as 'savePlan' | 'memory' | 'startFocus' | 'recall',
           toolCallId: toolCall.toolCallId,
           output: ok ? (tools.get(name)?.clientResult ?? TOOL_REFUSED) : TOOL_REFUSED,
         })
 
       if (name === 'savePlan') {
-        const parsed = savePlanInput.safeParse(toolCall.input)
+        const parsed = savePlanInput.safeParse(coerceToolInput(toolCall.input))
         if (!parsed.success) return done(false)
         const { task, firstStep, startTime } = parsed.data
         savePlan({ task, firstStep, startTime })
@@ -364,21 +393,57 @@ export function CompanionChat({
             done(true)
           })
           .catch(() => done(false))
-      } else if (name === 'rememberFact') {
-        const parsed = rememberFactInput.safeParse(toolCall.input)
+      } else if (name === 'memory') {
+        // схема ещё раз проверяет содержание (здоровье, контакты, «указания коту»), toFactOp — номер факта и
+        // просьбу «забудь»: устройство — хозяин своей памяти и последний, кто решает, что в неё попадёт
+        const parsed = memoryInput.safeParse(coerceToolInput(toolCall.input))
         if (!parsed.success) return done(false)
-        addNote(parsed.data.fact)
-          .then(async () => {
+        const op = toFactOp(parsed.data, {
+          refs: sentFactIdsRef.current,
+          lastUserText: lastUserTextRef.current,
+          textOf: (id) => peekAllFacts().find((f) => f.id === id)?.text,
+          // «забудь это»: самый свежий факт, если он записан в последние 15 минут
+          latestId: peekAllFacts()
+            .filter((f) => f.status === 'active' && Date.now() - Date.parse(f.updatedAt) < 15 * 60_000)
+            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.id,
+        })
+        if (!op.ok) return done(false)
+        applyMemoryOps([op.op])
+          .then(async ([r]) => {
             memoryRef.current = await buildMemoryContext()
-            done(true)
+            // «уже помню» — тоже успех: модель не должна думать, что запись не удалась
+            done(r?.ok === true || (!r.ok && r.reason === 'duplicate'))
           })
           .catch(() => done(false))
       } else if (name === 'startFocus') {
         // Карточку с кнопкой рисует разметка ниже; здесь — проверка и подтверждение
-        done(startFocusInput.safeParse(toolCall.input).success)
+        done(startFocusInput.safeParse(coerceToolInput(toolCall.input)).success)
+      } else if (name === 'recall') {
+        // Вспоминание (lib/chat-archive.ts): поиск — здесь, в архиве устройства; сжатие — /api/recall. Ответ
+        // уходит модели как данные (web.ts clientOutputAsData)
+        const parsed = recallInput.safeParse(coerceToolInput(toolCall.input))
+        if (!parsed.success) return done(false)
+        const answer = (output: string) => void addToolOutput({ tool: 'recall', toolCallId: toolCall.toolCallId, output })
+        const episodes = searchArchive(parsed.data.query, new Set(messagesRef.current.map((m) => m.id)))
+        if (episodes.length === 0) return answer(RECALL_NONE)
+        fetch('/api/recall', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ query: parsed.data.query, episodes: episodes.map(({ at, lines }) => ({ at, lines })) }),
+        })
+          .then((r) => (r.ok ? (r.json() as Promise<{ summary?: unknown }>) : null))
+          .then((d) => answer(typeof d?.summary === 'string' ? d.summary : rawRecall(episodes)))
+          .catch(() => answer(rawRecall(episodes)))
       }
     },
   })
+
+  // переписка для обработчика инструмента (вспоминание не ищет то, что и так в разговоре); обновляется после рендера
+  const messagesRef = useRef(messages)
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -403,12 +468,97 @@ export function CompanionChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Фоновая выжимка памяти (lib/memory-sync.ts): разговор затих на 90 с — или человек ушёл со вкладки — кусок
+  // после прошлой выжимки уходит на сервер, проверенные факты ложатся в память устройства. Пока кот отвечает — ждём.
+  const idleForMemory = status === 'ready' || status === 'error'
+  // явные «запомни» / «забудь», которые кот не исполнил сам, исполняются здесь — один раз на реплику человека;
+  // реплики, восстановленные из прошлой сессии, не трогаем (первый проход только запоминает, что уже было)
+  // (реплики из прошлой сессии не трогаем: при холодной загрузке Дома последняя просьба исполнялась повторно — аудит 12.11)
+  const explicitDoneRef = useRef(new Set<string>())
+  useEffect(() => {
+    if (!idleForMemory || messages.length === 0) return
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user')
+    if (!lastUser || !sentUserIdsRef.current.has(lastUser.id) || explicitDoneRef.current.has(lastUser.id) || messages.at(-1)?.role !== 'assistant') return
+    explicitDoneRef.current.add(lastUser.id)
+    // навыки, которые сервер раскрыл под эту реплику, — «применён» (счётчики для Curator); только когда модель
+    // действительно ответила: раньше счётчик рос при отправке, и заготовка при сбое считалась применением
+    if (status === 'ready') markSkillsShown(lastUser.parts.map((p) => (p.type === 'text' ? p.text : '')).join(' '))
+    void enforceExplicitMemory(messages).then((r) => {
+      if (r === 'review' || r === 'forgot') void buildMemoryContext().then((m) => (memoryRef.current = m))
+    })
+  }, [messages, idleForMemory, status])
+  useEffect(() => {
+    if (!idleForMemory || messages.length === 0) return
+    const run = (keepalive = false) =>
+      void syncMemory(messages, { keepalive }).then((n) => {
+        if (n > 0) void buildMemoryContext().then((m) => (memoryRef.current = m))
+      })
+    // долгий разговор без пауз: ревью каждые 10 ходов человека, не дожидаясь тишины
+    if (pendingUserTurns(messages) >= REVIEW_EVERY_TURNS) run()
+    const timer = window.setTimeout(() => run(), MEMORY_IDLE_MS)
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') run(true)
+    }
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onHide)
+    }
+  }, [messages, idleForMemory])
+
+  // Реплика человека сохраняется сразу, не дожидаясь ответа кота (аудит 12.11: ушёл на «Мир», пока кот думал, —
+  // реплика пропадала отовсюду: из переписки, архива и памяти). Недописанный ответ кота не сохраняем.
+  const statusRef = useRef(status)
+  useEffect(() => {
+    statusRef.current = status
+  }, [status])
+  useEffect(() => {
+    if (!chatRestoredRef.current || status !== 'submitted') return
+    const upTo = messages.findLastIndex((m) => m.role === 'user')
+    if (upTo >= 0) saveChatMessages(messages.slice(0, upTo + 1))
+  }, [messages, status])
+  useEffect(
+    () => () => {
+      // уход с экрана посреди ответа: сохраняем всё до последней реплики человека включительно
+      if (statusRef.current !== 'submitted' && statusRef.current !== 'streaming') return
+      const all = messagesRef.current
+      const upTo = all.findLastIndex((m) => m.role === 'user')
+      if (upTo >= 0) saveChatMessages(all.slice(0, upTo + 1))
+    },
+    [],
+  )
+  // Вторая вкладка написала в переписку или память — эта вкладка подхватывает, а не затирает своей копией при
+  // следующем сохранении (аудит 12.11: две вкладки стирали реплики друг друга)
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'naparnik:chat' && statusRef.current !== 'submitted' && statusRef.current !== 'streaming') {
+        void getChatMessages<(typeof messages)[number]>().then((saved) => {
+          const mine = messagesRef.current
+          if (saved.length > 0 && (saved.length !== mine.length || saved.at(-1)?.id !== mine.at(-1)?.id)) setMessages(saved)
+        })
+      } else if (e.key === 'naparnik:facts' || e.key === 'naparnik:skills' || e.key === 'naparnik:plan' || e.key === 'naparnik:forgotten') {
+        void buildMemoryContext().then((m) => (memoryRef.current = m))
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Сохраняем после каждого завершённого обмена (не во время стриминга)
   useEffect(() => {
     if (!chatRestoredRef.current) return
     if (status === 'streaming' || status === 'submitted') return
     if (messages.length === 0) return
+    // забытое не остаётся в переписке отметкой «запомнил: …» (lib/memory-sync.ts)
+    const purged = purgeForgottenChips(messages, new Set(peekAllFacts().map((f) => factKey(f.text))))
+    if (purged) {
+      setMessages(purged)
+      return // эффект сработает снова уже с очищенной перепиской и сохранит её
+    }
     saveChatMessages(messages)
+    // архив для вспоминания: переписка на экране — последние 30 реплик, архив — больше (lib/chat-archive.ts)
+    archiveMessages(messages, peekChatTimestamps())
     // Метка времени — на момент ПЕРВОГО появления реплики, а не на момент
     // сохранения: иначе восстановленная история переписывала бы себе
     // время каждым визитом.
@@ -432,7 +582,7 @@ export function CompanionChat({
       if (changed) saveChatTimestamps(next)
       return changed ? next : prev
     })
-  }, [messages, status])
+  }, [messages, status, setMessages])
 
   // U4: скроллим по факту нового сообщения, а не на каждый чанк стрима —
   // scrollIntoView на каждом токене дёргал ленту.
@@ -1083,8 +1233,27 @@ export function CompanionChat({
                   )
                 }
 
+                if (part.type === 'tool-memory' && part.state === 'output-available' && part.output !== TOOL_REFUSED) {
+                  const m = memoryInput.safeParse(coerceToolInput(part.input))
+                  if (!m.success) return null
+                  const label =
+                    m.data.op === 'forgetAll' ? 'забыл всё' : m.data.op === 'forget' ? 'забыл' : `запомнил: ${m.data.text}`
+                  return (
+                    <span
+                      key={i}
+                      className="ml-10 flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-muted-foreground"
+                    >
+                      <Sparkles className="size-3" aria-hidden="true" />
+                      {label}
+                    </span>
+                  )
+                }
+
+                // прежний инструмент (до 12.11): старые разговоры на устройстве показывают свои чипы как раньше
                 if (part.type === 'tool-rememberFact' && part.state === 'output-available') {
-                  const { fact } = part.input as { fact: string }
+                  const parsedFact = rememberFactInput.safeParse(part.input)
+                  if (!parsedFact.success) return null
+                  const { fact } = parsedFact.data
                   return (
                     <span
                       key={i}

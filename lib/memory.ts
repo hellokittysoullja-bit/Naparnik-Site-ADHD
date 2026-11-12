@@ -5,7 +5,11 @@
  * Интерфейс намеренно асинхронный: замена на базу данных позже —
  * это замена реализации, а не рефакторинг всех вызовов.
  */
-import { factKey } from '@/lib/ai/memory/fact-key'
+import { activeFacts, applyFactOps, FACT_CATEGORIES, type Fact, type FactOp, type OpResult } from '@/lib/ai/memory/facts'
+import { aboutAny, contentWords } from '@/lib/ai/memory/stems'
+import { addForgotten } from '@/lib/forgotten'
+import { clearArchive, forgetInArchive } from '@/lib/chat-archive'
+import { activeSkills, applySkillOps, curate, relevantSkills, type Skill, type SkillOp, type SkillOpResult } from '@/lib/ai/memory/skills'
 
 export type Plan = {
   /** Дата, на которую положен план, YYYY-MM-DD */
@@ -31,6 +35,8 @@ export type StartEntry = {
   fromPlan: boolean
   /** Сколько минут отработано (0 — начал и вышел, это тоже старт) */
   minutes: number
+  /** Сколько минут человек выбрал на сессию (нет у стартов до 12.11) — для вывода «доводит до конца» */
+  planned?: number
 }
 
 export type CompanionNote = {
@@ -47,12 +53,21 @@ export type Patterns = {
   lastStartDate: string | null
   /** Полных дней с последнего старта (0 = стартовал сегодня), null если стартов не было */
   daysAway: number | null
+  /** Окно из трёх часов, когда человек обычно начинает, с основанием «n из of» (≥ 5 стартов, доля ≥ 40 %) */
+  startWindow: { from: number; to: number; n: number; of: number } | null
+  /** Сколько сессий каждой длительности доведено до конца (≥ 3 сессии этой длительности) */
+  durations: { minutes: number; done: number; of: number }[]
 }
 
 const KEYS = {
   plan: 'naparnik:plan',
   starts: 'naparnik:starts',
   notes: 'naparnik:notes',
+  facts: 'naparnik:facts',
+  onboarding: 'naparnik:onboarding',
+  profileForgotten: 'naparnik:profileForgotten',
+  skills: 'naparnik:skills',
+  skillShown: 'naparnik:skillShown',
   finds: 'naparnik:finds',
   worldSeen: 'naparnik:worldSeen',
   activeSession: 'naparnik:activeSession',
@@ -147,13 +162,30 @@ const isPlan: Guard<Plan> = (v): v is Plan =>
 const isStart: Guard<StartEntry> = (v): v is StartEntry =>
   isObj(v) && isStr(v.id) && isStr(v.date) && isStr(v.startedAt) && isStr(v.label) && isNum(v.minutes)
 const isNote: Guard<CompanionNote> = (v): v is CompanionNote => isObj(v) && isStr(v.text)
+const CATEGORIES = new Set<string>(FACT_CATEGORIES)
+const isFact: Guard<Fact> = (v): v is Fact =>
+  isObj(v) &&
+  isStr(v.id) &&
+  isStr(v.category) &&
+  CATEGORIES.has(v.category) &&
+  isStr(v.text) &&
+  (v.source === 'explicit' || v.source === 'stated') &&
+  isStr(v.createdAt) &&
+  isStr(v.updatedAt) &&
+  (v.status === 'active' || v.status === 'superseded') &&
+  (v.expiresOn === undefined || isStr(v.expiresOn)) &&
+  (v.evidence === undefined || isStr(v.evidence)) &&
+  (v.supersedes === undefined || isStr(v.supersedes))
 
-function write(key: string, value: unknown) {
-  if (!isBrowser()) return
+/** Записать; возвращает, легла ли запись (квота, приватный режим — false: «запомнил» тогда говорить нельзя) */
+function write(key: string, value: unknown): boolean {
+  if (!isBrowser()) return false
+  let stored = true
   try {
     window.localStorage.setItem(key, JSON.stringify(value))
   } catch {
-    // квота/приватный режим — молча пропускаем, память просто не сохранится
+    // квота/приватный режим: память не сохранилась — вызывающий узнаёт об этом по результату
+    stored = false
   }
   // Живая сцена (components/app-backdrop.tsx) рисует гряду по числу стартов,
   // но живёт в layout и НЕ перемонтируется при переходах Дом/Фокус/Мир — без
@@ -166,6 +198,7 @@ function write(key: string, value: unknown) {
   } catch {
     /* CustomEvent недоступен — сцена обновится на следующем визите */
   }
+  return stored
 }
 
 export function todayKey(d = new Date()): string {
@@ -210,7 +243,8 @@ export async function savePlan(input: {
     startTime: input.startTime,
     createdAt: new Date().toISOString(),
   }
-  write(KEYS.plan, plan)
+  // запись не легла — плана нет: вызывающий (инструмент savePlan) ответит модели отказом, кот не скажет «записал»
+  if (!write(KEYS.plan, plan)) throw new Error('storage')
   return plan
 }
 
@@ -232,6 +266,8 @@ export async function recordStart(input: {
   label: string
   fromPlan?: boolean
   minutes?: number
+  /** выбранная длительность сессии */
+  planned?: number
 }): Promise<StartEntry> {
   const entry: StartEntry = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -241,10 +277,12 @@ export async function recordStart(input: {
     label: input.label.trim().slice(0, 200),
     fromPlan: input.fromPlan ?? false,
     minutes: input.minutes ?? 0,
+    ...(input.planned ? { planned: input.planned } : {}),
   }
   const starts = await getStarts()
   starts.push(entry)
   write(KEYS.starts, starts)
+  creditSkills()
   keepMemory()
   markHome(true)
   return entry
@@ -494,31 +532,170 @@ export async function markWorldSeen(): Promise<void> {
   write(KEYS.worldSeen, starts.length)
 }
 
-// ---------- Заметки напарника ----------
+// ---------- Память о человеке: факты (lib/ai/memory/facts.ts) ----------
 
-// тот же потолок, что у правил памяти обвязки (lib/ai/memory/schema.ts MEMORY_LIMITS.notes; число продублировано,
-// чтобы не тянуть zod-схему в браузер, — равенство закреплено тестом tests/unit/ai-memory.test.ts)
-export const MAX_NOTES = 6
-
-export function peekNotes(): CompanionNote[] {
+/** Прежние заметки (до 12.11) — только для переноса в факты */
+function peekLegacyNotes(): CompanionNote[] {
   return readList(KEYS.notes, isNote)
 }
 
-export async function getNotes(): Promise<CompanionNote[]> {
-  return peekNotes()
+const newFactId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+/**
+ * Все факты, включая заменённые (история «было → стало»). При первом чтении после обновления прежние заметки
+ * переносятся в факты «о себе» — один раз: дальше ключ фактов есть, и заметки больше не читаются (сам ключ заметок
+ * не стираем: старая вкладка, открытая до обновления, продолжит работать).
+ */
+export function peekAllFacts(): Fact[] {
+  const facts = readList(KEYS.facts, isFact)
+  if (facts.length > 0 || !isBrowser()) return facts
+  let hasKey = false
+  try {
+    hasKey = window.localStorage.getItem(KEYS.facts) !== null
+  } catch {
+    return facts
+  }
+  if (hasKey) return facts
+  const notes = peekLegacyNotes()
+  if (notes.length === 0) return facts
+  const seen = new Set<string>()
+  const migrated: Fact[] = []
+  for (const n of notes) {
+    const text = n.text.trim().slice(0, 160)
+    if (!text || seen.has(text.toLowerCase())) continue
+    seen.add(text.toLowerCase())
+    const at = isStr(n.createdAt) ? n.createdAt : new Date().toISOString()
+    migrated.push({ id: newFactId(), category: 'about', text, source: 'stated', createdAt: at, updatedAt: at, status: 'active' })
+  }
+  write(KEYS.facts, migrated)
+  return migrated
 }
 
-export async function addNote(text: string): Promise<void> {
-  const notes = await getNotes()
-  // потолок как у сервера (MemorySchema, 300): заметку пишет модель, длину она не ограничивает сама
-  const trimmed = text.trim().slice(0, 300)
-  if (!trimmed) return
-  // тот же ключ сравнения, что у правил памяти обвязки (lib/ai/memory/policy.ts): «Пишет диплом.» и «пишет
-  // диплом» — один факт, на устройстве и на сервере одинаково
-  const key = factKey(trimmed)
-  if (!key || notes.some((n) => factKey(n.text) === key)) return
-  notes.push({ text: trimmed, createdAt: new Date().toISOString() })
-  write(KEYS.notes, notes.slice(-MAX_NOTES))
+/** Факты, которые сейчас идут в разговор: активные и не истёкшие, в порядке, который видит модель */
+export function peekFacts(): Fact[] {
+  return activeFacts(peekAllFacts(), todayKey())
+}
+
+/**
+ * Применить операции памяти на устройстве. Содержание уже проверено (схема инструмента / ответ выжимки после
+ * write-guard на сервере и ещё раз в чате); здесь — дубли, замена, лимит и сроки (те же правила, что на сервере).
+ */
+export async function applyMemoryOps(ops: readonly FactOp[]): Promise<OpResult[]> {
+  if (ops.length === 0) return []
+  const before = peekAllFacts()
+  const { facts, results } = applyFactOps(before, ops, { now: new Date().toISOString(), newId: newFactId, today: todayKey() })
+  // запись не легла (хранилище переполнено или закрыто) — операции не было: кот не скажет «запомнил» (аудит 12.11:
+  // раньше ошибка записи глоталась, и ответ был «успех»)
+  if (!write(KEYS.facts, facts)) return results.map((r) => (r.ok ? { op: r.op, ok: false as const, reason: 'storage' as const } : r))
+  // забытое не должно найтись нигде: ни в архиве, ни в переписке, которая уходит модели, ни в навыках и плане
+  // (только по «забудь»: уборка старых версий при лимите — не просьба человека)
+  if (ops.some((o) => o.op === 'forget')) {
+    const left = new Set(facts.map((f) => f.id))
+    forgetTopics(before.filter((f) => !left.has(f.id)).map((f) => f.text))
+  }
+  // «забудь всё» — это и ответы знакомства, и навыки, и план, и всё сказанное до этой минуты
+  if (ops.some((o) => o.op === 'forgetAll')) forgetEverything()
+  return results
+}
+
+/**
+ * Тема забыта: запись в списке забытого (lib/forgotten.ts — реплики о ней больше не видит кот), чистка архива,
+ * навыков и плана о том же. Темой может быть текст удалённого факта или слова самой просьбы («забудь про развод»,
+ * когда факта о разводе не было, — аудит 12.11: раньше такая просьба не чистила ничего).
+ */
+export function forgetTopics(texts: readonly string[]): void {
+  const topics = texts.map((t) => contentWords(t)).filter((k) => k.length > 0)
+  if (topics.length === 0) return
+  addForgotten(texts)
+  forgetInArchive(texts)
+  const skills = peekAllSkills()
+  const keptSkills = skills.filter((sk) => !aboutAny(`${sk.name} ${sk.when} ${sk.steps} ${sk.avoid ?? ''}`, topics))
+  if (keptSkills.length !== skills.length) write(KEYS.skills, keptSkills)
+  const plan = peekPlan()
+  if (plan && aboutAny(`${plan.task} ${plan.firstStep}`, topics)) write(KEYS.plan, null)
+}
+
+/** «Забудь всё»: факты уже стёрты; здесь — всё остальное, что кот знал о человеке со слов */
+export function forgetEverything(): void {
+  addForgotten(null)
+  write(KEYS.profileForgotten, true)
+  write(KEYS.skills, [])
+  write(KEYS.plan, null)
+  clearArchive()
+  write(KEYS.skillShown, null)
+  try {
+    window.localStorage.removeItem(STEP_QUEUE_KEY)
+  } catch {
+    /* нечего чистить */
+  }
+}
+
+// ---------- Навыки кота о человеке (lib/ai/memory/skills.ts) ----------
+
+const isSkill: Guard<Skill> = (v): v is Skill =>
+  isObj(v) &&
+  isStr(v.id) &&
+  isStr(v.name) &&
+  isStr(v.when) &&
+  isStr(v.steps) &&
+  (v.avoid === undefined || isStr(v.avoid)) &&
+  isStr(v.createdAt) &&
+  isStr(v.updatedAt) &&
+  isNum(v.uses) &&
+  isNum(v.wins) &&
+  (v.lastUsedAt === undefined || isStr(v.lastUsedAt)) &&
+  (v.status === 'active' || v.status === 'archived')
+
+/** Все навыки, включая архив; Curator проходит при чтении (дубли, давно не применявшиеся, лимит) */
+export function peekAllSkills(): Skill[] {
+  const raw = readList(KEYS.skills, isSkill)
+  const curated = curate(raw, todayKey())
+  if (JSON.stringify(curated) !== JSON.stringify(raw)) write(KEYS.skills, curated)
+  return curated
+}
+
+/** Активные навыки в порядке, который видит модель: номер навыка = место в этом списке */
+export function peekSkills(): Skill[] {
+  return activeSkills(peekAllSkills())
+}
+
+export async function applySkillMemoryOps(ops: readonly SkillOp[]): Promise<SkillOpResult[]> {
+  if (ops.length === 0) return []
+  const { skills, results } = applySkillOps(peekAllSkills(), ops, { now: new Date().toISOString(), newId: newFactId })
+  write(KEYS.skills, skills)
+  return results
+}
+
+const SKILL_WIN_MS = 30 * 60_000
+
+/**
+ * Навыки, которые раскроются в этом ходе (тот же отбор, что на сервере, memory/render.ts), отмечаются «применён»;
+ * если в ближайшие полчаса будет старт — «после него был старт». Эти счётчики — основа решений Curator.
+ */
+export function markSkillsShown(lastUserText: string): void {
+  const all = peekAllSkills()
+  const shown = relevantSkills(all, lastUserText)
+  if (shown.length === 0) return
+  const now = new Date().toISOString()
+  const ids = new Set(shown.map((s) => s.id))
+  write(KEYS.skills, all.map((s) => (ids.has(s.id) ? { ...s, uses: s.uses + 1, lastUsedAt: now } : s)))
+  // все навыки, показанные за последние полчаса, а не только из последнего хода: старт обычно случается через
+  // несколько реплик после совета (аудит 12.11)
+  const recent = peekSkillShown().filter((x) => !ids.has(x.id))
+  write(KEYS.skillShown, [...recent, ...[...ids].map((id) => ({ id, at: Date.now() }))])
+}
+
+function peekSkillShown(): { id: string; at: number }[] {
+  const raw = read<unknown>(KEYS.skillShown, null, (v): v is unknown => true)
+  if (!Array.isArray(raw)) return []
+  return raw.filter((x): x is { id: string; at: number } => isObj(x) && isStr(x.id) && isNum(x.at) && Date.now() - x.at <= SKILL_WIN_MS)
+}
+
+function creditSkills(): void {
+  const ids = new Set(peekSkillShown().map((x) => x.id))
+  if (ids.size === 0) return
+  write(KEYS.skills, peekAllSkills().map((s) => (ids.has(s.id) ? { ...s, wins: s.wins + 1 } : s)))
+  write(KEYS.skillShown, null)
 }
 
 // ---------- Паттерны (производные) ----------
@@ -530,7 +707,7 @@ export async function getPatterns(): Promise<Patterns> {
 export function peekPatterns(): Patterns {
   const starts = peekStarts()
   if (starts.length === 0) {
-    return { totalStarts: 0, runningDays: 0, favoriteHour: null, lastStartDate: null, daysAway: null }
+    return { totalStarts: 0, runningDays: 0, favoriteHour: null, lastStartDate: null, daysAway: null, startWindow: null, durations: [] }
   }
 
   const dates = Array.from(new Set(starts.map((s) => s.date))).sort()
@@ -552,6 +729,9 @@ export function peekPatterns(): Patterns {
       walk.setDate(walk.getDate() - 1)
     }
   }
+
+  const startWindow = windowOf(starts, today)
+  const durations = durationsOf(starts, read<ActiveSession | null>(KEYS.activeSession, null, isActiveSession)?.startId)
 
   const hourCounts = new Map<number, number>()
   for (const s of starts) {
@@ -576,7 +756,68 @@ export function peekPatterns(): Patterns {
     ),
   )
 
-  return { totalStarts: starts.length, runningDays, favoriteHour, lastStartDate, daysAway }
+  return { totalStarts: starts.length, runningDays, favoriteHour, lastStartDate, daysAway, startWindow, durations }
+}
+
+/*
+ * Выводы по стартам (ярус Т4, memory-personalization.md §8) — считает код, не модель: детерминированно и с числом-
+ * основанием. Кот вправе сказать «обычно» только с ним («9 из 14»), иначе это эффект Барнума.
+ */
+const WINDOW_MIN_STARTS = 5
+const WINDOW_MIN_SHARE = 0.4
+const HALF_LIFE_DAYS = 21
+
+/** Три часа подряд (по кругу суток), на которые приходится больше всего стартов с учётом свежести */
+export function windowOf(starts: readonly StartEntry[], today: string): Patterns['startWindow'] {
+  if (starts.length < WINDOW_MIN_STARTS) return null
+  const now = new Date(today + 'T12:00:00').getTime()
+  const weight = new Array<number>(24).fill(0)
+  const count = new Array<number>(24).fill(0)
+  let total = 0
+  for (const s of starts) {
+    const t = new Date(s.startedAt)
+    if (Number.isNaN(t.getTime())) continue
+    const age = Math.max(0, (now - t.getTime()) / 86_400_000)
+    const w = Math.pow(0.5, age / HALF_LIFE_DAYS)
+    weight[t.getHours()] += w
+    count[t.getHours()] += 1
+    total += w
+  }
+  if (total === 0) return null
+  let best = -1
+  let bestW = 0
+  for (let h = 0; h < 24; h++) {
+    const w = weight[(h + 23) % 24] + weight[h] + weight[(h + 1) % 24]
+    if (w > bestW) {
+      bestW = w
+      best = h
+    }
+  }
+  if (best < 0 || bestW / total < WINDOW_MIN_SHARE) return null
+  const n = count[(best + 23) % 24] + count[best] + count[(best + 1) % 24]
+  // основание в сырых числах тоже должно быть весомым: свежесть не превращает «2 из 12» в «обычно» (аудит 12.11)
+  if (n < WINDOW_MIN_STARTS || n / starts.length < WINDOW_MIN_SHARE) return null
+  return { from: (best + 23) % 24, to: (best + 1) % 24, n, of: starts.length }
+}
+
+const DURATION_MIN_SESSIONS = 3
+
+/** Доведено до конца — отработано не меньше выбранного (минута запаса на округление и закрытую вкладку) */
+export function durationsOf(starts: readonly StartEntry[], runningId?: string): Patterns['durations'] {
+  const by = new Map<number, { done: number; of: number }>()
+  for (const s of starts) {
+    // идущая сессия ещё не «не доведена»
+    if (!s.planned || s.id === runningId) continue
+    const d = by.get(s.planned) ?? { done: 0, of: 0 }
+    d.of += 1
+    if (s.minutes >= s.planned - 1) d.done += 1
+    by.set(s.planned, d)
+  }
+  return [...by.entries()]
+    .filter(([, d]) => d.of >= DURATION_MIN_SESSIONS)
+    .sort((a, b) => b[1].of - a[1].of || a[0] - b[0])
+    .slice(0, 3)
+    .map(([minutes, d]) => ({ minutes, ...d }))
 }
 
 // ---------- Компактный контекст для LLM ----------
@@ -585,7 +826,15 @@ export type MemoryContext = {
   plan: Plan | null
   recentStarts: Array<Pick<StartEntry, 'date' | 'label' | 'minutes' | 'fromPlan'>>
   patterns: Patterns
-  notes: string[]
+  /** Факты о человеке для разговора (номер факта для модели — место в этом списке) */
+  facts: Array<{ category: Fact['category']; text: string; since: string }>
+  /** id тех же фактов в том же порядке: по ним устройство переводит номер из ответа модели обратно в факт */
+  factIds: string[]
+  /** Навыки кота о человеке — номер навыка для модели = место в списке */
+  skills: Array<{ name: string; when: string; steps: string; avoid?: string }>
+  skillIds: string[]
+  /** Ответы знакомства — ключи вариантов (подписи подставляет сервер) */
+  profile: { sphere?: string; hanging?: string; blocker?: string; motive?: string } | null
   /** Последние находки острова — напарник может вспоминать их в разговоре */
   recentFinds: Array<Pick<IslandFindEntry, 'name' | 'rarity' | 'date'>>
   /** Имя, которое человек дал существу (null — ещё не назвал) */
@@ -600,7 +849,8 @@ export function peekMemoryContext(): MemoryContext {
   const plan = peekPlan()
   const starts = peekStarts()
   const patterns = peekPatterns()
-  const notes = peekNotes()
+  // не больше лимита снимка (lib/ai/memory/schema.ts): лишний факт выключил бы память целиком
+  const facts = peekFacts().slice(0, 20)
   const finds = peekFinds()
   const companionName = peekCompanionName()
   return {
@@ -612,8 +862,33 @@ export function peekMemoryContext(): MemoryContext {
       fromPlan,
     })),
     patterns,
-    notes: notes.map((n) => n.text),
+    facts: facts.map((f) => ({ category: f.category, text: f.text, since: f.createdAt.slice(0, 10) })),
+    factIds: facts.map((f) => f.id),
+    ...(() => {
+      const skills = peekSkills()
+      return {
+        skills: skills.map(({ name, when, steps, avoid }) => ({ name, when, steps, avoid })),
+        skillIds: skills.map((s) => s.id),
+      }
+    })(),
+    profile: peekProfile(),
     recentFinds: finds.slice(-3).map(({ name, rarity, date }) => ({ name, rarity, date })),
     companionName,
   }
+}
+
+/** Ответы знакомства (lib/onboarding.ts хранит их сам) — только ключи; сервер проверит их по списку вариантов */
+function peekProfile(): MemoryContext['profile'] {
+  if (read<boolean>(KEYS.profileForgotten, false, (v): v is boolean => typeof v === 'boolean')) return null
+  // читаем сами, без read(): чужой ключ при неожиданной форме нельзя стирать — им владеет знакомство
+  let raw: unknown = null
+  try {
+    raw = isBrowser() ? JSON.parse(window.localStorage.getItem(KEYS.onboarding) ?? 'null') : null
+  } catch {
+    return null
+  }
+  if (!isObj(raw)) return null
+  const pick = (k: string) => (isStr(raw[k]) ? (raw[k] as string).slice(0, 20) : undefined)
+  const profile = { sphere: pick('sphere'), hanging: pick('hanging'), blocker: pick('blocker'), motive: pick('motive') }
+  return Object.values(profile).some(Boolean) ? profile : null
 }

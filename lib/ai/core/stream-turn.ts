@@ -1,7 +1,7 @@
 import { streamText, type ModelMessage, type TextStreamPart, type ToolSet } from 'ai'
 import { CRISIS_REPLY } from '../crisis'
 import { checkInput } from '../guards/input'
-import { checkOutput, echoWords, leakPrint, mentionsMedical, tidy, toolArgsOk, type OutputOpts } from '../guards/output'
+import { checkOutput, echoWords, leakPrint, mentionsMedical, tidy, toolArgsOk, type ClaimKind, type OutputOpts } from '../guards/output'
 import { modelChain, type ModelStep } from '../models'
 import { emit, type AttemptResult } from './hooks'
 import './latency' // наблюдатель задержек и адаптивная страховка подключаются вместе с ядром
@@ -48,7 +48,26 @@ export type StreamTurnInput = {
    * whole — разовые задачи (голос сессии, дробление): ответ держится целиком, проверяется и принимается задачей
    * (accept) — только тогда фиксируется; негодный ответ тихо уходит следующей модели.
    */
-  whole?: { accept: (text: string) => boolean }
+  whole?: { accept: (text: string) => boolean; internal?: boolean }
+  /**
+   * Проверка вызова инструмента по смыслу хода, сверх схемы: то, что знает только агент (какой список памяти видела
+   * модель, что сказал человек). false — вызов отбрасывается так же, как негодный по схеме
+   */
+  toolCheck?: (name: string, input: unknown) => boolean
+  /**
+   * Действия, о которых кот вправе говорить в прошедшем времени («забыл», «сохранил»), только если они случились:
+   * вызов одного из tools в этой попытке или (allowedFromStart) результат такого вызова уже в истории хода
+   */
+  claims?: { unlocks: Readonly<Record<string, readonly ClaimKind[]>>; fromStart: readonly ClaimKind[] }
+  /** разговор уже идёт и человек не здоровался — приветствие в начале ответа снимается */
+  noGreeting?: boolean
+  /**
+   * Обязательный инструмент на этом ходе (Hermes: маршрутизация явных намерений до модели). Человек прямо просит
+   * «запомни» / «забудь» — модель обязана вызвать инструмент памяти, а не пообещать словами (набор задач 12.11:
+   * «Давай зафиксируем это в памяти» без вызова). 'any' — обязателен какой-нибудь из доступных инструментов: «да, так
+   * и запиши» после плана — это savePlan, а не память, выбирает модель
+   */
+  requiredTool?: string
   signal?: AbortSignal
 }
 
@@ -95,6 +114,58 @@ const usageOf = (part: Part & { type: 'finish' }): Usage => ({
   cached: part.totalUsage?.inputTokenDetails?.cacheReadTokens,
 })
 
+/**
+ * Запрос без отброшенных инструментов — для повтора, когда ответ модели был только негодным вызовом. Модель знает
+ * из правил, что инструмент есть, и без прямой строки снова пытается его вызвать или говорит «забыл» словами (набор
+ * задач 12.11) — поэтому для этого повтора говорим прямо, что действия не было
+ */
+function isToolChoiceViolation(e: unknown): boolean {
+  const name = (e as { name?: unknown } | null)?.name
+  return name === 'AI_ToolChoiceViolationError' || (e instanceof Error && /required tool/i.test(e.message))
+}
+
+function withoutTools(req: TurnRequest, rejected: ReadonlySet<string>): TurnRequest {
+  const names = [...rejected].join(', ')
+  const note = rejected.has('memory')
+    ? 'Изменить память сейчас нельзя: того, о чём просят, в памяти нет, или это нельзя хранить. Ничего не записано и не забыто, поэтому не говори «запомнил», «забыл», «стёр». Честно и коротко скажи это своими словами и продолжи разговор.'
+    : `Сейчас инструменты ${names} недоступны: ответь человеку словами, без вызовов.`
+  return {
+    ...req,
+    instructions: `${req.instructions}\n\n${note}`,
+    tools: Object.fromEntries(Object.entries(req.tools ?? {}).filter(([name]) => !rejected.has(name))),
+    requiredTool: req.requiredTool && (req.requiredTool === 'any' || rejected.has(req.requiredTool)) ? undefined : req.requiredTool,
+  }
+}
+
+/**
+ * повтор после сбоя провайдера: один раз, пауза 0,6–0,9 с, только если до предела фиксации ≥ 2,5 с (обычный ответ
+ * Gemini — около 2 с; при 4 с у дробления с пределом 8 с повтор не успевал — набор задач 12.11)
+ */
+/** сколько запусков сверх длины цепочки допускается за ход */
+const MAX_EXTRA_ATTEMPTS = 2
+export const RETRY = { rounds: 1, baseMs: 600, jitterMs: 300, minLeftMs: 2500 } as const
+
+/** сеть, 429 и 5xx — повод повторить; 4xx (кроме 429) — нет: запрос негоден, повтор даст то же */
+function retryable(a: { result?: AttemptResult; errorStatus?: number; textLength?: number; truncated?: boolean; skippedRequiredTool?: boolean }): boolean {
+  // модель ответила словами вместо обязательного вызова — это её выбор, а не сбой сети: повтор даст то же и сожжёт
+  // единственную попытку повтора (аудит 12.11)
+  if (a.skippedRequiredTool) return false
+  // провайдер оборвал ответ почти сразу (AnyModel 12.11: finish=length на 16 токенах при лимите 400) — сбой, не модель
+  if (a.result === 'length' || (a.truncated && a.result === 'empty')) return (a.textLength ?? 0) < 120
+  if (a.result !== 'error') return false
+  const s = a.errorStatus
+  return s === undefined || s === 408 || s === 429 || s >= 500
+}
+
+/** сбой проверки агента — вызов не проходит (fail-closed: лучше не записать, чем записать непроверенное) */
+function safeCheck(check: (name: string, input: unknown) => boolean, name: string, input: unknown): boolean {
+  try {
+    return check(name, input)
+  } catch {
+    return false
+  }
+}
+
 class Attempt {
   readonly ctrl = new AbortController()
   readonly t0 = Date.now()
@@ -109,24 +180,56 @@ class Attempt {
   endedText: Part | null = null
   /** режим whole: весь текст ответа до проверки */
   private full = ''
+
+  /** поток закончился по лимиту длины (причина остановки length) */
+  truncated = false
+  /** модель не вызвала обязательный инструмент (AI SDK: ToolChoiceViolation) */
+  skippedRequiredTool = false
+
+  /** сколько текста модель успела написать (для решения «провайдер оборвал» или «модель упёрлась в лимит») */
+  get textLength(): number {
+    return this.full.length + this.guard.text.length
+  }
   /** форма ошибки провайдера для журнала (без тела запроса и ответа) */
   errorStatus?: number
+  /** чем закончилась попытка (для решения о повторе) */
+  result?: AttemptResult
+  /** инструменты, чьи вызовы в этой попытке отброшены (схема, правила, проверка хода) */
+  readonly rejectedTools = new Set<string>()
 
   constructor(
     readonly step: ModelStep,
     private readonly opts: OutputOpts,
-    private readonly whole?: { accept: (text: string) => boolean },
+    private readonly whole?: { accept: (text: string) => boolean; internal?: boolean },
     /** человек сам назвал лекарство — его слова в плане не нарушение */
     private readonly personMedical = false,
+    private readonly toolCheck?: (name: string, input: unknown) => boolean,
+    private readonly claimUnlocks: Readonly<Record<string, readonly ClaimKind[]>> = {},
+    /**
+     * вызов инструмента обязателен: текст до вызова держится в буфере и не фиксирует попытку. Набор задач 12.11:
+     * Gemini писала «Отлично, завтра в 10 открываем файл», текст уходил человеку, и только в конце приходило «вызова
+     * не было» — план не сохранён, а следующей модели отдать ход уже нельзя
+     */
+    private readonly mustCall = false,
   ) {
-    this.guard = new SentenceGuard(opts)
+    // заявление «забыл/сохранил» проверяется по этой попытке: её собственный вызов инструмента его разрешает —
+    // только своё: план не разрешает «забыл про диплом» (аудит 12.11)
+    const base = opts.claim
+    this.guard = new SentenceGuard(base ? { ...opts, claim: { allowed: (k) => base.allowed(k) || this.acted.has(k) } } : opts)
   }
+
+  /** какие заявления уже правда в этой попытке (вызов инструмента прошёл все проверки) */
+  private readonly acted = new Set<ClaimKind>()
 
   /** режим whole: проверить и принять ответ целиком в конце генерации */
   private finishWhole(finish: Part): { out: Part[]; fail?: AttemptResult; done?: boolean } {
     const text = tidy(this.full)
-    const verdict = checkOutput(text, this.opts)
-    if (!verdict.ok) return { out: [], fail: verdict.reason }
+    // служебная задача (выжимка памяти): ответ не показывается человеку, задача сама проверяет каждую строку теми же
+    // правилами — одна негодная строка не должна губить весь ответ
+    if (!this.whole!.internal) {
+      const verdict = checkOutput(text, this.opts)
+      if (!verdict.ok) return { out: [], fail: verdict.reason }
+    } else if (text.length > this.opts.maxChars) return { out: [], fail: 'length' }
     let accepted = false
     try {
       accepted = this.whole!.accept(text)
@@ -157,7 +260,10 @@ class Attempt {
         this.usage = usageOf(part)
         // оборванный по длине ответ не принимается: «Ты уже начал, и это главное, давай теперь» нельзя показывать
         // (самопроверка 12.11: у чата такая защита была, у разовых задач — нет)
-        if (part.finishReason === 'length') return { out, fail: 'length' }
+        if (part.finishReason === 'length') {
+          this.truncated = true
+          return { out, fail: 'length' }
+        }
         return this.finishWhole(part)
       }
       return { out }
@@ -177,7 +283,7 @@ class Attempt {
         if (s.kind === 'violation') return { out, fail: s.reason }
         if (s.kind === 'release') {
           out.push({ ...part, text: s.text })
-          this.committed = true
+          this.commitText()
         }
         return { out }
       }
@@ -187,6 +293,7 @@ class Attempt {
         this.endedText = part
         return { out }
       case 'finish-step': {
+        if (part.finishReason === 'length') this.truncated = true
         const closed = this.closeText(part.finishReason === 'length')
         if (closed.fail) return closed
         out.push(...closed.out, part)
@@ -197,12 +304,37 @@ class Attempt {
         onTool(part.toolName, valid)
         // негодный вызов человеку не уходит: клиент AI SDK считает вызов с ошибкой «завершённым» и сам шлёт
         // историю заново — модель повторяла бы вызов платной петлёй (находка аудита 12.11)
-        if (!valid) return { out }
+        if (!valid) {
+          this.rejectedTools.add(part.toolName)
+          return { out }
+        }
         // аргументы пишет модель и их увидит человек (карточка плана, кнопка, «запомнил: …») — это тоже вывод кота:
         // та же проверка, что у текста. Раньше ссылка или доза в аргументе шли мимо правил (находка аудита 12.11)
         if (!toolArgsOk(part.input, { echo: this.opts.echo, medical: this.personMedical })) {
           onTool(part.toolName, false)
+          this.rejectedTools.add(part.toolName)
           return { out }
+        }
+        if (this.toolCheck && !safeCheck(this.toolCheck, part.toolName, part.input)) {
+          onTool(part.toolName, false)
+          this.rejectedTools.add(part.toolName)
+          return { out }
+        }
+        this.toolCalled = true // до закрытия текста: пустой текст рядом с вызовом — норма
+        const unlocks = this.claimUnlocks[part.toolName]
+        if (unlocks?.length) {
+          for (const k of unlocks) this.acted.add(k)
+          // придержанное «Запомнил.» теперь правда — выпускаем его до вызова: текст уже закончен — закрываем
+          // его сейчас, ещё идёт — выпускаем законченные предложения
+          if (this.endedText) {
+            const closed = this.closeText(false)
+            if (closed.fail) return closed
+            out.push(...closed.out)
+          } else {
+            const held = this.guard.push('')
+            if (held.kind === 'violation') return { out, fail: held.reason }
+            if (held.kind === 'release' && this.openText) out.push({ type: 'text-delta', id: this.openText, text: held.text } as Part)
+          }
         }
         out.push(part)
         this.toolCalled = true
@@ -215,10 +347,18 @@ class Attempt {
         return { out, fail: 'timeout' }
       case 'finish': {
         this.usage = usageOf(part)
+        if (part.finishReason === 'length') this.truncated = true
         const closed = this.closeText(part.finishReason === 'length') // если finish-step не пришёл
         if (closed.fail) return closed
         out.push(...closed.out)
-        if (!this.committed) return { out, fail: 'empty' }
+        if (!this.committed) {
+          // вызов был, но его отбросили правила, — это не нарушение обязательности (повтор без инструмента)
+          if (this.mustCall && !this.toolCalled && this.rejectedTools.size === 0) {
+            this.skippedRequiredTool = true
+            return { out, fail: 'no-tool' }
+          }
+          return { out, fail: 'empty' }
+        }
         out.push(part)
         return { out, done: true }
       }
@@ -231,7 +371,16 @@ class Attempt {
   private failWith(error: unknown): { out: Part[]; fail: AttemptResult } {
     const status = (error as { statusCode?: unknown } | null)?.statusCode
     if (typeof status === 'number') this.errorStatus = status
+    if (isToolChoiceViolation(error)) {
+      this.skippedRequiredTool = true
+      return { out: [], fail: 'no-tool' }
+    }
     return { out: [], fail: 'error' }
+  }
+
+  /** выпущенный текст фиксирует попытку, если вызов инструмента не обязателен или уже был */
+  private commitText(): void {
+    if (!this.mustCall || this.toolCalled) this.committed = true
   }
 
   /** закрыть отложенный текст: выпустить остаток (или отбросить недописанное при обрыве по длине) */
@@ -248,7 +397,7 @@ class Attempt {
     }
     if (s.kind === 'release') {
       out.push({ type: 'text-delta', id: (end as { id: string }).id, text: s.text } as Part)
-      this.committed = true
+      this.commitText()
     }
     out.push(end)
     this.openText = null
@@ -298,8 +447,19 @@ class Race {
   private readonly attempts: Attempt[] = []
   private winner: Attempt | null = null
   private launched = 0
+  /** сколько раз цепочка повторялась после сбоя провайдера (не больше RETRY.rounds) */
+  private retryRound = 0
+  private retryTimer?: ReturnType<typeof setTimeout>
+  /** повтор запланирован: «все упали» сейчас не значит «сдаёмся» */
+  private retryPending = false
+  /** сколько попыток нарушили обязательный вызов инструмента */
+  private violations = 0
+  /** повтор без отброшенных инструментов уже был */
+  private toolRetried = false
   /** исход решён: новые попытки не запускаются, части проигравших игнорируются */
   private settled = false
+  /** ответ победителя оборван после фиксации — причина */
+  private cut?: AttemptResult
   private closed = false
   private turnEnded = false
   private hedgeTimer?: ReturnType<typeof setTimeout>
@@ -329,15 +489,20 @@ class Race {
     }
     // middleware запроса (Hermes llm_request): может переставить цепочку, поправить инструкцию и набор инструментов
     this.req = applyRequestMiddleware(
-      { instructions: input.instructions, messages: input.messages, chain: modelChain(ctx.task), tools: input.tools, hedgeAfterMs: input.hedgeAfterMs },
+      { instructions: input.instructions, messages: input.messages, chain: modelChain(ctx.task), tools: input.tools, requiredTool: input.requiredTool, hedgeAfterMs: input.hedgeAfterMs },
       { ctx, input: verdict },
     )
+    this.personMedical = mentionsMedical(input.echoTexts ?? input.userTexts)
     this.guardOpts = {
+      personMedical: this.personMedical,
       maxChars: input.maxChars,
       echo: echoWords(input.echoTexts ?? input.userTexts),
       leak: leakPrint(this.req.instructions),
+      claim: input.claims ? { allowed: (k: ClaimKind) => input.claims!.fromStart.includes(k) } : undefined,
+      // речь кота — без канцелярита; служебные задачи (выжимка, вспоминание) человеку не показываются
+      plainSpeech: !input.whole?.internal,
+      noGreeting: input.noGreeting,
     }
-    this.personMedical = mentionsMedical(input.echoTexts ?? input.userTexts)
     const total = AbortSignal.timeout(input.totalTimeoutMs)
     this.all = input.signal ? AbortSignal.any([input.signal, total]) : total
     // уже отменённый сигнал событие 'abort' не пошлёт — проверяем сразу (иначе ход висел до таймера)
@@ -362,11 +527,78 @@ class Race {
     clearTimeout(this.hedgeTimer)
     const chain = this.req.chain
     if (this.winner || this.settled || this.launched >= chain.length || this.all.aborted) return this.giveUpIfExhausted()
-    const a = new Attempt(chain[this.launched++], this.guardOpts, this.input.whole, this.personMedical)
+    this.startAttempt(chain[this.launched++], this.launched > 1)
+    // «основная медленная» (firstHedgeMs = 0) ускоряет только ВТОРУЮ модель; третья ждёт обычную задержку. Раньше ноль
+    // стоял у всех, и все три модели стартовали в один тик — ход стоил втрое (аудит 12.11)
+    const wait = this.launched === 1 ? (this.req.firstHedgeMs ?? this.req.hedgeAfterMs) : this.req.hedgeAfterMs
+    if (this.launched < chain.length) this.hedgeTimer = setTimeout(() => this.launchNext(), wait)
+  }
+
+  private startAttempt(step: TurnRequest['chain'][number], hedge: boolean, retry = this.retryRound > 0): void {
+    // общий потолок платных вызовов на ход: пути перезапуска независимы (повтор сбоя, повтор без инструмента, снятие
+    // обязательности) и в сумме давали до 6 запусков при цепочке из трёх (аудит 12.11)
+    if (this.attempts.length >= this.req.chain.length + MAX_EXTRA_ATTEMPTS) return
+    const a = new Attempt(step, this.guardOpts, this.input.whole, this.personMedical, this.input.toolCheck, this.input.claims?.unlocks, this.toolChoice() !== undefined)
     this.attempts.push(a)
-    emit({ type: 'model.start', model: a.step.id, hedge: this.launched > 1 }, this.ctx)
+    emit({ type: 'model.start', model: a.step.id, hedge, ...(retry ? { retry: true } : {}) }, this.ctx)
     void this.run(a)
-    if (this.launched < chain.length) this.hedgeTimer = setTimeout(() => this.launchNext(), this.req.hedgeAfterMs)
+  }
+
+  /**
+   * Перезапуск упавшей модели сразу, не дожидаясь остальных (Hermes: ретрай — свойство вызова, а не всей цепочки).
+   * Набор задач 12.11: Gemini обрывалась через 4 с, DeepSeek думала до предела фиксации — повтор цепочки «когда все
+   * упали» не успевал. Два случая:
+   *  - ответ был только вызовом, который правила отбросили, — та же модель сразу, но без этих инструментов;
+   *  - сбой провайдера (сеть, 408, 429, 5xx, обрыв почти без текста) — та же модель после короткой паузы, один раз.
+   */
+  private relaunchFailed(a: Attempt): void {
+    if (this.winner || this.settled || this.all.aborted) return
+    const left = this.input.commitTimeoutMs - (Date.now() - this.ctx.startedAt)
+    // модель не вызвала обязательный инструмент. Провайдеры нарушают tool_choice по-разному и не всегда (набор задач
+    // 12.11: Gemini иногда отвечает текстом, DeepSeek на том же ходе вызывает): сначала требование передаётся
+    // следующей модели цепочки сразу, без ожидания страховки; только когда нарушили все — обязательность снимаем, и
+    // эта модель отвечает как умеет (лучше ответ словами, чем заготовка)
+    if (a.skippedRequiredTool && this.req.requiredTool) {
+      // следующую модель запустит вызывающий (launchNext после relaunchFailed). Все уже запущены — обязательность
+      // снимаем сразу, не дожидаясь ещё идущих: медленная модель продолжает с требованием, а эта отвечает без него
+      // параллельно (набор задач 12.11: обе Gemini нарушили, DeepSeek думала дольше предела — человек получал заготовку)
+      // После второго нарушения требование снимается тоже: две модели подряд отказались вызывать — третья (медленная)
+      // может не успеть до предела (набор задач 12.11: «запомни, что я ленивый» — обе Gemini отказались, DeepSeek не успела)
+      this.violations++
+      if (this.launched < this.req.chain.length && this.violations < 2) return
+      this.req = { ...this.req, requiredTool: undefined }
+      // не успеть до предела фиксации — не запускать (платный вызов впустую)
+      if (left < RETRY.minLeftMs) return
+      return this.startAttempt(a.step, true, true)
+    }
+    if (a.skippedRequiredTool) return
+    if (a.result === 'empty' && a.rejectedTools.size > 0 && !this.toolRetried && this.req.tools && left >= RETRY.minLeftMs) {
+      this.toolRetried = true
+      const rejected = a.rejectedTools
+      // модель знает из правил, что инструмент есть, и без прямой строки снова пытается его вызвать (набор задач:
+      // повтор без инструмента возвращал пустоту) — для этого повтора говорим прямо
+      this.req = withoutTools(this.req, rejected)
+      emit({ type: 'tool.retry', without: [...rejected] }, this.ctx)
+      return this.startAttempt(a.step, true, true)
+    }
+    if (this.retryRound >= RETRY.rounds || !retryable(a)) return
+    const delay = RETRY.baseMs * 2 ** this.retryRound + Math.floor(Math.random() * RETRY.jitterMs)
+    if (left < delay + RETRY.minLeftMs) return
+    this.retryRound++
+    this.retryPending = true
+    this.retryTimer = setTimeout(() => {
+      this.retryPending = false
+      if (this.settled || this.winner) return
+      this.startAttempt(a.step, true, true)
+    }, delay)
+  }
+
+  /** обязательный вызов для AI SDK — только если такой инструмент есть в наборе этого хода */
+  private toolChoice(): 'required' | { type: 'tool'; toolName: string } | undefined {
+    const { requiredTool, tools } = this.req
+    if (!requiredTool || !tools) return undefined
+    if (requiredTool === 'any') return Object.keys(tools).length ? 'required' : undefined
+    return tools[requiredTool] ? { type: 'tool', toolName: requiredTool } : undefined
   }
 
   private async run(a: Attempt): Promise<void> {
@@ -377,6 +609,11 @@ class Race {
         instructions: this.req.instructions,
         messages: this.req.messages,
         tools: this.req.tools,
+        // обязательный конкретный инструмент — модели предлагается только он: Gemini через AnyModel соблюдает
+        // tool_choice лишь при ОДНОМ инструменте в запросе, при двух и больше молча отвечает текстом (замер 12.11:
+        // 3 из 3 запросов с двумя инструментами без вызова, 3 из 3 с одним — с вызовом)
+        ...(this.toolChoice() ? { toolChoice: this.toolChoice() } : {}),
+        ...(typeof this.toolChoice() === 'object' ? { activeTools: [this.req.requiredTool!] } : {}),
         maxOutputTokens: this.input.maxOutputTokens,
         maxRetries: 0,
         abortSignal: AbortSignal.any([this.all, a.ctrl.signal]),
@@ -395,13 +632,20 @@ class Race {
         if (r.done) return this.finishWinner(a, 'ok')
       }
       this.fail(a, 'error') // поток кончился без finish (обрыв)
-    } catch {
+    } catch (e) {
       if (a.dead) return
+      const status = (e as { statusCode?: unknown } | null)?.statusCode
+      if (typeof status === 'number') a.errorStatus ??= status
+      if (isToolChoiceViolation(e)) a.skippedRequiredTool = true
       const timedOut = this.all.aborted
-      if (a === this.winner) this.finishWinner(a, timedOut ? 'timeout' : 'error')
+      const result: AttemptResult = timedOut ? 'timeout' : a.skippedRequiredTool ? 'no-tool' : 'error'
+      if (a === this.winner) this.finishWinner(a, result)
       else {
-        this.endAttempt(a, timedOut ? 'timeout' : 'error')
-        if (!timedOut) this.launchNext()
+        this.endAttempt(a, result)
+        if (!timedOut) {
+          this.relaunchFailed(a)
+          this.launchNext()
+        }
         this.giveUpIfExhausted()
       }
     }
@@ -421,8 +665,9 @@ class Race {
   private fail(a: Attempt, result: AttemptResult): void {
     if (a.dead) return
     if (a === this.winner) return this.finishWinner(a, result)
-    // до фиксации: человек ничего не видел — тихо берём следующую модель
+    // до фиксации: человек ничего не видел — тихо берём следующую модель (и, если это сбой, перезапускаем упавшую)
     this.endAttempt(a, result)
+    this.relaunchFailed(a)
     this.launchNext()
     this.giveUpIfExhausted()
   }
@@ -433,7 +678,11 @@ class Race {
    */
   private finishWinner(a: Attempt, result: AttemptResult, outcome: Outcome = 'model'): void {
     this.endAttempt(a, result)
-    if (result !== 'ok') this.write(a.cutParts())
+    if (result !== 'ok') {
+      this.write(a.cutParts())
+      // обрезанный ответ отличим в журнале от целого: без этого долю обрывов не посчитать (аудит 12.11)
+      this.cut = result
+    }
     this.settle(outcome, a)
   }
 
@@ -447,7 +696,51 @@ class Race {
   }
 
   private giveUpIfExhausted(): void {
-    if (!this.winner && this.launched >= this.req.chain.length && this.attempts.every((a) => a.dead)) this.giveUp()
+    if (this.winner || this.settled || this.retryPending || this.launched < this.req.chain.length || !this.attempts.every((a) => a.dead)) return
+    if (this.retryLater() || this.retryWithoutRejected()) return
+    this.giveUp()
+  }
+
+  /**
+   * Повтор после сбоя провайдера (Hermes: ретраи с паузой на сеть и 429/5xx). Все модели цепочки упали именно сбоем,
+   * а не отказом проверки или таймаутом — значит, провайдер «моргнул»: пауза с разбросом и ещё один проход цепочки,
+   * если до предела фиксации остаётся время. Отказ проверки вывода не повторяем: модель ответила, ответ негоден.
+   */
+  /**
+   * Модель ответила только вызовом, который правила отбросили (набор задач 12.11: обе модели пытались записать
+   * «должен банку 80 тысяч» и больше ничего не сказали — человек получал заготовку). Один повтор цепочки без
+   * этих инструментов: кот ответит словами, а запрещённое так и не запишется.
+   */
+  private retryWithoutRejected(): boolean {
+    if (this.toolRetried || this.all.aborted || !this.req.tools) return false
+    const rejected = new Set(this.attempts.flatMap((a) => (a.result === 'empty' ? [...a.rejectedTools] : [])))
+    if (rejected.size === 0) return false
+    const left = this.input.commitTimeoutMs - (Date.now() - this.ctx.startedAt)
+    if (left < RETRY.minLeftMs) return false
+    this.toolRetried = true
+    this.req = withoutTools(this.req, rejected)
+    emit({ type: 'tool.retry', without: [...rejected] }, this.ctx)
+    this.launched = 0
+    this.launchNext()
+    return true
+  }
+
+  private retryLater(): boolean {
+    if (this.retryRound >= RETRY.rounds || this.all.aborted) return false
+    const failed = this.attempts.filter((a) => a.result !== 'cancelled')
+    if (failed.length === 0 || !failed.every(retryable)) return false
+    const delay = RETRY.baseMs * 2 ** this.retryRound + Math.floor(Math.random() * RETRY.jitterMs)
+    const left = this.input.commitTimeoutMs - (Date.now() - this.ctx.startedAt)
+    if (left < delay + RETRY.minLeftMs) return false
+    this.retryRound++
+    this.retryPending = true
+    this.retryTimer = setTimeout(() => {
+      this.retryPending = false
+      if (this.settled || this.winner) return
+      this.launched = 0
+      this.launchNext()
+    }, delay)
+    return true
   }
 
   /** сработал сигнал: человек отменил запрос или вышло общее время хода */
@@ -463,6 +756,7 @@ class Race {
   private endAttempt(a: Attempt, result: AttemptResult): void {
     if (a.dead) return
     a.dead = true
+    a.result = result
     a.ctrl.abort()
     emit(
       {
@@ -476,13 +770,16 @@ class Race {
   /** исход хода: turn.end и закрытие потока — ровно один раз */
   private settle(outcome: Outcome, a?: Attempt): void {
     this.settled = true
+    clearTimeout(this.retryTimer)
     clearTimeout(this.hedgeTimer)
     clearTimeout(this.commitTimer)
     this.detach()
     if (!this.turnEnded) {
       this.turnEnded = true
       emit(
-        { type: 'turn.end', outcome, model: a?.step.id, ms: Date.now() - this.ctx.startedAt, inTokens: a?.usage.in, outTokens: a?.usage.out },
+        // attempts — сколько платных вызовов сделал ход: токены известны только у победителя (у отменённых нет finish),
+        // и без этого числа перерасход страховки в журнале не виден (аудит 12.11)
+        { type: 'turn.end', outcome, model: a?.step.id, ms: Date.now() - this.ctx.startedAt, inTokens: a?.usage.in, outTokens: a?.usage.out, attempts: this.attempts.length, ...(this.cut ? { cut: this.cut } : {}) },
         this.ctx,
       )
       this.onSettled({ outcome, model: a?.step.id })

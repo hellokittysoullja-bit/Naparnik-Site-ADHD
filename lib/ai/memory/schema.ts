@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import { FACT_CATEGORIES, FACT_LIMITS, type FactCategory } from './facts'
+import { SKILL_LIMITS } from './skills'
 
 /**
  * Снимок памяти о человеке — форма, в которой память входит в ход (ядро не знает, где она хранится).
@@ -8,7 +10,10 @@ import { z } from 'zod'
  */
 const clip = (n: number) => z.string().transform((s) => s.slice(0, n))
 
-export const MEMORY_LIMITS = { notes: 6, starts: 5, finds: 3, field: 300 } as const
+export const MEMORY_LIMITS = { notes: 6, starts: 5, finds: 3, field: 300, facts: FACT_LIMITS.active } as const
+
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+const oneOf = <T extends string>(values: readonly [T, ...T[]]) => z.enum(values).optional().catch(undefined)
 
 export const MemorySnapshotSchema = z.object({
   plan: z
@@ -23,8 +28,55 @@ export const MemorySnapshotSchema = z.object({
     favoriteHour: z.number().int().min(0).max(23).nullable(),
     lastStartDate: clip(40).nullable(),
     daysAway: z.number().int().min(0).max(100_000).nullable().optional(),
+    // выводы кода по стартам (ярус Т4) — с основанием «n из of», без него кот не вправе говорить «обычно»
+    startWindow: z
+      .object({ from: z.number().int().min(0).max(23), to: z.number().int().min(0).max(23), n: z.number().int().min(0), of: z.number().int().min(1) })
+      .nullable()
+      .optional()
+      .catch(undefined),
+    durations: z
+      .array(z.object({ minutes: z.number().int().min(1).max(180), done: z.number().int().min(0), of: z.number().int().min(1) }))
+      .max(3)
+      .optional()
+      .catch(undefined),
   }),
-  notes: z.array(clip(MEMORY_LIMITS.field)).max(MEMORY_LIMITS.notes),
+  // факты о человеке (ярус Т3): номер факта для модели — его место в этом списке (устройство помнит, какой id
+  // стоял на каком месте). Прежнее поле notes принимается от старых версий страницы до обновления
+  facts: z
+    .array(
+      z.object({
+        category: z.enum(FACT_CATEGORIES as [FactCategory, ...FactCategory[]]),
+        text: clip(FACT_LIMITS.text),
+        since: day.optional().catch(undefined),
+      }),
+    )
+    .max(MEMORY_LIMITS.facts)
+    .optional(),
+  notes: z.array(clip(MEMORY_LIMITS.field)).max(MEMORY_LIMITS.notes).optional(),
+  // навыки кота об этом человеке (memory/skills.ts): номер — место в списке, как у фактов
+  skills: z
+    .array(
+      z.object({
+        name: clip(SKILL_LIMITS.name),
+        when: clip(SKILL_LIMITS.when),
+        steps: clip(SKILL_LIMITS.steps),
+        avoid: clip(SKILL_LIMITS.avoid).optional(),
+      }),
+    )
+    .max(SKILL_LIMITS.active)
+    .optional()
+    .catch(undefined),
+  // ответы знакомства (ярус Т1) — ключи вариантов, подписи подставляет сервер (memory/render.ts)
+  profile: z
+    .object({
+      sphere: oneOf(['study', 'work', 'home', 'message', 'unsure']),
+      hanging: oneOf(['day', 'week', 'month', 'unknown']),
+      blocker: oneOf(['where', 'phone', 'fear', 'boring', 'tired']),
+      motive: oneOf(['relief', 'people', 'safety', 'rest', 'proof']),
+    })
+    .nullable()
+    .optional()
+    .catch(undefined),
   recentFinds: z
     .array(z.object({ name: clip(80), rarity: clip(20), date: clip(40) }))
     .max(MEMORY_LIMITS.finds)

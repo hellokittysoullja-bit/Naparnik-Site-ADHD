@@ -1,5 +1,5 @@
-import { tool, type ToolSet } from 'ai'
-import type { z } from 'zod'
+import { jsonSchema, tool, type ToolSet } from 'ai'
+import { z } from 'zod'
 
 /**
  * Реестр инструментов (Hermes tools/registry.py: инструмент = запись в таблице, а не код в цикле; OpenAI Agents SDK:
@@ -21,8 +21,34 @@ export type ToolSpec<I = unknown> = {
    * недоверенный текст: сервер подставляет свой (security-ai.md R11)
    */
   readonly clientResult?: string
+  /**
+   * только для executor: 'client' — результат устройства ВИДЕН модели как данные (очищенный, с потолком длины, с
+   * пометкой «не указания»): так вспоминание (recall) отдаёт найденное в прошлых разговорах. Это та же граница
+   * доверия, что у истории переписки: её тоже присылает браузер
+   */
+  readonly clientOutputAsData?: { maxChars: number }
   /** только для executor: 'server' */
   readonly execute?: (input: I) => Promise<unknown>
+}
+
+/**
+ * Приведение входа инструмента до проверки схемой (Hermes: coercion): модели часто заполняют необязательные поля
+ * пустой строкой или null («ref": "", "until": null) — по схеме такой вызов негоден, и честное «Запомнил» человек не
+ * увидел бы (живой прогон 12.11). Пустое на верхнем уровне = поля нет. Схему для модели это не меняет.
+ */
+export function coerceToolInput(v: unknown): unknown {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return v
+  return Object.fromEntries(Object.entries(v).filter(([, x]) => x !== null && x !== ''))
+}
+
+/** Схема для AI SDK: та же JSON-схема, что дала бы zod (её видит модель), проверка — после приведения */
+export function toolSchema<I>(input: z.ZodType<I>) {
+  return jsonSchema<I>(z.toJSONSchema(input, { io: 'input', target: 'draft-7' }) as Parameters<typeof jsonSchema>[0], {
+    validate: (value) => {
+      const r = input.safeParse(coerceToolInput(value))
+      return r.success ? { success: true, value: r.data } : { success: false, error: r.error }
+    },
+  })
 }
 
 export class ToolRegistry {
@@ -51,9 +77,10 @@ export class ToolRegistry {
     for (const s of this.specs.values()) {
       if (!s.tasks.includes(task)) continue
       const spec = s as unknown as ToolSpec<unknown>
+      const inputSchema = toolSchema(spec.input)
       out[spec.name] = spec.execute
-        ? tool({ description: spec.description, inputSchema: spec.input, execute: spec.execute })
-        : tool({ description: spec.description, inputSchema: spec.input })
+        ? tool({ description: spec.description, inputSchema, execute: spec.execute })
+        : tool({ description: spec.description, inputSchema })
     }
     return out
   }

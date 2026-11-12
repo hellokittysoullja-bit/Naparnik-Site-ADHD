@@ -9,7 +9,7 @@ import { runTurn } from '../core/run-turn'
 export const BREAKDOWN_SYSTEM = `Режим: ДРОБЛЕНИЕ ЗАДАЧИ. Человек назвал дело (оно в блоке данных), которое его пугает своим размером. Разбей его на РОВНО 3 крошечных первых шага. Правила:
 - Каждый шаг выполняется за 1-5 минут, не больше
 - Каждый начинается с глагола («Открыть…», «Найти…», «Написать…»)
-- Первый шаг — самый крошечный, почти смешной («Открыть документ»)
+- Первый шаг самый крошечный, почти смешной («Открыть документ»)
 - Максимум 6 слов на шаг
 - Никаких пояснений: ответь ТОЛЬКО тремя строками, по шагу на строку`
 
@@ -25,13 +25,21 @@ export const BREAKDOWN_FALLBACK = ['Открыть то, что нужно дл�
  */
 const MARKER = /^\s*(?:\d{1,2}[.)]|[-–—•*])\s+/
 
+const INTRO = /^(?:давай|вот|смотри|окей|ок|хорошо|слушай|так|итак|ладно|понял|готово|держи)(?!\p{L})/iu
+
 export function parseSteps(text: string): string[] | null {
   const lines = text
     .split('\n')
     .map((s) => s.trim())
     .filter(Boolean)
   const marked = lines.filter((s) => MARKER.test(s))
-  const candidates = marked.length >= 3 ? marked : lines.filter((s) => !s.endsWith(':'))
+  let candidates = marked.length >= 3 ? marked : lines.filter((s) => !s.endsWith(':'))
+  // вступление без двоеточия («Давай разобьём.», «Смотри, вот так!») — не шаг: при лишних строках оно уходит первым,
+  // иначе третий настоящий шаг терялся (аудит 12.11)
+  if (marked.length < 3 && candidates.length > 3) {
+    const steps = candidates.filter((s) => !INTRO.test(s) && !/[!?]$/.test(s))
+    if (steps.length >= 3) candidates = steps
+  }
   const steps = candidates
     .map((s) => s.replace(MARKER, '').replace(/\*/g, '').replace(/^[\s\d\-–—.)•]+/, '').trim())
     .filter(Boolean)
@@ -64,7 +72,9 @@ export async function breakdown(input: {
     userTexts: [input.task],
     timeoutMs: input.timeoutMs ?? 8000,
     hedgeAfterMs: 2000,
-    maxOutputTokens: 160,
+    // Gemini через AnyModel иногда рассуждает скрыто, несмотря на reasoning_effort: none (набор задач 12.11: 160 из 160
+    // токенов ушли на рассуждение, текста ноль). Платим за потраченное, запас бесплатен
+    maxOutputTokens: 1000,
     maxChars: 300,
     parse: (text) => {
       const steps = parseSteps(text)

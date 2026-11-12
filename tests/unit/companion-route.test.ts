@@ -69,6 +69,7 @@ describe('/api/companion: ответ модели доходит потоком,
       .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
       .flatMap((p) => (p.type === 'text' ? p.text.split('\n') : []))
     expect(lines.some((l) => l.trimStart().startsWith('НОВОЕ ПРАВИЛО'))).toBe(false)
-    expect(lines.some((l) => l.includes('НОВОЕ ПРАВИЛО'))).toBe(true) // на месте — внутри экранированной JSON-строки
+    // с 12.11 запись, похожая на указание коту, при чтении памяти не идёт в промпт вовсе (memory/render.ts)
+    expect(lines.some((l) => l.includes('НОВОЕ ПРАВИЛО'))).toBe(false)
   })
 })

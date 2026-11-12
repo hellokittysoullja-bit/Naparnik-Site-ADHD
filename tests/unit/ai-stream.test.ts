@@ -72,13 +72,33 @@ describe('проверка по предложениям', () => {
   it('держит текст до конца предложения и выпускает проверенное', () => {
     const g = new SentenceGuard({ maxChars: 200 })
     expect(g.push('Давай начнём')).toEqual({ kind: 'hold' })
-    expect(g.push(' с файла. Отк')).toEqual({ kind: 'release', text: 'Давай начнём с файла.' })
-    expect(g.end()).toEqual({ kind: 'release', text: ' Отк' })
+    // первый выпуск ждёт второго предложения: нарушение в нём должно браковать попытку, а не обрывать ответ
+    expect(g.push(' с файла. Отк')).toEqual({ kind: 'hold' })
+    expect(g.push('рой его. Я')).toEqual({ kind: 'release', text: 'Давай начнём с файла. Открой его.' })
+    expect(g.push(' рядом. И')).toEqual({ kind: 'release', text: ' Я рядом.' })
+    expect(g.end()).toEqual({ kind: 'release', text: ' И' })
+  })
+  it('короткий ответ из одного предложения выходит в конце текста', () => {
+    const g = new SentenceGuard({ maxChars: 200 })
+    expect(g.push('Давай начнём с файла.')).toEqual({ kind: 'hold' })
+    expect(g.end()).toEqual({ kind: 'release', text: 'Давай начнём с файла.' })
+  })
+  it('казённая фраза в середине начатого ответа пропускается, ответ продолжается (аудит 12.11)', () => {
+    const g = new SentenceGuard({ maxChars: 300, plainSpeech: true })
+    expect(g.push('Ого, целый абзац. Это мощно. ').kind).toBe('release')
+    expect(g.push('В рамках этого осуществим отдых. ')).toEqual({ kind: 'hold' })
+    expect(g.push('Какой шаг дальше? ')).toEqual({ kind: 'release', text: ' Какой шаг дальше?' })
+  })
+  it('частые казённые слова заменяются живыми, а не бракуют ответ', () => {
+    const g = new SentenceGuard({ maxChars: 300, plainSpeech: true })
+    expect(g.push('Что у тебя на повестке дня? Давай зафиксируем первый шаг. ')).toEqual({ kind: 'release', text: 'Что у тебя на очереди? Давай запишем первый шаг.' })
   })
   it('не выпускает предложение со стыдом и меняет двойные звёздочки на одиночные', () => {
     const g = new SentenceGuard({ maxChars: 200 })
-    expect(g.push('Это **первый шаг**. ')).toEqual({ kind: 'release', text: 'Это *первый шаг*.' })
+    expect(g.push('Это **первый шаг**. Он маленький. ')).toEqual({ kind: 'release', text: 'Это *первый шаг*. Он маленький.' })
     expect(g.push('Соберись уже. ').kind).toBe('violation')
+    // стыд во втором предложении — попытка негодна до показа
+    expect(new SentenceGuard({ maxChars: 200 }).push('Это шаг. Соберись уже. ').kind).toBe('violation')
   })
   it('кавычки снимает, только если обёрнута вся реплика; цитата в начале остаётся', () => {
     const wrapped = new SentenceGuard({ maxChars: 200 })
@@ -87,7 +107,7 @@ describe('проверка по предложениям', () => {
     expect(wrapped.end()).toEqual({ kind: 'release', text: 'Привет! Начнём.' })
     const quoted = new SentenceGuard({ maxChars: 200 })
     quoted.push('«Открыть файл» — хороший шаг. ')
-    expect(quoted.end()).toEqual({ kind: 'release', text: '«Открыть файл» — хороший шаг.' })
+    expect(quoted.end()).toEqual({ kind: 'release', text: '«Открыть файл», хороший шаг.' }) // тире по правилу владельца становится запятой
   })
   it('строка с двоеточием не уходит без следующей строки', () => {
     const g = new SentenceGuard({ maxChars: 200 })
@@ -96,7 +116,7 @@ describe('проверка по предложениям', () => {
   })
   it('латинские слова человека разрешены, чужие — нет', () => {
     const g = new SentenceGuard({ maxChars: 200, echo: new Set(['notion']) })
-    expect(g.push('Открой Notion. ').kind).toBe('release')
+    expect(g.push('Открой Notion. Там твой план. ').kind).toBe('release')
     expect(g.push('It is fine. ').kind).toBe('violation')
   })
 })
@@ -122,9 +142,9 @@ describe('потоковый ход', () => {
   })
 
   it('нарушение после фиксации — обрезка по последнему проверенному предложению', async () => {
-    chain.steps = [{ id: 'a', model: streaming(text('Ты молодец, что пришёл. ', 'Прими таблетку и садись.')) }]
+    chain.steps = [{ id: 'a', model: streaming(text('Ты молодец, что пришёл. ', 'Это уже старт. ', 'Прими таблетку и садись.')) }]
     const r = await collect(run())
-    expect(r.shown).toBe('Ты молодец, что пришёл.')
+    expect(r.shown).toBe('Ты молодец, что пришёл. Это уже старт.')
     expect(r.parts.at(-1)?.type).toBe('finish')
     expect(r.error).toBe(false)
   })
@@ -179,13 +199,13 @@ describe('потоковый ход', () => {
       {
         id: 'a',
         model: streaming([
-          { type: 'tool-call', toolCallId: 'c1', toolName: 'rememberFact', input: JSON.stringify({ fact: 'см. https://evil.example' }) },
+          { type: 'tool-call', toolCallId: 'c1', toolName: 'memory', input: JSON.stringify({ op: 'add', category: 'about', text: 'см. https://evil.example', evidence: 'x' }) },
           { type: 'finish', finishReason: { unified: 'tool-calls', raw: 'tool_calls' }, usage },
         ]),
       },
     ]
     await collect(run({ tools: tools.forTask('chat'), commitTimeoutMs: 300 }))
-    expect(events).toContainEqual(expect.objectContaining({ type: 'tool.call', tool: 'rememberFact', valid: false }))
+    expect(events).toContainEqual(expect.objectContaining({ type: 'tool.call', tool: 'memory', valid: false }))
   })
 
   it('в журнале нет текста человека и ответа', async () => {
@@ -201,7 +221,7 @@ describe('потоковый ход', () => {
 
 describe('реестр инструментов', () => {
   it('задача видит только свои инструменты', () => {
-    expect(Object.keys(tools.forTask('chat')).sort()).toEqual(['rememberFact', 'savePlan', 'startFocus'])
+    expect(Object.keys(tools.forTask('chat')).sort()).toEqual(['memory', 'recall', 'savePlan', 'startFocus'])
     expect(Object.keys(tools.forTask('session-voice'))).toEqual([])
   })
 })
@@ -221,5 +241,104 @@ describe('обрыв по лимиту длины', () => {
     ]
     const r = await collect(run())
     expect(r.shown).toBe('Понимаю. Бывает, что всё валится.')
+  })
+})
+
+describe('повтор после сбоя провайдера (Hermes: ретраи с паузой на сеть и 429/5xx)', () => {
+  // модель, которая первые n вызовов падает с кодом, потом отвечает
+  function flaky(failures: number, status: number, reply = 'Привет, начнём.') {
+    let calls = 0
+    const m = new MockLanguageModelV4({
+      doStream: async () => {
+        calls++
+        if (calls <= failures) throw Object.assign(new Error('провайдер'), { statusCode: status })
+        return { stream: simulateReadableStream({ chunks: [{ type: 'stream-start', warnings: [] }, ...text(reply)] as never[] }) }
+      },
+    })
+    return { m, calls: () => calls }
+  }
+  it('обе модели упали с 503 — после паузы цепочка повторяется один раз и человек получает ответ', async () => {
+    const a = flaky(1, 503)
+    const b = flaky(1, 503)
+    chain.steps = [{ id: 'a', model: a.m }, { id: 'b', model: b.m }]
+    const r = await collect(run({ commitTimeoutMs: 6000, totalTimeoutMs: 8000 }))
+    expect(r.error).toBe(false)
+    expect(r.shown).toBe('Привет, начнём.')
+    expect(events).toContainEqual(expect.objectContaining({ type: 'model.start', retry: true }))
+  })
+  it('400 (запрос негоден) не повторяется: сразу заготовка', async () => {
+    const a = flaky(5, 400)
+    chain.steps = [{ id: 'a', model: a.m }]
+    const r = await collect(run({ commitTimeoutMs: 6000, totalTimeoutMs: 8000 }))
+    expect(r.error).toBe(true)
+    expect(a.calls()).toBe(1)
+  })
+  it('повтор только один: упорный 429 — заготовка, без бесконечной петли', async () => {
+    const a = flaky(9, 429)
+    chain.steps = [{ id: 'a', model: a.m }]
+    const r = await collect(run({ commitTimeoutMs: 6000, totalTimeoutMs: 8000 }))
+    expect(r.error).toBe(true)
+    expect(a.calls()).toBe(2)
+  })
+  it('если до предела фиксации мало времени, повтора нет', async () => {
+    const a = flaky(1, 503)
+    chain.steps = [{ id: 'a', model: a.m }]
+    const r = await collect(run({ commitTimeoutMs: 2000, totalTimeoutMs: 3000 }))
+    expect(r.error).toBe(true)
+    expect(a.calls()).toBe(1)
+  })
+})
+
+describe('перезапуск упавшей модели, не дожидаясь медленной (набор задач 12.11)', () => {
+  it('провайдер оборвал ответ почти сразу (length), вторая ещё думает — первая перезапускается и отвечает', async () => {
+    let calls = 0
+    const quick = new MockLanguageModelV4({
+      doStream: async () => {
+        calls++
+        const chunks =
+          calls === 1
+            ? [{ type: 'text-start', id: 't' }, { type: 'text-delta', id: 't', delta: 'Собрать' }, { type: 'text-end', id: 't' }, { type: 'finish', finishReason: { unified: 'length', raw: 'length' }, usage }]
+            : text('Давай откроем файл. Это первый шаг.')
+        return { stream: simulateReadableStream({ chunks: [{ type: 'stream-start', warnings: [] }, ...chunks] as never[] }) }
+      },
+    })
+    chain.steps = [{ id: 'quick', model: quick }, { id: 'slow', model: streaming(text('Поздний ответ.'), { initialDelayInMs: 4000 }) }]
+    const t0 = Date.now()
+    const r = await collect(run({ commitTimeoutMs: 6000, totalTimeoutMs: 8000, hedgeAfterMs: 100 }))
+    expect(r.shown).toBe('Давай откроем файл. Это первый шаг.')
+    expect(Date.now() - t0).toBeLessThan(3000)
+    expect(calls).toBe(2)
+  })
+})
+
+describe('деньги хода (аудит 12.11, research/21-agent-audit/1-harness-core.md)', () => {
+  it('«основная медленная»: сразу стартует только вторая модель, третья ждёт обычную задержку', async () => {
+    const { registerRequestMiddleware } = await import('@/lib/ai/core/middleware')
+    const undo = registerRequestMiddleware({ name: 'test-first-hedge', onRequest: (req) => void (req.firstHedgeMs = 0) })
+    chain.steps = [
+      { id: 'a', model: streaming(text('Первая. Она медленная.'), { initialDelayInMs: 120 }) },
+      { id: 'b', model: streaming(text('Вторая. Она быстрее.'), { initialDelayInMs: 60 }) },
+      { id: 'c', model: streaming(text('Третья. Не нужна.')) },
+    ]
+    const r = await collect(run({ hedgeAfterMs: 400 }))
+    undo()
+    expect(r.shown).toBe('Вторая. Она быстрее.')
+    expect(events.filter((e) => e.type === 'model.start').map((e) => (e as { model: string }).model)).toEqual(['a', 'b'])
+    expect(events.find((e) => e.type === 'turn.end')).toMatchObject({ attempts: 2 })
+  })
+  it('общий потолок запусков: цепочка из двух не делает больше четырёх вызовов, человек получает заготовку', async () => {
+    const boom = () =>
+      new MockLanguageModelV4({
+        doStream: async () => {
+          throw Object.assign(new Error('503'), { statusCode: 503 })
+        },
+      })
+    chain.steps = [
+      { id: 'a', model: boom() },
+      { id: 'b', model: boom() },
+    ]
+    await collect(run({ commitTimeoutMs: 6000, totalTimeoutMs: 8000, hedgeAfterMs: 50 }))
+    expect(events.filter((e) => e.type === 'model.start').length).toBeLessThanOrEqual(4)
+    expect(events.filter((e) => e.type === 'turn.end')).toHaveLength(1)
   })
 })

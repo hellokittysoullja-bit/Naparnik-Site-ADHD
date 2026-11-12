@@ -1,12 +1,14 @@
 import { z } from 'zod'
 import { matchVariants, stripInvisible } from '../guards/normalize'
 import { isLink, isPhone } from '../guards/output'
+import { FACT_CATEGORIES, FACT_LIMITS, type FactCategory } from '../memory/facts'
+import { factRejection } from '../memory/write-guard'
 import { ToolRegistry } from './registry'
 
 /**
  * Инструменты кота. Все три сейчас исполняет устройство: память и план живут в браузере. Схемы — граница доверия
  * (research/20-ai-harness/security-ai.md): аргументы пишет модель, а модель читала текст человека, значит
- * аргументы — недоверенные данные. Отсюда потолки длины и запрет ссылок и разметки: факт из rememberFact потом
+ * аргументы — недоверенные данные. Отсюда потолки длины и запрет ссылок и разметки: факт из memory потом
  * попадает в память и в следующие промпты (сохранённая инъекция, OWASP LLM01 «stored»).
  */
 // Строки аргументов: без разметки, ссылок и номеров — теми же правилами, что у ответа кота (guards/output.ts).
@@ -29,19 +31,44 @@ export const savePlanInput = z.object({
   startTime: safeText(40).optional().describe('Примерное время старта, например «09:00» или «после обеда»'),
 })
 
-// Факт уходит в память и в каждый следующий разговор — значит это самое опасное место для «сохранённой»
-// инъекции (Hermes tools/memory_tool_store.py + threat_patterns.py: строгий скан каждой записи по нормализованному
-// тексту; security-ai.md R6). Отказ, если факт — указание коту, а не сведение о человеке, или несёт контакты.
-// Проверка идёт по всем прочтениям (matchVariants): «зaбудь» с латинской «a» и «игнор\u200bируй» не проходят.
-const INSTRUCTION_LIKE =
-  /(?<!\p{L})(?:отныне|с этого момента|игнорир\p{L}*|забудь|ты должен|ты обязан|(?:кот|напарник)\p{L}*\s+(?:должен|обязан|всегда|никогда)|отвечай|отвечал\p{L}*|говори|называй\p{L}*|называл\p{L}*\s+себя|вызывай|рекоменд\p{L}*|советуй|советовал\p{L}*|не упоминай|system|assistant|json|prompt|промпт\p{L}*|инструкци\p{L}*)(?!\p{L})/iu
-const EMAIL = /[\p{L}\d.+-]+@[\p{L}\d-]+\.[\p{L}\d.]+/u
+// Факт уходит в память и в каждый следующий разговор — самое опасное место для «сохранённой» инъекции и для
+// лишнего о человеке. Проверка содержания — memory/write-guard.ts (одна для инструмента, фоновой выжимки и
+// устройства); номер факта, просьба «забудь» и основание записи проверяет ход (agents/chat.ts memoryToolCheck) и
+// ещё раз устройство: только они знают, какой список видела модель и что сказал человек.
+const factText = safeText(FACT_LIMITS.text).refine((s) => factRejection(s) === null, 'это не записывается в память')
 
-export const rememberFactInput = z.object({
-  fact: safeText(160)
-    .refine((s) => !matchVariants(s).some((v) => INSTRUCTION_LIKE.test(v)), 'похоже на указание, а не на факт о человеке')
-    .refine((s) => !EMAIL.test(s), 'контакты не запоминаем')
-    .describe('Один факт о человеке, максимум одно предложение'),
+// Одна операция на вызов и плоская схема (без anyOf): её одинаково понимают все модели маршрута; несколько
+// операций — несколько вызовов
+export const memoryInput = z
+  .object({
+    op: z.enum(['add', 'replace', 'forget', 'forgetAll']).describe(
+      'add — новый факт; replace — факт изменился (номер старого в ref); forget — человек попросил забыть факт (номер в ref); forgetAll — человек попросил забыть всё',
+    ),
+    category: z.enum(FACT_CATEGORIES as [FactCategory, ...FactCategory[]]).optional().describe(
+      'Только для add: about — о себе (учёба, работа); task — долгое дело; obstacle — что мешает начать; helps — что помогает; people — человек из его дел (имя и роль); schedule — устойчивое расписание; style — как с ним говорить; event — датированное событие',
+    ),
+    ref: z.string().regex(/^\d{1,2}$/).optional().describe('Для replace и forget: номер факта из блока памяти'),
+    text: factText.optional().describe('Для add и replace: одно предложение без подлежащего, понятно без разговора: «Пишет диплом про…», «Легче начинает после душа» (не «Человек…», не «Пользователь…»)'),
+    evidence: safeText(FACT_LIMITS.evidence).optional().describe('Для add и replace: короткая цитата человека, на которой основан факт'),
+    until: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe('Для события или расписания: до какой даты это актуально, ГГГГ-ММ-ДД (например, дата экзамена)'),
+  })
+  // цитата необязательна (набор задач 12.11: модель присылала replace без неё, и вызов терялся) — тогда основание
+  // ход ищет в последней реплике человека (agents/chat.ts memoryToolCheck)
+  .refine((m) => m.op !== 'add' || (m.category && m.text), 'add: нужны category и text')
+  .refine((m) => m.op !== 'replace' || (m.ref && m.text), 'replace: нужны ref и text')
+  .refine((m) => m.op !== 'forget' || m.ref, 'forget: нужен ref')
+
+export type MemoryInput = z.infer<typeof memoryInput>
+
+/** Старые разговоры на устройствах хранят вызовы прежнего инструмента — схема нужна, чтобы показать их чип */
+export const rememberFactInput = z.object({ fact: factText })
+
+export const recallInput = z.object({
+  query: safeText(120).describe('Что вспомнить, своими словами: «диплом, что решили про введение»'),
 })
 
 export const startFocusInput = z.object({
@@ -71,12 +98,22 @@ export const tools = new ToolRegistry()
     tasks: ['chat'],
   })
   .register({
-    name: 'rememberFact',
+    name: 'memory',
     description:
-      'Запомнить один короткий важный факт о человеке для будущих разговоров (имя, над чем работает, что мешает).',
-    input: rememberFactInput,
+      'Изменить долгую память о человеке. add — когда человек сам сказал о себе устойчивое и полезное для будущих разговоров о делах, или попросил запомнить. replace — когда сказанное раньше изменилось. forget/forgetAll — ТОЛЬКО когда человек прямо попросил забыть. Не записывай догадки о характере и настроении, здоровье, деньги, контакты, документы.',
+    input: memoryInput,
     executor: 'client',
-    clientResult: 'Запомнил.',
+    clientResult: 'Готово, память обновлена.',
+    tasks: ['chat'],
+  })
+  .register({
+    name: 'recall',
+    description:
+      'Вспомнить прошлые разговоры с этим человеком, которых нет в текущей переписке. Вызывай, только когда человек сам ссылается на прошлое («помнишь, я говорил…», «как в прошлый раз», «что мы решили про…») или без этого не понять, о чём речь. Вернёт короткую выжимку или «ничего не нашёл».',
+    input: recallInput,
+    executor: 'client',
+    clientResult: 'Поиск по прошлым разговорам выполнен.',
+    clientOutputAsData: { maxChars: 600 },
     tasks: ['chat'],
   })
   .register({

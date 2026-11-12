@@ -9,13 +9,15 @@ import type { TurnContext } from './turn'
  *  - синхронная доставка: на сервере без фоновых процессов (Vercel) асинхронный журнал мог бы не успеть.
  */
 /** cancelled — попытку отменили, потому что другая модель уже ответила (не сбой) */
-export type AttemptResult = 'ok' | 'parse' | 'timeout' | 'cancelled' | 'error' | OutputViolation
+/** 'no-tool' — модель ответила словами вместо обязательного вызова инструмента (это её поведение, не сбой провайдера) */
+export type AttemptResult = 'ok' | 'parse' | 'timeout' | 'cancelled' | 'error' | 'no-tool' | OutputViolation
 export type TurnOutcome = 'model' | 'fallback' | 'crisis' | 'aborted'
 
 export type HarnessEvent =
   | { type: 'turn.start' }
   | { type: 'guard.input'; crisis: boolean; injection: boolean }
-  | { type: 'model.start'; model: string; hedge: boolean }
+  | { type: 'model.start'; model: string; hedge: boolean; retry?: boolean }
+  | { type: 'tool.retry'; without: string[] }
   /** первый годный кусок ответа (точка фиксации) — по нему считается задержка модели (core/latency.ts) */
   | { type: 'model.commit'; model: string; ms: number }
   /** committed — попытка успела пройти точку фиксации (тогда ms — длительность всего потока, а не задержка) */
@@ -29,7 +31,7 @@ export type HarnessEvent =
   | { type: 'memory.proposed'; kind: string }
   /** итог записи серверным хранилищем: сейчас только сбой (accepted: false) */
   | { type: 'memory.write'; kind: string; accepted: boolean }
-  | { type: 'turn.end'; outcome: TurnOutcome; model?: string; ms: number; inTokens?: number; outTokens?: number }
+  | { type: 'turn.end'; outcome: TurnOutcome; model?: string; ms: number; inTokens?: number; outTokens?: number; attempts?: number; cut?: AttemptResult }
 
 export type Observer = (event: HarnessEvent, ctx: TurnContext) => void
 

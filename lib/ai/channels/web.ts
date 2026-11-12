@@ -1,6 +1,7 @@
 import { convertToModelMessages, validateUIMessages, type ModelMessage, type UIMessage } from 'ai'
-import { clean } from '../context'
+import { clean, dataBlock } from '../context'
 import { TOOL_REFUSED, tools } from '../tools/catalog'
+import { coerceToolInput } from '../tools/registry'
 
 /**
  * Веб-канал (Hermes gateway/platforms: адаптер нормализует сообщения платформы и доставляет ответ). Здесь —
@@ -12,6 +13,9 @@ import { TOOL_REFUSED, tools } from '../tools/catalog'
  *  - вход инструмента перепроверяется той же схемой, что и у модели; негодный вызов выбрасывается целиком;
  *  - результат клиентского инструмента заменяется нашим текстом (clientResult): браузер не пишет модели ничего.
  */
+/** что модель видит, если устройство отказалось исполнить вызов (agents/chat.ts: тогда «сохранил» говорить нельзя) */
+export const DEVICE_REFUSED = 'Не сохранено: устройство отклонило запись.'
+
 export const WEB_LIMITS = { messages: 30, userText: 2000, catText: 600 } as const
 
 type Part = UIMessage['parts'][number]
@@ -21,13 +25,18 @@ function sanitizeToolPart(p: Part & { type: `tool-${string}` }): Part | null {
   if (!spec || spec.executor !== 'client' || !spec.tasks.includes('chat')) return null
   const x = p as { toolCallId?: unknown; state?: unknown; input?: unknown }
   if (typeof x.toolCallId !== 'string' || x.toolCallId.length > 80) return null
-  const input = spec.input.safeParse(x.input)
+  const input = spec.input.safeParse(coerceToolInput(x.input))
   if (!input.success) return null
   // незавершённый вызов (результата нет) в историю модели не нужен — модель увидела бы «висящий» вызов
   if (x.state !== 'output-available') return null
   // браузер шлёт один из двух наших ответов; модели уходит наш же текст, а не присланный
   const refused = (p as { output?: unknown }).output === TOOL_REFUSED
-  const output = refused ? 'Не сохранено: устройство отклонило запись.' : spec.clientResult
+  const sent = (p as { output?: unknown }).output
+  const output = refused
+    ? DEVICE_REFUSED
+    : spec.clientOutputAsData && typeof sent === 'string' && clean(sent, spec.clientOutputAsData.maxChars)
+      ? dataBlock('memory', { 'вспомнил из прошлых разговоров': clean(sent, spec.clientOutputAsData.maxChars) })
+      : spec.clientResult
   return { type: p.type, toolCallId: x.toolCallId, state: 'output-available', input: input.data, output } as Part
 }
 

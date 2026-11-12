@@ -49,7 +49,7 @@ const config = [
     },
   },
   {
-    ignores: [".next/**", "node_modules/**", "next-env.d.ts", "design/**", "fonts-library/**", "public/**", "lib/asset-versions.ts", "components/mascot-poster-inline.ts", "e2e-report/**", "test-results/**"],
+    ignores: [".next/**", ".claude/**", "node_modules/**", "next-env.d.ts", "design/**", "fonts-library/**", "public/**", "lib/asset-versions.ts", "components/mascot-poster-inline.ts", "e2e-report/**", "test-results/**"],
   },
 ];
 

@@ -59,7 +59,8 @@ registerRequestMiddleware({
     turns.set(ctx.task, n)
     if (n % PROBE_EVERY === 0) return // проба: основная получает шанс показать, что снова быстрая
     const s = stats.get(key(ctx.task, primary.id))
-    if (s && s.n >= MIN_SAMPLES && s.ewma > 2 * req.hedgeAfterMs) req.hedgeAfterMs = 0
+    // только вторая модель стартует сразу; третья ждёт обычную задержку (иначе все три шли бы одновременно)
+    if (s && s.n >= MIN_SAMPLES && s.ewma > 2 * req.hedgeAfterMs) req.firstHedgeMs = 0
     return req
   },
 })

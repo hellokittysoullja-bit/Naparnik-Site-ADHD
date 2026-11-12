@@ -22,8 +22,12 @@ export type TurnRequest = {
   messages: ModelMessage[]
   chain: ModelStep[]
   tools?: ToolSet
+  /** обязательный инструмент на этом ходе (маршрутизация по явной просьбе: «запомни», «забудь») */
+  requiredTool?: string
   /** через сколько мс без фиксации запускать следующую модель */
   hedgeAfterMs: number
+  /** задержка только перед ВТОРОЙ моделью (адаптивная страховка: 0, когда основная стабильно медленная) */
+  firstHedgeMs?: number
 }
 
 export type RequestInfo = { ctx: TurnContext; input: InputVerdict }
@@ -65,7 +69,9 @@ const copy = (r: TurnRequest): TurnRequest => ({
   messages: cloneMessages(r.messages),
   chain: r.chain.map((s) => ({ ...s })),
   tools: r.tools ? { ...r.tools } : undefined,
+  requiredTool: r.requiredTool,
   hedgeAfterMs: r.hedgeAfterMs,
+  firstHedgeMs: r.firstHedgeMs,
 })
 
 /** глубокая копия; содержимое, которое нельзя клонировать (URL, поток), копируется по ссылке — ход не падает */
