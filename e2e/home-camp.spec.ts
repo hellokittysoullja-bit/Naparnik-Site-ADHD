@@ -157,33 +157,64 @@ test('короткое дело с Дома не дробится с ошибк�
   await expect(page.getByText(/сеть подвела/)).toHaveCount(0)
 })
 
-test('длинный шаг на маленьком экране: кот не прыгает при загрузке, кнопки над меню', async ({ page }) => {
+test('длинный шаг на маленьком экране: кнопки над меню, без прокрутки', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 640 })
   await seed(page, {
     plan: { forDate: today(), task: 'Курсовая по логистике и управлению цепями поставок для научного руководителя', firstStep: 'Открыть файл с курсовой, найти раздел про склад и написать в нём одно самое кривое предложение', startTime: 'в 9 вечера', createdAt: '' },
     onboarding: { sphere: 'study', blocker: 'boring', motive: 'relief' },
   })
-  await page.addInitScript(() => {
-    ;(window as unknown as { __cls: number }).__cls = 0
-    new PerformanceObserver((l) => {
-      for (const e of l.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[]) if (!e.hadRecentInput) (window as unknown as { __cls: number }).__cls += e.value
-    }).observe({ type: 'layout-shift', buffered: true })
-  })
   await page.goto('/app')
   await expect(page.getByText('ПО ПЛАНУ · 21:00')).toBeVisible()
-  await page.waitForTimeout(800)
+  await page.waitForTimeout(500)
   const m = await page.evaluate(() => ({
-    cls: (window as unknown as { __cls: number }).__cls,
     chatBottom: document.querySelector('.btn-paper')!.getBoundingClientRect().bottom,
     navTop: document.querySelector('nav')!.getBoundingClientRect().top,
     sh: document.documentElement.scrollHeight,
   }))
-  expect(m.cls).toBeLessThan(0.01)
   expect(m.chatBottom).toBeLessThanOrEqual(m.navTop)
   expect(m.sh).toBeLessThanOrEqual(640)
 })
 
-// ---------- 13.11, владелец: «костёр где-то там летает», «горит циклично, без багов» ----------
+test('холодная загрузка: ничего видимого не прыгает — кнопки на месте, кот виден только на своём окончательном месте', async ({ page }) => {
+  // блок шага по содержимому, поэтому до чтения памяти кот и затемнение скрыты (visibility). Скрипты задерживаем и
+  // замедляем процессор, чтобы первый кадр с пустым блоком успел отрисоваться до гидратации; дальше — каждый кадр.
+  await page.setViewportSize({ width: 390, height: 664 })
+  await seed(page, {
+    plan: { forDate: today(), task: 'Курсовая по логистике', firstStep: 'Открыть файл с курсовой, найти раздел про склад и написать в нём одно предложение', startTime: '09:00', createdAt: '' },
+    onboarding: { sphere: 'study', blocker: 'boring', motive: 'proof' },
+  })
+  await page.route('**/_next/static/chunks/**/*.js', async (route) => {
+    await new Promise((r) => setTimeout(r, 600))
+    await route.continue()
+  })
+  await page.addInitScript(() => {
+    const w = window as unknown as { __f: { cta: number | null; cat: number | null; catVisible: boolean }[] }
+    w.__f = []
+    const tick = () => {
+      const cta = document.querySelector('.btn-chunky')
+      const cat = document.querySelector('.cat-doll')
+      w.__f.push({
+        cta: cta ? cta.getBoundingClientRect().top : null,
+        cat: cat ? cat.getBoundingClientRect().top : null,
+        catVisible: cat ? getComputedStyle(cat).visibility === 'visible' : false,
+      })
+      requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  })
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 })
+  await page.goto('/app', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByText('ПО ПЛАНУ · 9:00')).toBeVisible()
+  await page.waitForTimeout(800)
+  const frames = await page.evaluate(() => (window as unknown as { __f: { cta: number | null; cat: number | null; catVisible: boolean }[] }).__f)
+  const cta = frames.map((f) => f.cta).filter((v): v is number => v !== null)
+  const cat = frames.filter((f) => f.catVisible && f.cat !== null).map((f) => f.cat as number)
+  expect(cta.length).toBeGreaterThan(5)
+  expect(cat.length).toBeGreaterThan(5)
+  expect(Math.max(...cta) - Math.min(...cta), 'кнопка «Разломать на шаг» двигалась').toBeLessThanOrEqual(1)
+  expect(Math.max(...cat) - Math.min(...cat), 'видимый кот двигался').toBeLessThanOrEqual(1)
+})
 
 test('костёр стоит на склоне холма, а не висит над ним', async ({ page }) => {
   for (const [w, h] of [[390, 844], [360, 640], [1280, 720]]) {
@@ -272,8 +303,8 @@ test('у кота есть тень под лапами на каждом экр
   }
 })
 
-test('Дом выглядит одинаково при любом шаге и ответах знакомства: кот прямо над блоком, блок одной высоты, без сдвигов', async ({ page }) => {
-  // владелец, 13.11: «в независимости от модели телефона картинка выглядит одинаково, строчки меняются по онбордингу»
+test('Дом без пустот при любом шаге: кот прямо над текстом, кнопки на одном месте, кот не прыгает при загрузке', async ({ page }) => {
+  // владелец, 13.11: «пустота — это баг», «в независимости от модели телефона картинка выглядит одинаково»
   const states: Record<string, { plan?: object; onboarding?: object }> = {
     empty: { onboarding: { sphere: 'study', blocker: 'fear' } },
     long: {
@@ -281,9 +312,10 @@ test('Дом выглядит одинаково при любом шаге и �
       onboarding: { sphere: 'study', blocker: 'boring', motive: 'proof' },
     },
     short: { plan: { forDate: today(), task: 'Н', firstStep: 'Н', createdAt: '' } },
+    shortAnswers: { plan: { forDate: today(), task: 'Н', firstStep: 'Н', createdAt: '' }, onboarding: { sphere: 'study', blocker: 'phone', motive: 'rest' } },
   }
   for (const [w, h] of [[390, 844], [390, 664], [360, 640], [430, 932]]) {
-    const seen: Record<string, number[]> = {}
+    const seen: Record<string, { catTop: number; ctaTop: number; below: number }> = {}
     for (const [name, st] of Object.entries(states)) {
       const p = await page.context().newPage()
       await p.setViewportSize({ width: w, height: h })
@@ -297,6 +329,7 @@ test('Дом выглядит одинаково при любом шаге и �
       }, st)
       await p.goto('/app')
       await expect(p.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
+      await expect(p.locator('.cat-doll')).toBeVisible()
       await p.waitForTimeout(500)
       const m = await p.evaluate(() => {
         const c = document.querySelector('.cat-doll')!.getBoundingClientRect()
@@ -305,8 +338,7 @@ test('Дом выглядит одинаково при любом шаге и �
         const cta = document.querySelector('.btn-chunky')!.getBoundingClientRect()
         const nav = document.querySelector('nav')!.getBoundingClientRect()
         const paws = c.top + c.height * 0.9716
-        // видимые строки блока (подпись, шаг/поле, подсказки, строка над кнопкой) сверху вниз: дыра между соседними
-        // строками — тот самый дефект с iPhone владельца (подпись «ПО ПЛАНУ», пустота, и только потом шаг «Н»)
+        // видимые строки блока сверху вниз: дыра между соседними — тот самый дефект с iPhone владельца
         const rows = [...sec.querySelectorAll('p, h2, form, [role=group]')]
           .map((e) => e.getBoundingClientRect())
           .filter((r) => r.height > 0)
@@ -316,18 +348,21 @@ test('Дом выглядит одинаково при любом шаге и �
         return { catTop: c.top, ctaTop: cta.top, below: label.top - paws, holes, catOverNav: cta.bottom <= nav.top, cls: (window as unknown as { __cls: number }).__cls, sh: document.documentElement.scrollHeight }
       })
       const tag = `${w}×${h} ${name}`
-      // между строками блока нет дыр; подпись под лапами, холм между ними виден
       expect(m.holes, tag).toBeLessThanOrEqual(24)
       expect(m.below, tag).toBeGreaterThan(15)
-      expect(m.cls, tag).toBeLessThan(0.01)
+      expect(m.below, tag).toBeLessThan(60)
       expect(m.catOverNav, tag).toBe(true)
       expect(m.sh, tag).toBeLessThanOrEqual(h)
-      seen[name] = [m.catTop, m.ctaTop]
+      seen[name] = { catTop: m.catTop, ctaTop: m.ctaTop, below: m.below }
       await p.close()
     }
-    // кот и кнопка стоят на тех же местах при любом состоянии
-    expect(seen.long, `${w}×${h}`).toEqual(seen.empty)
-    expect(seen.short, `${w}×${h}`).toEqual(seen.empty)
+    // кнопки стоят на одном месте при любом состоянии, расстояние от лап до подписи у всех одинаково
+    for (const name of Object.keys(states)) {
+      expect(seen[name].ctaTop, `${w}×${h} ${name}`).toBeCloseTo(seen.empty.ctaTop, 0)
+      expect(Math.abs(seen[name].below - seen.empty.below), `${w}×${h} ${name}`).toBeLessThanOrEqual(2)
+    }
+    // короткий шаг — кот ниже, чем у длинного (сидит над своим текстом, а не висит на фиксированном месте)
+    expect(seen.short.catTop).toBeGreaterThan(seen.long.catTop)
   }
 })
 
