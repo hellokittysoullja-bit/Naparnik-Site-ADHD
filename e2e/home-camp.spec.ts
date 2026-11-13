@@ -300,16 +300,25 @@ test('Дом выглядит одинаково при любом шаге и �
       await p.waitForTimeout(500)
       const m = await p.evaluate(() => {
         const c = document.querySelector('.cat-doll')!.getBoundingClientRect()
-        const label = document.querySelector('section[aria-label="Шаг на сейчас"] p')!.getBoundingClientRect()
+        const sec = document.querySelector('section[aria-label="Шаг на сейчас"]')!
+        const label = sec.querySelector('p')!.getBoundingClientRect()
         const cta = document.querySelector('.btn-chunky')!.getBoundingClientRect()
         const nav = document.querySelector('nav')!.getBoundingClientRect()
         const paws = c.top + c.height * 0.9716
-        return { catTop: c.top, ctaTop: cta.top, gap: label.top - paws, catOverNav: cta.bottom <= nav.top, cls: (window as unknown as { __cls: number }).__cls, sh: document.documentElement.scrollHeight }
+        // видимые строки блока (подпись, шаг/поле, подсказки, строка над кнопкой) сверху вниз: дыра между соседними
+        // строками — тот самый дефект с iPhone владельца (подпись «ПО ПЛАНУ», пустота, и только потом шаг «Н»)
+        const rows = [...sec.querySelectorAll('p, h2, form, [role=group]')]
+          .map((e) => e.getBoundingClientRect())
+          .filter((r) => r.height > 0)
+          .sort((a, b) => a.top - b.top)
+        let holes = 0
+        for (let i = 1; i < rows.length; i++) holes = Math.max(holes, rows[i].top - rows[i - 1].bottom)
+        return { catTop: c.top, ctaTop: cta.top, below: label.top - paws, holes, catOverNav: cta.bottom <= nav.top, cls: (window as unknown as { __cls: number }).__cls, sh: document.documentElement.scrollHeight }
       })
       const tag = `${w}×${h} ${name}`
-      // подпись — сразу под лапами, между ними виден холм
-      expect(m.gap, tag).toBeGreaterThan(15)
-      expect(m.gap, tag).toBeLessThan(35)
+      // между строками блока нет дыр; подпись под лапами, холм между ними виден
+      expect(m.holes, tag).toBeLessThanOrEqual(24)
+      expect(m.below, tag).toBeGreaterThan(15)
       expect(m.cls, tag).toBeLessThan(0.01)
       expect(m.catOverNav, tag).toBe(true)
       expect(m.sh, tag).toBeLessThanOrEqual(h)

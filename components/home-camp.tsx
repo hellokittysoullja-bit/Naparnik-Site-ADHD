@@ -136,12 +136,15 @@ export function HomeCamp() {
             разницу высоты экранов забирает небо. Пока память не прочитана после гидратации, места уже заняты — ничего
             не сдвигается (CLS 0). */}
         <section aria-label="Шаг на сейчас" className="relative px-4 pt-5 text-center [@media(max-height:620px)]:pt-3">
-          {/* Затемнение земли начинается под лапами, а не выше: холм между котом и подписью виден, текст и кнопки
-              стоят на тёмном. isolate — слой затемнения над холмом, но под текстом и кнопками. Колонка не шире 448 px, как
-              у Фокуса (на компьютере поле и кнопки тянулись на всю ширину), а затемнение — на всю ширину экрана */}
-          <div className="relative isolate mx-auto w-full max-w-md before:pointer-events-none before:absolute before:-inset-x-[50vw] before:-top-5 before:bottom-0 before:-z-10 before:bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.8)_52px,rgb(3_11_9)_100px)] before:content-['']">
-          <p className="h-4 font-mono text-[10.5px] font-semibold leading-4 tracking-[0.26em] text-primary/90">{step?.label}</p>
-          <div className="mt-3 flex h-[158px] flex-col justify-center">
+          {/* Блок шага одной высоты (кот и кнопки всегда на своих местах), но подпись, шаг и строка над кнопкой держатся
+              вместе: при коротком шаге лишнее место делится между холмом над ними и воздухом над кнопкой, а не дырой между подписью и шагом
+              (iPhone владельца 13.11, план «Н»). Подпись, шаг и строка над кнопкой стоят по центру между котом и кнопкой, лишнее
+              место делится поровну. Затемнение земли начинается от верха блока, isolate — слой затемнения над
+              холмом, но под текстом и кнопками. Колонка не шире 448 px, как у Фокуса; затемнение — на всю ширину экрана */}
+          <div className="relative isolate mx-auto flex h-[332px] w-full max-w-md flex-col [@media(max-height:620px)]:h-[324px] before:pointer-events-none before:absolute before:-inset-x-[50vw] before:-top-5 before:bottom-0 before:-z-10 before:bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.8)_52px,rgb(3_11_9)_100px)] before:content-['']">
+          <div className="flex flex-1 flex-col justify-center">
+          <p className="min-h-4 font-mono text-[10.5px] font-semibold leading-4 tracking-[0.26em] text-primary/90">{step?.label}</p>
+          <div className="mt-3 flex flex-col">
             {step && empty ? (
               <>
                 <form
@@ -196,6 +199,7 @@ export function HomeCamp() {
             )}
           </div>
 
+          </div>
           <Link
             href={href}
             // iOS Safari включает :active только при наличии touch-слушателя
