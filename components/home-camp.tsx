@@ -97,7 +97,7 @@ export function HomeCamp() {
 
       <div className="relative z-10 flex h-full flex-col pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
         {/* находки острова — тихая плашка, ведёт в Мир; у новичка её нет */}
-        <div className="flex min-h-14 items-start justify-end px-5 pt-[max(1rem,env(safe-area-inset-top))]">
+        <div className="flex min-h-14 items-start justify-end px-5 pt-[max(1rem,env(safe-area-inset-top))] [@media(max-height:620px)]:min-h-10 [@media(max-height:620px)]:pt-2">
           {data && data.finds > 0 && (
             <Link
               href="/app/world"
@@ -125,81 +125,75 @@ export function HomeCamp() {
               expression="calm"
               size={190}
               label="Напарник"
-              className="size-[clamp(120px,24dvh,196px)]"
+              className="size-[clamp(96px,calc(100dvh-480px-env(safe-area-inset-bottom)),196px)] [@media(max-height:620px)]:size-[clamp(90px,calc(100dvh-440px-env(safe-area-inset-bottom)),196px)]"
             />
           </div>
         </div>
 
-        {/* шаг и действия: земля под холмом уходит в темноту плавно, без кромки */}
-        {/* Высота блока задаёт место кота: лапы чуть ниже середины экрана, как в макете владельца (13.11), — 50dvh минус меню и 12 px.
-            Но не меньше самого высокого состояния (план с длинным шагом, line-clamp): пока память не прочитана после
-            гидратации, блок не растёт и не сдвигает сцену с котом вверх (CLS). На экранах ≤ 700 px заголовок шага в две
-            строки — запас меньше. */}
-        <section
-          aria-label="Шаг на сейчас"
-          className="relative flex min-h-[max(19rem,calc(50dvh-94px-env(safe-area-inset-bottom)))] [@media(min-height:701px)]:min-h-[max(20.5rem,calc(50dvh-94px-env(safe-area-inset-bottom)))] flex-col justify-end bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.78)_72px,rgb(3_11_9)_150px)] px-4 pt-1 text-center"
-        >
-          {step ? (
-            <>
-              <p className="font-mono text-[10.5px] font-semibold tracking-[0.26em] text-primary/90">{step.label}</p>
-              {empty ? (
-                <>
-                  <form
-                    className="mt-3"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      router.push(href);
-                    }}
-                  >
-                    <label className="sr-only" htmlFor="home-task">
-                      Что сейчас висит
-                    </label>
-                    <input
-                      id="home-task"
-                      value={text}
-                      onChange={(e) => setText(e.target.value.slice(0, 120))}
-                      placeholder={homeExample(sphere)}
-                      enterKeyHint="go"
-                      autoComplete="off"
-                      className="h-12 w-full rounded-[14px] border border-white/15 bg-[oklch(0.22_0.012_130/0.9)] px-4 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    />
-                  </form>
-                  <div className="mt-3 flex justify-center gap-2" role="group" aria-label="Сфера дела">
-                    {homeChips(data?.profile ?? null).map((c) => (
-                      <button
-                        key={c.sphere}
-                        type="button"
-                        aria-pressed={sphere === c.sphere}
-                        onClick={() => setSphere(sphere === c.sphere ? null : c.sphere)}
-                        className={`press min-h-11 rounded-full border px-3.5 text-[13px] font-semibold transition-colors ${
-                          sphere === c.sphere
-                            ? "border-transparent bg-[oklch(0.97_0.005_100)] text-[#141a10] shadow-[0_2px_0_oklch(0.75_0.01_100)]"
-                            : "border-white/10 bg-[oklch(0.24_0.014_130/0.9)] text-foreground"
-                        }`}
-                      >
-                        <span aria-hidden="true">{c.icon}</span> {c.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h2 className="mx-auto mt-2.5 line-clamp-3 max-w-[22ch] [@media(max-height:700px)]:line-clamp-2 text-balance text-[clamp(22px,6.6vw,27px)] font-bold leading-[1.12] tracking-[-0.01em]">
-                    {step.title}
-                  </h2>
-                  {step.sub && <p className="mx-auto mt-1.5 line-clamp-1 max-w-[34ch] text-[13.5px] font-medium text-muted-foreground">{step.sub}</p>}
-                </>
-              )}
-              {hint && (
-                <p className="mx-auto mt-4 line-clamp-2 max-w-[34ch] text-balance text-[16px] font-bold leading-snug text-[oklch(0.93_0.04_90)]">
-                  {hint}
-                </p>
-              )}
-            </>
-          ) : (
-            // гидратация: место под шаг занято, чтобы кнопки не прыгали, когда память прочитана
-            <div aria-hidden="true" />
-          )}
+        {/* Шаг и действия. Высота блока одна и та же при любом шаге и любых ответах знакомства (13.11, владелец: «на
+            любом телефоне выглядит одинаково, строчки меняются»): у каждой строки своё место фиксированной высоты —
+            подпись, середина (шаг с делом или поле с подсказками сфер), строка над кнопкой. Кот сидит прямо над блоком,
+            разницу высоты экранов забирает небо. Пока память не прочитана после гидратации, места уже заняты — ничего
+            не сдвигается (CLS 0). */}
+        <section aria-label="Шаг на сейчас" className="relative px-4 pt-5 text-center [@media(max-height:620px)]:pt-3">
+          {/* Затемнение земли начинается под лапами, а не выше: холм между котом и подписью виден, текст и кнопки
+              стоят на тёмном. isolate — слой затемнения над холмом, но под текстом и кнопками */}
+          <div className="relative isolate before:pointer-events-none before:absolute before:-inset-x-4 before:-top-5 before:bottom-0 before:-z-10 before:bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.8)_52px,rgb(3_11_9)_100px)] before:content-['']">
+          <p className="h-4 font-mono text-[10.5px] font-semibold leading-4 tracking-[0.26em] text-primary/90">{step?.label}</p>
+          <div className="mt-3 flex h-[158px] flex-col justify-center">
+            {step && empty ? (
+              <>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    router.push(href);
+                  }}
+                >
+                  <label className="sr-only" htmlFor="home-task">
+                    Что сейчас висит
+                  </label>
+                  <input
+                    id="home-task"
+                    value={text}
+                    onChange={(e) => setText(e.target.value.slice(0, 120))}
+                    placeholder={homeExample(sphere)}
+                    enterKeyHint="go"
+                    autoComplete="off"
+                    className="h-12 w-full rounded-[14px] border border-white/15 bg-[oklch(0.22_0.012_130/0.9)] px-4 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </form>
+                <div className="mt-3 flex justify-center gap-2" role="group" aria-label="Сфера дела">
+                  {homeChips(data?.profile ?? null).map((c) => (
+                    <button
+                      key={c.sphere}
+                      type="button"
+                      aria-pressed={sphere === c.sphere}
+                      onClick={() => setSphere(sphere === c.sphere ? null : c.sphere)}
+                      className={`press min-h-11 rounded-full border px-3.5 text-[13px] font-semibold transition-colors ${
+                        sphere === c.sphere
+                          ? "border-transparent bg-[oklch(0.97_0.005_100)] text-[#141a10] shadow-[0_2px_0_oklch(0.75_0.01_100)]"
+                          : "border-white/10 bg-[oklch(0.24_0.014_130/0.9)] text-foreground"
+                      }`}
+                    >
+                      <span aria-hidden="true">{c.icon}</span> {c.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : step ? (
+              <>
+                <h2 className="mx-auto line-clamp-2 max-w-[22ch] text-balance text-[clamp(22px,6.6vw,27px)] font-bold leading-[1.12] tracking-[-0.01em]">
+                  {step.title}
+                </h2>
+                {step.sub && <p className="mx-auto mt-1.5 line-clamp-1 max-w-[34ch] text-[13.5px] font-medium text-muted-foreground">{step.sub}</p>}
+              </>
+            ) : null}
+            {/* строка над кнопкой — в том же блоке: шаг и строка центрируются вместе, и когда строки нет (нет ответов
+                знакомства) или шаг короткий, пустое место делится сверху и снизу, а не дырой над кнопкой */}
+            {step && hint && (
+              <p className="mx-auto mt-2.5 line-clamp-2 max-w-[34ch] text-balance text-[16px] font-bold leading-[22px] text-[oklch(0.93_0.04_90)]">{hint}</p>
+            )}
+          </div>
 
           <Link
             href={href}
@@ -215,13 +209,14 @@ export function HomeCamp() {
           <Link
             href="/app/chat"
             onTouchStart={() => {}}
-            className="btn-paper mt-5 block w-full select-none rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="btn-paper mt-5 [@media(max-height:620px)]:mt-3 block w-full select-none rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <span className="btn-paper-face flex h-[52px] items-center justify-center rounded-[14px] px-12 text-[18px] font-bold">
               <PawPrint className="absolute left-[18px] top-1/2 size-6 -translate-y-1/2 fill-[#6b4e2a] text-[#6b4e2a] opacity-70" aria-hidden="true" />
               Поговорить с котом
             </span>
           </Link>
+          </div>
         </section>
       </div>
     </main>

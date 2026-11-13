@@ -272,29 +272,52 @@ test('у кота есть тень под лапами на каждом экр
   }
 })
 
-test('кот сидит посередине экрана, как в макете владельца, и не прыгает, когда приходит длинный план', async ({ page }) => {
-  for (const [w, h] of [[390, 844], [360, 780], [430, 932]]) {
-    await page.setViewportSize({ width: w, height: h })
-    await page.addInitScript((d) => {
-      localStorage.setItem('naparnik:plan', JSON.stringify({ forDate: d, task: 'Курсовая по логистике и управлению цепями поставок для руководителя', firstStep: 'Открыть файл с курсовой, найти раздел про склад и написать в нём одно самое кривое предложение', startTime: '09:00', createdAt: '' }))
-      localStorage.setItem('naparnik:onboarding', JSON.stringify({ sphere: 'study', blocker: 'boring', motive: 'proof' }))
-      ;(window as unknown as { __cls: number }).__cls = 0
-      new PerformanceObserver((l) => {
-        for (const e of l.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[]) if (!e.hadRecentInput) (window as unknown as { __cls: number }).__cls += e.value
-      }).observe({ type: 'layout-shift', buffered: true })
-    }, today())
-    await page.goto('/app')
-    await expect(page.getByText('ПО ПЛАНУ · 9:00')).toBeVisible()
-    await page.waitForTimeout(600)
-    const m = await page.evaluate(() => {
-      const c = document.querySelector('.cat-doll')!.getBoundingClientRect()
-      const label = document.querySelector('section[aria-label="Шаг на сейчас"] p')!.getBoundingClientRect()
-      return { paws: (c.top + c.height * 0.9716) / innerHeight, gap: label.top - (c.top + c.height * 0.9716), cls: (window as unknown as { __cls: number }).__cls }
-    })
-    // на невысоких экранах блок шага не ужимается ниже самого длинного плана — кот чуть выше середины
-    expect(m.paws, `${w}×${h}`).toBeGreaterThan(h >= 840 ? 0.48 : 0.44)
-    expect(m.paws, `${w}×${h}`).toBeLessThan(0.52)
-    expect(m.gap, `${w}×${h}`).toBeGreaterThan(4)
-    expect(m.cls, `${w}×${h}`).toBeLessThan(0.01)
+test('Дом выглядит одинаково при любом шаге и ответах знакомства: кот прямо над блоком, блок одной высоты, без сдвигов', async ({ page }) => {
+  // владелец, 13.11: «в независимости от модели телефона картинка выглядит одинаково, строчки меняются по онбордингу»
+  const states: Record<string, { plan?: object; onboarding?: object }> = {
+    empty: { onboarding: { sphere: 'study', blocker: 'fear' } },
+    long: {
+      plan: { forDate: today(), task: 'Курсовая по логистике и управлению цепями поставок для руководителя', firstStep: 'Открыть файл с курсовой, найти раздел про склад и написать в нём одно самое кривое предложение', startTime: '09:00', createdAt: '' },
+      onboarding: { sphere: 'study', blocker: 'boring', motive: 'proof' },
+    },
+    short: { plan: { forDate: today(), task: 'Н', firstStep: 'Н', createdAt: '' } },
+  }
+  for (const [w, h] of [[390, 844], [390, 664], [360, 640], [430, 932]]) {
+    const seen: Record<string, number[]> = {}
+    for (const [name, st] of Object.entries(states)) {
+      const p = await page.context().newPage()
+      await p.setViewportSize({ width: w, height: h })
+      await p.addInitScript((d) => {
+        if (d.plan) localStorage.setItem('naparnik:plan', JSON.stringify(d.plan))
+        if (d.onboarding) localStorage.setItem('naparnik:onboarding', JSON.stringify(d.onboarding))
+        ;(window as unknown as { __cls: number }).__cls = 0
+        new PerformanceObserver((l) => {
+          for (const e of l.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[]) if (!e.hadRecentInput) (window as unknown as { __cls: number }).__cls += e.value
+        }).observe({ type: 'layout-shift', buffered: true })
+      }, st)
+      await p.goto('/app')
+      await expect(p.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
+      await p.waitForTimeout(500)
+      const m = await p.evaluate(() => {
+        const c = document.querySelector('.cat-doll')!.getBoundingClientRect()
+        const label = document.querySelector('section[aria-label="Шаг на сейчас"] p')!.getBoundingClientRect()
+        const cta = document.querySelector('.btn-chunky')!.getBoundingClientRect()
+        const nav = document.querySelector('nav')!.getBoundingClientRect()
+        const paws = c.top + c.height * 0.9716
+        return { catTop: c.top, ctaTop: cta.top, gap: label.top - paws, catOverNav: cta.bottom <= nav.top, cls: (window as unknown as { __cls: number }).__cls, sh: document.documentElement.scrollHeight }
+      })
+      const tag = `${w}×${h} ${name}`
+      // подпись — сразу под лапами, между ними виден холм
+      expect(m.gap, tag).toBeGreaterThan(15)
+      expect(m.gap, tag).toBeLessThan(35)
+      expect(m.cls, tag).toBeLessThan(0.01)
+      expect(m.catOverNav, tag).toBe(true)
+      expect(m.sh, tag).toBeLessThanOrEqual(h)
+      seen[name] = [m.catTop, m.ctaTop]
+      await p.close()
+    }
+    // кот и кнопка стоят на тех же местах при любом состоянии
+    expect(seen.long, `${w}×${h}`).toEqual(seen.empty)
+    expect(seen.short, `${w}×${h}`).toEqual(seen.empty)
   }
 })
