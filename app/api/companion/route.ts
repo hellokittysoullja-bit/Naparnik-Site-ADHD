@@ -23,6 +23,8 @@ const BodySchema = z.object({
   clientHour: z.number().int().min(0).max(23).optional(),
   // конспект прошлой части разговора (lib/chat-summary.ts): форма проверяется в агенте, странное поле даёт ход без него
   summary: z.object({ lines: z.unknown(), madeOn: z.string().max(40).optional() }).optional().catch(undefined),
+  // связан ли браузер с ботом (lib/tg-link.ts): от этого зависит, вправе ли кот обещать «напишу первым»
+  reminders: z.enum(['on', 'off']).optional().catch(undefined),
   // id разговора от useChat — связывает ходы одного разговора в журнале
   id: z.string().max(64).optional(),
 })
@@ -41,6 +43,7 @@ export const POST = handle(async (req) => {
     mode: parsed.data.mode,
     clientHour: parsed.data.clientHour,
     summary: parsed.data.summary,
+    reminders: parsed.data.reminders ?? 'off',
     ...input,
     signal: req.signal, // человек закрыл вкладку — генерация останавливается
   })
