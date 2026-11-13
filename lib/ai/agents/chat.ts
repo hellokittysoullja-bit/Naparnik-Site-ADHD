@@ -6,6 +6,7 @@ import { asksToForget, asksToForgetAll, asksToRemember, forgetMatches, forgetsLa
 import { prefetchWithin, type MemoryProvider, type MemoryWrite } from '../memory/provider'
 import { memoryWords, renderMemory, renderSkills, renderSummary } from '../memory/render'
 import { factRejection, writeAllowed } from '../memory/write-guard'
+import type { MemorySnapshot } from '../memory/schema'
 import { assemble } from '../prompt/assemble'
 import { KNOWLEDGE } from '../knowledge/catalog'
 import { renderKnowledge, selectKnowledge } from '../knowledge/select'
@@ -68,18 +69,25 @@ export async function chatTurn(input: {
   })
   // просят запомнить то, что кот не хранит: память на этот ход не предлагается вовсе (иначе модель звала её, вызов
   // отбрасывали правила, и на повтор уходило 3–4 с — набор задач 12.11), а инструкция говорит это прямо
-  const unstorable = unstorableAsk(input.userTexts.at(-1) ?? '')
+  const last = input.userTexts.at(-1) ?? ''
+  const unstorable = unstorableAsk(last)
+  // просят забыть то, чего в памяти нет: вызывать нечего. Раньше вызов памяти здесь был обязательным, обе модели
+  // звали его, проверка хода отбрасывала (номер не о том), повтор без инструмента не успевал или говорил «забыл» —
+  // человек получал заготовку (набор задач 13.11: 1 из 4 и на прежнем коде). Теперь ход сразу идёт словами
+  const nothing = nothingToForget(last, snapshot)
+  const noMemoryTool = unstorable || nothing
+  const note = unstorable ? UNSTORABLE_NOTE : nothing ? NOTHING_TO_FORGET_NOTE : null
   const allTools = tools.forTask('chat')
   const stream = streamTurn({
     ctx: input.ctx,
-    instructions: unstorable ? `${instructions}\n\n${UNSTORABLE_NOTE}` : instructions,
+    instructions: note ? `${instructions}\n\n${note}` : instructions,
     messages,
     // после двух автокругов подряд — без инструментов: модель, зовущая инструмент на каждый ход, иначе гоняла бы
     // платные запросы сама (security-ai.md дефект 13)
     tools:
       (input.autoRounds ?? 0) >= MAX_AUTO_ROUNDS
         ? undefined
-        : unstorable
+        : noMemoryTool
           ? Object.fromEntries(Object.entries(allTools).filter(([name]) => name !== 'memory'))
           : allTools,
     // кризис — по двум последним репликам человека: фразу делят на два сообщения («не хочу» / «жить»), а более
@@ -102,8 +110,8 @@ export async function chatTurn(input: {
     requiredTool:
       actedSinceUser(input.conversation).length > 0 || input.conversation.at(-1)?.role !== 'user'
         ? undefined
-        : explicitMemoryAsk(input.userTexts.at(-1) ?? '')
-          ? unstorableAsk(input.userTexts.at(-1) ?? '')
+        : explicitMemoryAsk(last)
+          ? noMemoryTool
             ? undefined
             : memoryAskTool(input.userTexts.at(-1) ?? '', lastCatText(input.conversation))
           : acceptsStart(input.userTexts.at(-1) ?? '', lastCatText(input.conversation))
@@ -148,6 +156,25 @@ export function unstorableAsk(userText: string): boolean {
   if (!asksToRemember(userText) || asksToForget(userText)) return false
   const reason = factRejection(userText)
   return reason !== null && reason !== 'injection'
+}
+
+/**
+ * Просят забыть тему, о которой кот ничего не хранит: ни факта, ни навыка, ни плана с общим словом. «Забудь всё» и
+ * «забудь это» сюда не относятся: первое исполняется всегда, второе — о только что записанном (знает устройство).
+ * Саму тему устройство всё равно помечает забытой: реплики о ней кот больше не видит (lib/memory-sync.ts).
+ */
+const NOTHING_TO_FORGET_NOTE =
+  'Человек просит забыть то, о чём у тебя ничего не записано. Память не трогай. Одной тёплой фразой честно скажи, что такого в твоих записях нет и возвращаться к этому ты не будешь, без слов «забыл», «стёр», «удалил», «запомнил». Потом можно одним коротким вопросом вернуться к делу.'
+
+export function nothingToForget(userText: string, snapshot: MemorySnapshot | null): boolean {
+  if (!asksToForget(userText) || asksToForgetAll(userText) || forgetsLast(userText) || asksToRemember(userText)) return false
+  const kept = [
+    ...(snapshot?.facts ?? []).map((f) => f.text),
+    ...(snapshot?.notes ?? []),
+    ...(snapshot?.skills ?? []).map((s) => `${s.name} ${s.when} ${s.steps} ${s.avoid ?? ''}`),
+    ...(snapshot?.plan ? [`${snapshot.plan.task} ${snapshot.plan.firstStep}`] : []),
+  ]
+  return !kept.some((text) => forgetMatches(text, userText))
 }
 
 /** текст последней реплики кота перед репликой человека */

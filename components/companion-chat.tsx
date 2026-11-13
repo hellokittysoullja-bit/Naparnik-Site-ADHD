@@ -214,6 +214,9 @@ function formatDayLabel(iso: string): string {
   return DAY_MONTH.format(d)
 }
 
+/** на реплику без ответа кот отвечает при открытии Дома, если она не старше этого */
+const UNANSWERED_MAX_MS = 12 * 60 * 60_000
+
 export function CompanionChat({
   mode,
   greeting,
@@ -302,7 +305,7 @@ export function CompanionChat({
   )
 
   const sentUserIdsRef = useRef(new Set<string>())
-  const { messages, sendMessage, status, addToolOutput, setMessages } = useChat({
+  const { messages, sendMessage, status, addToolOutput, setMessages, regenerate } = useChat({
     ...(boot && boot.chat.length > 0 ? { messages: boot.chat } : {}),
     transport: new DefaultChatTransport({
       api: '/api/companion',
@@ -476,7 +479,27 @@ export function CompanionChat({
     ]).then(([saved, loadedTimes]) => {
       setTimes(loadedTimes)
       if (saved.length > 0) setMessages(saved)
+      answerUnanswered(saved, loadedTimes)
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Человек написал и ушёл с Дома, пока кот отвечал: реплика сохранена, а ответа нет (аудит 12.11: «кот не отвечает
+  // на неё сам»). При открытии Дома кот отвечает на такую реплику — один раз за открытие и только при самом
+  // открытии: реплику, пришедшую из второй вкладки, уже обслуживает та вкладка. На вчерашний вопрос не отвечаем:
+  // человек давно в другом настроении, ответ «из ниоткуда» хуже тишины
+  const answeredOnOpenRef = useRef(false)
+  function answerUnanswered(list: readonly (typeof messages)[number][], at: Readonly<Record<string, string>>) {
+    if (answeredOnOpenRef.current) return
+    answeredOnOpenRef.current = true
+    const last = list.at(-1)
+    if (!last || last.role !== 'user') return
+    const said = at[last.id]
+    if (said && Date.now() - Date.parse(said) > UNANSWERED_MAX_MS) return
+    void regenerate()
+  }
+  useEffect(() => {
+    if (boot) answerUnanswered(boot.chat, boot.times)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

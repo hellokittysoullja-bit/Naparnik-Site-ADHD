@@ -21,6 +21,15 @@ test('реплика не теряется, если уйти с Дома, по�
   expect(saved).toContain('пишу диплом и не могу начать уже неделю')
   await page.getByRole('link', { name: 'Дом' }).click()
   await expect(page.getByText('пишу диплом и не могу начать уже неделю', { exact: true })).toBeVisible()
+  // кот отвечает на оставшуюся без ответа реплику сам (здесь ИИ недоступен — заготовкой), реплика не задваивается
+  await expect
+    .poll(() => page.evaluate(() => (JSON.parse(localStorage.getItem('naparnik:chat') ?? '[]') as { role: string }[]).map((m) => m.role).join(',')), { timeout: 15_000 })
+    .toBe('user,assistant')
+  // повторное открытие Дома второй раз не отвечает
+  await page.getByRole('link', { name: 'Мир' }).click()
+  await page.getByRole('link', { name: 'Дом' }).click()
+  await page.waitForTimeout(1500)
+  expect(await page.evaluate(() => (JSON.parse(localStorage.getItem('naparnik:chat') ?? '[]') as unknown[]).length)).toBe(2)
 })
 
 test('ИИ недоступен и человек пишет о кризисе: проверенный ответ с 112, без кнопки старта', async ({ page }) => {

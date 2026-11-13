@@ -1,5 +1,5 @@
 import type { UIMessage } from 'ai'
-import { SummarySchema, SUMMARY_LIMITS, type SummaryLine, type SummarizeLine } from '@/lib/ai/memory/summary'
+import { isSummaryLines, SUMMARY_LIMITS, type SummaryLine, type SummarizeLine } from '@/lib/ai/memory/summary-shape'
 import { aboutAny, contentWords } from '@/lib/ai/memory/stems'
 import { isForgotten, peekForgotten, type Tomb } from '@/lib/forgotten'
 
@@ -37,13 +37,12 @@ export function peekSummary(tombs: readonly Tomb[] = peekForgotten()): StoredSum
   }
   if (!raw || typeof raw !== 'object') return null
   const { lines, upTo, at } = raw as Partial<StoredSummary>
-  const parsed = SummarySchema.safeParse(lines)
   // конспект без строк — законная запись: это отметка «до этой реплики пересказывать было нечего» (кусок из одних
   // забытых реплик или с кризисом), без неё тот же кусок уходил бы на сервер снова и снова
-  if (!parsed.success || typeof upTo !== 'string' || typeof at !== 'string') return null
+  if (!isSummaryLines(lines) || typeof upTo !== 'string' || typeof at !== 'string') return null
   // забытое после составления конспекта в нём остаться не должно: проверка при чтении, если стирание не дошло
-  if (isForgotten(parsed.data.map((l) => l.text).join(' '), at, tombs)) return null
-  return { lines: parsed.data, upTo, at }
+  if (isForgotten(lines.map((l) => l.text).join(' '), at, tombs)) return null
+  return { lines, upTo, at }
 }
 
 function store(s: StoredSummary | null): boolean {
@@ -143,10 +142,9 @@ export async function syncSummary(
     // 503 — модели не ответили; 429 — лимит: курсор стоит, кусок уйдёт в следующий раз
     if (!res.ok) return false
     const data = (await res.json()) as { summary?: unknown }
-    const parsed = SummarySchema.safeParse(data.summary)
-    if (!parsed.success) return false
+    if (!isSummaryLines(data.summary)) return false
     // сервер вернул обновлённый конспект, прошлый как был (кризис в куске) или пустой: курсор сдвигается в любом случае
-    const saved = store({ lines: parsed.data, upTo: plan.upTo, at })
+    const saved = store({ lines: data.summary, upTo: plan.upTo, at })
     // запись не удалась (хранилище переполнено или закрыто): пауза остаётся, иначе каждый ход слал бы платный запрос заново
     if (saved) lastTry = NEVER
     return saved

@@ -2,24 +2,13 @@ import { z } from 'zod'
 import { contentWords, stemHits } from './stems'
 import { checkOutput } from '../guards/output'
 import { factRejection } from './write-guard'
+import { SUMMARY_KINDS, SUMMARY_LABEL, SUMMARY_LIMITS, type SummarizeLine, type SummaryKind, type SummaryLine } from './summary-shape'
 
 /**
  * Конспект прошлой части разговора: форма, пределы и проверки — общие для сервера (agents/summarize.ts составляет,
  * memory/render.ts читает) и устройства (lib/chat-summary.ts хранит). Без зависимостей от ядра: модуль уходит в браузер.
  */
-export const SUMMARY_KINDS = ['task', 'done', 'agreed', 'open', 'note'] as const
-export type SummaryKind = (typeof SUMMARY_KINDS)[number]
-export type SummaryLine = { kind: SummaryKind; text: string }
-
-export const SUMMARY_LABEL: Readonly<Record<SummaryKind, string>> = {
-  task: 'ДЕЛО',
-  done: 'СДЕЛАНО',
-  agreed: 'ДОГОВОРИЛИСЬ',
-  open: 'ОТКРЫТО',
-  note: 'ЗАМЕТКА',
-}
-
-export const SUMMARY_LIMITS = { lines: 6, lineChars: 200, chunk: 24, userText: 600, catText: 300 } as const
+export { SUMMARY_KINDS, SUMMARY_LABEL, SUMMARY_LIMITS, type SummarizeLine, type SummaryKind, type SummaryLine } from './summary-shape'
 
 const clip = (n: number) => z.string().transform((s) => s.slice(0, n))
 
@@ -54,8 +43,6 @@ export function lineSafe(l: SummaryLine): boolean {
   // тема дела допустима, подробности нет: лекарства и дозы, ссылки, телефоны (общие правила вывода), номера
   return checkOutput(text, { maxChars: 400 }).ok && !/\d{4,}/.test(text)
 }
-
-export type SummarizeLine = { role: 'user' | 'cat'; text: string }
 
 const BY_LABEL = new Map<string, SummaryKind>(SUMMARY_KINDS.map((k) => [SUMMARY_LABEL[k], k]))
 
