@@ -36,6 +36,8 @@ export type StreamTurnInput = {
   userTexts: string[]
   /** откуда брать разрешённые латинские слова (по умолчанию userTexts) */
   echoTexts?: string[]
+  /** ещё тексты, чьи латинские слова кот вправе повторить (память о человеке); на проверку входа не влияют */
+  echoExtra?: readonly string[]
   /** сколько ждать точки фиксации (все попытки вместе) */
   commitTimeoutMs: number
   /** потолок всего хода, включая допечатку после фиксации */
@@ -496,7 +498,7 @@ class Race {
     this.guardOpts = {
       personMedical: this.personMedical,
       maxChars: input.maxChars,
-      echo: echoWords(input.echoTexts ?? input.userTexts),
+      echo: echoWords([...(input.echoTexts ?? input.userTexts), ...(input.echoExtra ?? [])]),
       leak: leakPrint(this.req.instructions),
       claim: input.claims ? { allowed: (k: ClaimKind) => input.claims!.fromStart.includes(k) } : undefined,
       // речь кота — без канцелярита; служебные задачи (выжимка, вспоминание) человеку не показываются

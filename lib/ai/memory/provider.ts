@@ -69,5 +69,25 @@ export const EMPTY_SNAPSHOT: MemorySnapshot = {
   facts: [],
 }
 
-/** Разовые задачи без памяти (голос сессии, дробление) */
+/** Задача без памяти: служебные вызовы и первый визит */
 export const NoMemory: MemoryProvider = { name: 'none', prefetch: async () => null }
+
+export const MEMORY_PREFETCH_MS = 1500
+
+/**
+ * Память не держит ход (Hermes: prefetch ограничен по времени и fail-open): медленное или упавшее хранилище — ход без
+ * памяти, а не зависший ответ. Общая для всех задач: чат, голос сессии, дробление.
+ */
+export async function prefetchWithin(memory: MemoryProvider, ctx: TurnContext, ms = MEMORY_PREFETCH_MS): Promise<MemorySnapshot | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      memory.prefetch(ctx),
+      new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), ms))),
+    ])
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}

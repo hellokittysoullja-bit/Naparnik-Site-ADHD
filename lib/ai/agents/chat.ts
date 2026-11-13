@@ -3,8 +3,8 @@ import { emit } from '../core/hooks'
 import { streamTurn } from '../core/stream-turn'
 import type { TurnContext } from '../core/turn'
 import { asksToForget, asksToForgetAll, asksToRemember, forgetMatches, forgetsLast } from '../memory/facts'
-import type { MemoryProvider, MemoryWrite } from '../memory/provider'
-import { renderMemory, renderSkills } from '../memory/render'
+import { prefetchWithin, type MemoryProvider, type MemoryWrite } from '../memory/provider'
+import { memoryWords, renderMemory, renderSkills } from '../memory/render'
 import { factRejection, writeAllowed } from '../memory/write-guard'
 import type { MemorySnapshot } from '../memory/schema'
 import { assemble } from '../prompt/assemble'
@@ -40,23 +40,6 @@ export const CHAT_LIMITS = {
 
 const { historyTokens: HISTORY_TOKENS, ...TURN_LIMITS } = CHAT_LIMITS
 const MAX_AUTO_ROUNDS = 2
-const MEMORY_PREFETCH_MS = 1500
-
-/** память не должна держать ход: медленное или упавшее хранилище — разговор без памяти, а не зависший ответ */
-async function prefetchWithin(memory: MemoryProvider, ctx: TurnContext, ms: number): Promise<MemorySnapshot | null> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      memory.prefetch(ctx),
-      new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), ms))),
-    ])
-  } catch {
-    return null
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
 export async function chatTurn(input: {
   ctx: TurnContext
   memory: MemoryProvider
@@ -69,7 +52,7 @@ export async function chatTurn(input: {
   autoRounds?: number
   signal?: AbortSignal
 }): Promise<ReadableStream<TextStreamPart<ToolSet>>> {
-  const snapshot = await prefetchWithin(input.memory, input.ctx, MEMORY_PREFETCH_MS)
+  const snapshot = await prefetchWithin(input.memory, input.ctx)
   const { instructions, messages } = assemble({
     taskSystem: input.mode === 'focus' ? FOCUS_CHAT_SYSTEM : CHAT_SYSTEM,
     memory: renderMemory(snapshot),
@@ -100,6 +83,9 @@ export async function chatTurn(input: {
     // ранние уже получили свой ответ; латинские слова — из всего разговора
     userTexts: input.userTexts.slice(-2),
     echoTexts: input.userTexts,
+    // названия латиницей из памяти («пишу в Overleaf», сказано неделю назад) коту тоже можно повторять: без этого
+    // ответ по памяти браковался как «чужой язык», и память делала кота хуже, а не лучше
+    echoExtra: memoryWords(snapshot),
     toolCheck: memoryToolCheck({ facts: snapshot?.facts?.length ?? 0, userTexts: input.userTexts, factTexts: snapshot?.facts?.map((f) => f.text) }),
     // «забыл/запомнил/сохранил» — только если это правда случилось: в этом ответе или в автокруге после инструмента
     claims: { unlocks: CLAIM_UNLOCKS, fromStart: actedSinceUser(input.conversation) },
