@@ -58,7 +58,7 @@ html,body{width:390px;height:844px;overflow:hidden;background:#020a08;font-famil
 .nav i{display:grid;place-items:center;width:56px;height:30px;border-radius:999px}
 .nav svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 /* === кнопки чата: три варианта === */
-.chat{position:absolute;left:16px;right:16px;top:694px;height:48px}
+.chat{position:absolute;left:16px;right:16px;top:690px;height:52px}
 /* A: реплика с ушками — капсула-пузырь, ушки кота выглядывают из-за верхнего края */
 .vA .chat{border-radius:23px;background:oklch(0.23 0.015 130/.92);border:1px solid oklch(1 0 0/.12);box-shadow:0 3px 0 oklch(0.13 0.01 130),inset 0 1px 0 oklch(1 0 0/.06);display:flex;align-items:center;padding:0 6px 0 16px;gap:10px}
 .vA .ears{position:absolute;left:22px;top:-15px;width:52px;height:18px}
@@ -86,9 +86,9 @@ html,body{width:390px;height:844px;overflow:hidden;background:#020a08;font-famil
 .vD .chat{border-radius:14px;background:linear-gradient(#f4ecd6,#e9ddbf);box-shadow:0 3px 0 #b5a175,0 10px 22px -10px rgb(0 0 0/.6);display:flex;align-items:center;gap:12px;padding:0 16px;color:#3b2f1c;transition:transform 110ms,box-shadow 110ms}
 .vD .chat::before{content:"";position:absolute;left:20px;top:-8px;width:40px;height:14px;background:oklch(0.86 0.22 130/.6);transform:rotate(-4deg);border-radius:2px}
 .vD.pressed .chat{transform:translateY(3px);box-shadow:0 0 0 #b5a175,0 6px 14px -10px rgb(0 0 0/.6)}
-.vD .txt{flex:1;font:700 16px Manrope;color:#3b2f1c}
+.vD .txt{flex:1;text-align:center;font:700 18px Manrope;color:#3b2f1c}
 .vD .txt b{display:block;font:500 12px Manrope;color:#7a6440;margin-top:1px}
-.vD .paw{width:22px;height:22px;opacity:.7}
+.vD .paw{position:absolute;left:18px;top:50%;transform:translateY(-50%);width:24px;height:24px;opacity:.7}
 </style></head><body><div class="screen vD">
 <div class="sky"></div><div class="moon"></div>
 <div class="glow"></div>
@@ -117,8 +117,8 @@ html,body{width:390px;height:844px;overflow:hidden;background:#020a08;font-famil
 </div>
 <div class="say">Привет. Шаг уже лежит, я рядом.</div>
 <div class="step"><div class="label">ШАГ НА СЕЙЧАС</div><div class="title">Открыть файл с курсовой</div><div class="task">курсовая по логистике · 2 минуты</div></div>
-<div class="cta">Начать <small>· 2 минуты</small></div>
-<div class="chat"><svg class="paw" viewBox="0 0 24 24" fill="#6b4e2a"><ellipse cx="12" cy="15.5" rx="5" ry="4.2"/><circle cx="6" cy="9.5" r="2"/><circle cx="10" cy="6.5" r="2"/><circle cx="14" cy="6.5" r="2"/><circle cx="18" cy="9.5" r="2"/></svg><span class="txt">Поговорить с котом<b>он у костра, слушает</b></span></div>
+<div class="cta">Начать</div>
+<div class="chat"><svg class="paw" viewBox="0 0 24 24" fill="#6b4e2a"><ellipse cx="12" cy="15.5" rx="5" ry="4.2"/><circle cx="6" cy="9.5" r="2"/><circle cx="10" cy="6.5" r="2"/><circle cx="14" cy="6.5" r="2"/><circle cx="18" cy="9.5" r="2"/></svg><span class="txt">Поговорить с котом</span></div>
 <div class="nav">
  <div class="on"><i><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></i>Дом</div>
  <div><i><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/></svg></i>Фокус</div>
