@@ -321,3 +321,34 @@ test('Дом выглядит одинаково при любом шаге и �
     expect(seen.short, `${w}×${h}`).toEqual(seen.empty)
   }
 })
+
+test('на компьютере поле и кнопки — колонкой, как в Фокусе, а не на всю ширину экрана', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto('/app')
+  await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
+  const m = await page.evaluate(() => ({
+    cta: document.querySelector('.btn-chunky')!.getBoundingClientRect().width,
+    field: document.querySelector('#home-task')!.getBoundingClientRect().width,
+    sw: document.documentElement.scrollWidth,
+  }))
+  expect(m.cta).toBeLessThanOrEqual(448)
+  expect(m.field).toBeLessThanOrEqual(448)
+  expect(m.sw).toBeLessThanOrEqual(1280)
+})
+
+test('тень кота не висит на холме, пока самого кота ещё нет', async ({ page }) => {
+  // постер кота держим в сети: тень должна ждать его, а не рисоваться пятном на пустом холме (3G, 13.11)
+  let release!: () => void
+  const held = new Promise<void>((r) => (release = r))
+  await page.route('**/mascot/poster/neutral.webp*', async (route) => {
+    await held
+    await route.continue()
+  })
+  await page.route('**/mascot/doll/**', (route) => route.abort())
+  await page.goto('/app', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
+  const shadow = page.locator('.cat-doll .cat-shadow')
+  await expect(shadow).toHaveCSS('visibility', 'hidden')
+  release()
+  await expect(shadow).toHaveCSS('visibility', 'visible')
+})

@@ -19,6 +19,8 @@ export function preloadFonts(...files: string[]) {
  * Без `fetchPriority: "high"`: с ним постер спорил со стилями и шрифтами, и первая отрисовка Фокуса уходила с
  * 1,02–1,05 на 1,04–1,10 с, а LCP был хуже (3,50–3,70 с против 3,29–3,43 с обычным приоритетом; 5 + 5 прогонов).
  */
-export function preloadCatPoster() {
-  preload(asset("/mascot/poster/neutral.webp"), { as: "image" });
+export function preloadCatPoster(main = false) {
+  // main — кот главный элемент первого экрана (Дом): постер раньше остальных картинок, иначе на 3G он шёл после
+  // фона и приходил к 2,9 с (13.11)
+  preload(asset("/mascot/poster/neutral.webp"), main ? { as: "image", fetchPriority: "high" } : { as: "image" });
 }

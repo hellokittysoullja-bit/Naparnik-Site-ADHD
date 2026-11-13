@@ -96,6 +96,12 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
   const [drawn, setDrawn] = useState(false);
   // постер уже на экране (декодирован) — для переходов между экранами: снимок нового экрана ждёт, пока кот виден
   const [posterShown, setPosterShown] = useState(false);
+  const posterImg = useRef<HTMLImageElement>(null);
+  // постер мог догрузиться до гидратации — тогда onLoad React не увидит; проверяем сами
+  useEffect(() => {
+    const img = posterImg.current;
+    if (img?.complete && img.naturalWidth > 0) setPosterShown(true);
+  }, []);
   // в кадре ли кот (с запасом 60 px — успеть ожить до появления): без IntersectionObserver считаем, что да; с ним — ждём первого ответа, а не создаём контексты
   // всем котам разом при монтировании длинной переписки
   const [inView, setInView] = useState(() => typeof IntersectionObserver === "undefined");
@@ -263,7 +269,8 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
       onPointerDown={interactive ? () => anim.current?.poke() : undefined}
     >
       {/* тень — первым слоем, под постером и куклой: кот всегда стоит на земле, даже пока кукла грузится или без WebGL */}
-      <div ref={shadow} className="cat-shadow" aria-hidden="true">
+      {/* тень появляется вместе с котом: без него на холме висело тёмное пятно (3G, первый вход, 13.11) */}
+      <div ref={shadow} className="cat-shadow" aria-hidden="true" style={inlinePoster || posterShown || (ready && drawn) ? undefined : { visibility: "hidden" }}>
         <span className="cat-shadow-soft" />
         <span className="cat-shadow-core" />
         <span className="cat-shadow-tail" />
@@ -281,7 +288,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
           ) : null}
           {/* у героя внешний постер идёт обычным приоритетом картинки в кадре: первый кадр уже дал инлайн, а шрифты
               первого экрана вшиты в CSS (app/hero-fonts.css), уступать полосу ему больше некому */}
-          <img src={asset("/mascot/poster/neutral.webp")} alt="" draggable={false} loading={inlinePoster ? "eager" : "lazy"} decoding="async"
+          <img ref={posterImg} src={asset("/mascot/poster/neutral.webp")} alt="" draggable={false} loading={inlinePoster ? "eager" : "lazy"} decoding="async"
             onLoad={() => setPosterShown(true)}
             style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
         </>

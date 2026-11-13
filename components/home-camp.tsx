@@ -137,8 +137,9 @@ export function HomeCamp() {
             не сдвигается (CLS 0). */}
         <section aria-label="Шаг на сейчас" className="relative px-4 pt-5 text-center [@media(max-height:620px)]:pt-3">
           {/* Затемнение земли начинается под лапами, а не выше: холм между котом и подписью виден, текст и кнопки
-              стоят на тёмном. isolate — слой затемнения над холмом, но под текстом и кнопками */}
-          <div className="relative isolate before:pointer-events-none before:absolute before:-inset-x-4 before:-top-5 before:bottom-0 before:-z-10 before:bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.8)_52px,rgb(3_11_9)_100px)] before:content-['']">
+              стоят на тёмном. isolate — слой затемнения над холмом, но под текстом и кнопками. Колонка не шире 448 px, как
+              у Фокуса (на компьютере поле и кнопки тянулись на всю ширину), а затемнение — на всю ширину экрана */}
+          <div className="relative isolate mx-auto w-full max-w-md before:pointer-events-none before:absolute before:-inset-x-[50vw] before:-top-5 before:bottom-0 before:-z-10 before:bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.8)_52px,rgb(3_11_9)_100px)] before:content-['']">
           <p className="h-4 font-mono text-[10.5px] font-semibold leading-4 tracking-[0.26em] text-primary/90">{step?.label}</p>
           <div className="mt-3 flex h-[158px] flex-col justify-center">
             {step && empty ? (
