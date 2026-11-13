@@ -114,7 +114,10 @@ export function HomeCamp() {
         <div className="relative flex min-h-0 flex-1 items-end justify-center">
           {/* луна, как на лендинге: справа вверху, отдельно от видео */}
           <Moon className="pointer-events-none absolute right-[3%] top-0 w-[clamp(84px,26vw,112px)]" />
-          <div className="relative">
+          <div className={`relative ${data ? "" : "invisible"}`}>
+            {/* До чтения памяти (холодная загрузка) кот скрыт: блок шага под ним вырастает по содержимому, и кот
+                встал бы на новое место на глазах (прыжок). visibility, а не opacity: скрытый элемент не даёт сдвига
+                раскладки (CLS 0). При переходе по меню память читается сразу — кот виден с первого кадра. */}
             {/* холм поднят над лапами (макушка svg, y≈6 из 500, на 0,15 W выше лап): кот сидит в холме, не на кромке */}
             <Knoll className="pointer-events-none absolute left-1/2 top-[82%] w-[440%] max-w-[900px] -translate-x-1/2" />
             {/* Костёр — как в первом макете, согласованном владельцем (скриншот 13.11): близко к коту, на макушке холма.
@@ -130,18 +133,19 @@ export function HomeCamp() {
           </div>
         </div>
 
-        {/* Шаг и действия. Высота блока одна и та же при любом шаге и любых ответах знакомства (13.11, владелец: «на
-            любом телефоне выглядит одинаково, строчки меняются»): у каждой строки своё место фиксированной высоты —
-            подпись, середина (шаг с делом или поле с подсказками сфер), строка над кнопкой. Кот сидит прямо над блоком,
-            разницу высоты экранов забирает небо. Пока память не прочитана после гидратации, места уже заняты — ничего
-            не сдвигается (CLS 0). */}
+        {/* Шаг и действия. Блок по содержимому, кнопки прижаты к низу, кот сидит прямо над ним (13.11, владелец: «пустота —
+            это баг»): короткий шаг не оставляет дыр, лишняя высота экрана уходит в небо над котом. Размер кота — от
+            свободной высоты (под самое высокое состояние), поэтому он одинаков при любом шаге. Пока память не прочитана
+            после гидратации, кот скрыт (visibility), чтобы блок шага не сдвигал его на глазах (CLS 0). */}
         <section aria-label="Шаг на сейчас" className="relative px-4 pt-5 text-center [@media(max-height:620px)]:pt-3">
-          {/* Затемнение земли начинается под лапами, а не выше: холм между котом и подписью виден, текст и кнопки
-              стоят на тёмном. isolate — слой затемнения над холмом, но под текстом и кнопками. Колонка не шире 448 px, как
-              у Фокуса (на компьютере поле и кнопки тянулись на всю ширину), а затемнение — на всю ширину экрана */}
-          <div className="relative isolate mx-auto w-full max-w-md before:pointer-events-none before:absolute before:-inset-x-[50vw] before:-top-5 before:bottom-0 before:-z-10 before:bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.8)_52px,rgb(3_11_9)_100px)] before:content-['']">
-          <p className="h-4 font-mono text-[10.5px] font-semibold leading-4 tracking-[0.26em] text-primary/90">{step?.label}</p>
-          <div className="mt-3 flex h-[158px] flex-col justify-center">
+          {/* Подпись, шаг и строка над кнопкой — одна группа прямо над кнопками. Затемнение земли начинается над
+              подписью и доходит до полной темноты за ~100 px, isolate — слой затемнения над холмом, но под текстом
+              и кнопками. Колонка не шире 448 px, как у Фокуса; затемнение — на всю ширину экрана. До чтения памяти затемнение
+              скрыто (visibility): оно растёт вместе с блоком, и это был бы сдвиг раскладки (CLS 0,05 на холодной загрузке) */}
+          <div className={`relative isolate mx-auto flex w-full max-w-md flex-col before:pointer-events-none before:absolute before:-inset-x-[50vw] before:-top-5 before:bottom-0 before:-z-10 before:bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.8)_52px,rgb(3_11_9)_100px)] before:content-[''] ${data ? "" : "before:invisible"}`}>
+          <div>
+          <p className="min-h-4 font-mono text-[10.5px] font-semibold leading-4 tracking-[0.26em] text-primary/90">{step?.label}</p>
+          <div className="mt-3 flex flex-col">
             {step && empty ? (
               <>
                 <form
@@ -196,6 +200,7 @@ export function HomeCamp() {
             )}
           </div>
 
+          </div>
           <Link
             href={href}
             // iOS Safari включает :active только при наличии touch-слушателя
