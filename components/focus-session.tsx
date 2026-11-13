@@ -27,6 +27,7 @@ import {
   saveActiveSession,
   savePlan,
   saveStepQueue,
+  peekStepQueue,
   todayKey,
   updateStartMinutes,
   type IslandFindEntry,
@@ -123,6 +124,20 @@ const AUTO_START_KEY = 'naparnik:autoStart'
 /** Первый шаг — «крошечный и конкретный»: 120 знаков хватает с запасом, а экран сессии не уезжает вбок */
 const STEP_MAX = 120
 
+/**
+ * Очередь после дробления. Дробили следующий шаг уже раздробленного дела (Дом «Разломать на шаг», состояние
+ * «СЛЕДУЮЩИЙ ШАГ») — его подшаги встают на его место, а остальные шаги дела остаются (проверка 13.11: очередь
+ * перезаписывалась целиком, и шаги дела пропадали). Иначе — новая очередь, как раньше.
+ */
+async function spliceQueue(task: string, rest: string[]) {
+  const q = peekStepQueue()
+  if (q && q.steps[0]?.trim() === task.trim()) {
+    await saveStepQueue(q.task, [...rest, ...q.steps.slice(1)])
+    return
+  }
+  await saveStepQueue(task, rest)
+}
+
 export function FocusSession() {
   const reducedMotion = useReducedMotion()
   const searchParams = useSearchParams()
@@ -165,7 +180,8 @@ export function FocusSession() {
     searchParams.get('auto') === '1' && Boolean(prefilledStep) && autoPass === prefilledStep
   // Дом («Разломать на шаг») открывает Фокус с делом и пометкой break=1: дробление запускается само. Старт — только
   // руками человека, поэтому чужая ссылка с break=1 ничего не начинает, а лишь показывает шаги
-  const breakOnOpen = !autoStart && searchParams.get('break') === '1' && Boolean(prefilledStep)
+  // короче 8 знаков не дробим (тот же порог, что у кнопки дробления; сервер не принимает < 3): только подставляем
+  const breakOnOpen = !autoStart && searchParams.get('break') === '1' && prefilledStep.length >= 8
   const initialMinutes =
     durations.includes(prefilledDuration) ||
     (autoStart && prefilledDuration === FIRST_MINUTES)
@@ -438,6 +454,12 @@ export function FocusSession() {
         }
         return
       }
+      if (searchParams.get('break') === '1') {
+        const keep = new URLSearchParams(window.location.search)
+        keep.delete('break')
+        const q = keep.toString()
+        window.history.replaceState(null, '', q ? `/app/session?${q}` : '/app/session')
+      }
       totalRef.current = s.minutes * 60
       startedAtRef.current = s.startedAt
       startIdRef.current = s.startId
@@ -530,7 +552,9 @@ export function FocusSession() {
     const plan = await getPlan()
     // шаг из адреса обрезан до STEP_MAX и без пробелов по краям — сравниваем в том же виде, иначе длинный шаг плана
     // от ИИ, начатый из чата, не закрывал план
-    if (plan && ((fromPlan && plan.forDate === todayKey()) || plan.firstStep.trim().slice(0, STEP_MAX) === task.trim())) {
+    // старт с Дома по плану (plan=1) закрывает план любой даты: вчерашний («ПРОДОЛЖИМ») и завтрашний, начатый раньше —
+    // иначе Дом показывал бы его снова (проверка 13.11); шаг мог быть и раздроблен — тогда он уже не равен firstStep
+    if (plan && (fromPlan || plan.firstStep.trim().slice(0, STEP_MAX) === task.trim())) {
       await clearPlan()
     }
 
@@ -776,10 +800,7 @@ export function FocusSession() {
                       // Остальные шаги не выбрасываются: очередь помнит их
                       // и сама предложит следующий после этой сессии
                       // (на финале и на Доме). Продукт помнит сказанное.
-                      void saveStepQueue(
-                        task,
-                        brokenSteps.filter((s) => s !== step),
-                      )
+                      void spliceQueue(task, brokenSteps.filter((s) => s !== step))
                       setTask(step)
                       setBrokenSteps(null)
                     }}

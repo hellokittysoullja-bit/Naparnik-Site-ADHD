@@ -106,3 +106,79 @@ test('Дом не прокручивается ни вбок, ни вниз; н�
   await expect(page.getByRole('heading', { name: 'Остров' })).toBeVisible()
   expect(await page.evaluate(() => getComputedStyle(document.querySelector('[data-app-backdrop]')!).display)).not.toBe('none')
 })
+
+// ---------- проверка 13.11: дыры, найденные независимым разбором ----------
+
+test('дробление следующего шага не стирает остальную очередь дела', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return
+    sessionStorage.setItem('seeded', '1')
+    localStorage.setItem('naparnik:stepQueue', JSON.stringify({ task: 'Курсовая', steps: ['Найти файл курсовой', 'Написать план из трёх пунктов'] }))
+  })
+  await page.route('**/api/breakdown', (route) => route.fulfill({ json: { steps: ['Открыть папку', 'Найти файл', 'Открыть его'], source: 'model' } }))
+  await page.goto('/app')
+  await expect(page.getByText('СЛЕДУЮЩИЙ ШАГ')).toBeVisible()
+  await page.getByRole('link', { name: 'Разломать на шаг' }).click()
+  await page.getByRole('button', { name: 'Открыть папку' }).click()
+  const q = await page.evaluate(() => JSON.parse(localStorage.getItem('naparnik:stepQueue') ?? 'null'))
+  // подшаги встали на место раздробленного шага, второй шаг дела на месте
+  expect(q).toEqual({ task: 'Курсовая', steps: ['Найти файл', 'Открыть его', 'Написать план из трёх пунктов'] })
+})
+
+test('план из прошлых дней, начатый с Дома, закрывается и больше не возвращается', async ({ page }) => {
+  await page.addInitScript((d) => {
+    if (sessionStorage.getItem('seeded')) return
+    sessionStorage.setItem('seeded', '1')
+    localStorage.setItem('naparnik:plan', JSON.stringify({ forDate: d, task: 'Отчёт', firstStep: 'Открыть таблицу с отчётом', createdAt: '' }))
+  }, today(-2))
+  await page.route('**/api/breakdown', (route) => route.fulfill({ json: { steps: ['Открыть ноутбук', 'Найти таблицу', 'Открыть её'], source: 'model' } }))
+  await page.goto('/app')
+  await expect(page.getByText('ПРОДОЛЖИМ')).toBeVisible()
+  await page.getByRole('link', { name: 'Разломать на шаг' }).click()
+  await page.getByRole('button', { name: 'Открыть ноутбук' }).click()
+  await page.getByRole('button', { name: /Начали/ }).click()
+  await expect(page.getByRole('button', { name: 'Закончить раньше' })).toBeVisible({ timeout: 10_000 })
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('naparnik:plan') ?? 'null')), { timeout: 5_000 }).toBeNull()
+})
+
+test('короткое дело с Дома не дробится с ошибкой сети — просто подставляется в поле', async ({ page }) => {
+  let calls = 0
+  await page.route('**/api/breakdown', (route) => {
+    calls++
+    return route.fulfill({ status: 400, body: '{}' })
+  })
+  await page.goto('/app')
+  const field = page.getByLabel('Что сейчас висит')
+  await field.fill('почта')
+  await field.press('Enter')
+  await expect(page).toHaveURL(/\/app\/session/)
+  await page.waitForTimeout(1200)
+  expect(calls).toBe(0)
+  await expect(page.getByText(/сеть подвела/)).toHaveCount(0)
+})
+
+test('длинный шаг на маленьком экране: кот не прыгает при загрузке, кнопки над меню', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 640 })
+  await seed(page, {
+    plan: { forDate: today(), task: 'Курсовая по логистике и управлению цепями поставок для научного руководителя', firstStep: 'Открыть файл с курсовой, найти раздел про склад и написать в нём одно самое кривое предложение', startTime: 'в 9 вечера', createdAt: '' },
+    onboarding: { sphere: 'study', blocker: 'boring', motive: 'relief' },
+  })
+  await page.addInitScript(() => {
+    ;(window as unknown as { __cls: number }).__cls = 0
+    new PerformanceObserver((l) => {
+      for (const e of l.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[]) if (!e.hadRecentInput) (window as unknown as { __cls: number }).__cls += e.value
+    }).observe({ type: 'layout-shift', buffered: true })
+  })
+  await page.goto('/app')
+  await expect(page.getByText('ПО ПЛАНУ · 21:00')).toBeVisible()
+  await page.waitForTimeout(800)
+  const m = await page.evaluate(() => ({
+    cls: (window as unknown as { __cls: number }).__cls,
+    chatBottom: document.querySelector('.btn-paper')!.getBoundingClientRect().bottom,
+    navTop: document.querySelector('nav')!.getBoundingClientRect().top,
+    sh: document.documentElement.scrollHeight,
+  }))
+  expect(m.cls).toBeLessThan(0.01)
+  expect(m.chatBottom).toBeLessThanOrEqual(m.navTop)
+  expect(m.sh).toBeLessThanOrEqual(640)
+})

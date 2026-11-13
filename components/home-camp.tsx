@@ -85,10 +85,12 @@ export function HomeCamp() {
   const empty = step?.kind === "empty";
   const hint = data ? homeHint(data.profile) : null;
   const target = empty ? text.trim() || homeFallbackTask(sphere, data?.profile ?? null) : (step?.title ?? "");
-  const href = target ? breakHref(target, Boolean(step?.fromPlan)) : "/app/session";
+  // «сегодня старт уже был»: шаг сделан, дробить его снова незачем — Фокус открывается чистым, под новое дело
+  const href = step?.kind === "done-today" || !target ? "/app/session" : breakHref(target, step?.fromPlan ?? false);
 
   return (
     <main className="relative h-dvh overflow-hidden">
+      <h1 className="sr-only">Дом</h1>
       <div className="absolute inset-0 z-0">
         <NightScene />
       </div>
@@ -99,7 +101,8 @@ export function HomeCamp() {
           {data && data.finds > 0 && (
             <Link
               href="/app/world"
-              className="press flex items-center gap-1.5 rounded-full border border-white/10 bg-[oklch(0.2_0.02_130/0.55)] px-3 py-1.5 text-[13px] font-semibold"
+              // зона касания 44 px при плашке ~32 px: невидимое продолжение вокруг
+              className="press relative flex items-center gap-1.5 rounded-full border border-white/10 bg-[oklch(0.2_0.02_130/0.55)] px-3 py-1.5 text-[13px] font-semibold after:absolute after:-inset-1.5 after:content-['']"
             >
               <Sprout className="size-4 text-primary" aria-hidden="true" />
               {findsLabel(data.finds)}
@@ -125,9 +128,11 @@ export function HomeCamp() {
         </div>
 
         {/* шаг и действия: земля под холмом уходит в темноту плавно, без кромки */}
+        {/* Высота блока зарезервирована (min-h, содержимое прижато к низу): пока память не прочитана после гидратации,
+            блок не растёт и не сдвигает сцену с котом вверх (CLS). Самые длинные состояния обрезаны line-clamp. */}
         <section
           aria-label="Шаг на сейчас"
-          className="relative bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.78)_72px,rgb(3_11_9)_150px)] px-4 pt-6 text-center"
+          className="relative flex min-h-[clamp(350px,47dvh,380px)] flex-col justify-end bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.78)_72px,rgb(3_11_9)_150px)] px-4 pt-6 text-center"
         >
           {step ? (
             <>
@@ -161,7 +166,7 @@ export function HomeCamp() {
                         type="button"
                         aria-pressed={sphere === c.sphere}
                         onClick={() => setSphere(sphere === c.sphere ? null : c.sphere)}
-                        className={`press min-h-10 rounded-full border px-3.5 text-[13px] font-semibold transition-colors ${
+                        className={`press min-h-11 rounded-full border px-3.5 text-[13px] font-semibold transition-colors ${
                           sphere === c.sphere
                             ? "border-transparent bg-[oklch(0.97_0.005_100)] text-[#141a10] shadow-[0_2px_0_oklch(0.75_0.01_100)]"
                             : "border-white/10 bg-[oklch(0.24_0.014_130/0.9)] text-foreground"
@@ -174,21 +179,21 @@ export function HomeCamp() {
                 </>
               ) : (
                 <>
-                  <h1 className="mx-auto mt-2.5 max-w-[22ch] text-balance text-[clamp(22px,6.6vw,27px)] font-bold leading-[1.12] tracking-[-0.01em]">
+                  <h2 className="mx-auto mt-2.5 line-clamp-3 max-w-[22ch] [@media(max-height:700px)]:line-clamp-2 text-balance text-[clamp(22px,6.6vw,27px)] font-bold leading-[1.12] tracking-[-0.01em]">
                     {step.title}
-                  </h1>
-                  {step.sub && <p className="mt-1.5 text-[13.5px] font-medium text-muted-foreground">{step.sub}</p>}
+                  </h2>
+                  {step.sub && <p className="mx-auto mt-1.5 line-clamp-1 max-w-[34ch] text-[13.5px] font-medium text-muted-foreground">{step.sub}</p>}
                 </>
               )}
               {hint && (
-                <p className="mx-auto mt-4 max-w-[34ch] text-balance text-[16px] font-bold leading-snug text-[oklch(0.93_0.04_90)]">
+                <p className="mx-auto mt-4 line-clamp-2 max-w-[34ch] text-balance text-[16px] font-bold leading-snug text-[oklch(0.93_0.04_90)]">
                   {hint}
                 </p>
               )}
             </>
           ) : (
             // гидратация: место под шаг занято, чтобы кнопки не прыгали, когда память прочитана
-            <div className="h-[104px]" aria-hidden="true" />
+            <div aria-hidden="true" />
           )}
 
           <Link

@@ -42,12 +42,20 @@ function daysBetween(fromKey: string, toKey: string): number {
   return Math.round((b - a) / 86_400_000)
 }
 
-/** «09:00», «9.30», «в 18» → минуты от полуночи; «утром» и пусто → null */
+/**
+ * Точное время плана — только если вся строка и есть время: «09:00», «9.30», «в 18», «в 9 вечера».
+ * «через 15 минут», «после 2 пары», «утром» → null: тогда на Доме просто «ПО ПЛАНУ», без выдуманного часа
+ * (проверка 13.11: поле времени у плана — свободный текст до 40 знаков, его пишет и ИИ).
+ */
+const CLOCK = /^\s*(?:в\s*)?(\d{1,2})(?:[:.](\d{2}))?\s*(утра|дня|вечера)?\s*$/i
+
 export function planMinutes(startTime: string | undefined): number | null {
-  const m = startTime?.match(/(?<!\d)(\d{1,2})(?:[:.](\d{2}))?(?!\d)/)
+  const m = startTime?.match(CLOCK)
   if (!m) return null
-  const h = Number(m[1])
+  let h = Number(m[1])
   const min = m[2] ? Number(m[2]) : 0
+  const part = m[3]?.toLowerCase()
+  if ((part === 'дня' || part === 'вечера') && h < 12) h += 12
   return h <= 23 && min <= 59 ? h * 60 + min : null
 }
 
@@ -77,7 +85,7 @@ export function homeStep(input: {
       fromPlan: true,
     }
   }
-  if (plan && plan.forDate > today) {
+  if (plan && !planDone && plan.forDate > today) {
     return { kind: 'tomorrow', label: at !== null ? `ЗАВТРА · ${hhmm(at)}` : 'ЗАВТРА', title: plan.firstStep, sub: plan.task, fromPlan: true }
   }
   if (queue && queue.steps.length > 0) {

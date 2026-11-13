@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { Clock, Coffee, Frown, Mail, Meh, Moon, Send, Smile, Utensils, Zap, type LucideIcon } from 'lucide-react'
 import { CatAsks, OPTION_HUES, Option } from '@/components/onboarding/first-run'
 import { downloadIcs } from '@/lib/calendar'
+import { savePlan as savePlanToMemory, tomorrowKey } from '@/lib/memory'
+import { readOnboarding, SPHERES } from '@/lib/onboarding'
 import { withAttribution } from '@/lib/visitor'
 import { hapticThreshold } from '@/lib/haptics'
 import type { MascotAction, MascotExpression } from '@/components/mascot-doll'
@@ -60,6 +62,14 @@ export function AfterFirst() {
       window.localStorage.setItem(PLAN_KEY, JSON.stringify({ when: timeLabel, time: clock, at: Date.now() }))
     } catch {
       /* план просто не запомнится */
+    }
+    // договорённость «когда завтра» — настоящий план на завтра: Дом покажет «ЗАВТРА · 9:00» и шаг из знакомства
+    // (research/22-chat-and-home/E-home-design.md §9; раньше время лежало отдельно и Дом о нём не знал — проверка 13.11)
+    const onb = readOnboarding()
+    const step = onb.firstStep?.trim()
+    if (step) {
+      const sphere = SPHERES.find((x) => x.key === onb.sphere)
+      void savePlanToMemory({ task: sphere?.noun ?? 'Это дело', firstStep: step, startTime: clock, forDate: tomorrowKey() }).catch(() => {})
     }
   }
 
