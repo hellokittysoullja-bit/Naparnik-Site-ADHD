@@ -68,6 +68,7 @@ import {
   readOnboarding,
   stepsFor,
   suggestStep,
+  rememberAnswers,
   writeOnboarding,
   type Blocker,
   type Cost,
@@ -320,6 +321,8 @@ export function FirstRun() {
   }, [])
 
   function update(patch: Partial<OnboardingState>) {
+    // ответ на вопрос, а не просто переход между шагами — ответы снова помнятся после «Забудь всё»
+    if (Object.keys(patch).some((k) => k !== 'step')) rememberAnswers()
     setState((s) => {
       const next = { ...s, ...patch }
       writeOnboarding(next)

@@ -306,6 +306,19 @@ export function readOnboarding(): OnboardingState {
   }
 }
 
+/**
+ * Человек отвечает в знакомстве — значит, хочет, чтобы эти ответы помнили. Снимает метку «Забудь всё» из чата
+ * (`naparnik:profileForgotten`, lib/memory.ts forgetEverything): без этого новые ответы после «забудь» Дом и кот не
+ * видели бы никогда (13.11). Само открытие знакомства метку не снимает — только ответ.
+ */
+export function rememberAnswers() {
+  try {
+    window.localStorage.removeItem('naparnik:profileForgotten')
+  } catch {
+    /* хранилище недоступно — помнить всё равно нечем */
+  }
+}
+
 export function writeOnboarding(state: OnboardingState) {
   try {
     window.localStorage.setItem(KEY, JSON.stringify(state))

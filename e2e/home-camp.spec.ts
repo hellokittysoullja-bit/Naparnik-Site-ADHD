@@ -20,35 +20,6 @@ async function seed(page: Page, data: { plan?: object; onboarding?: object }) {
   }, data)
 }
 
-test('план на сегодня: шаг словами человека, строка по ответам знакомства, «Разломать на шаг» дробит его в Фокусе', async ({ page }) => {
-  const errors = collectErrors(page)
-  await seed(page, {
-    plan: { forDate: today(), task: 'Курсовая по логистике', firstStep: 'Открыть файл с курсовой', startTime: '00:00', createdAt: '' },
-    onboarding: { sphere: 'study', blocker: 'fear', motive: 'rest' },
-  })
-  let asked = ''
-  await page.route('**/api/breakdown', async (route) => {
-    asked = (route.request().postDataJSON() as { task: string }).task
-    await route.fulfill({ json: { steps: ['Открыть ноутбук', 'Найти файл курсовой', 'Прочитать последний абзац'], source: 'model' } })
-  })
-  await page.goto('/app')
-  await expect(page.getByText('ПО ПЛАНУ · 0:00')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Открыть файл с курсовой' })).toBeVisible()
-  await expect(page.getByText('Курсовая по логистике')).toBeVisible()
-  // «боюсь, что выйдет плохо» × «смогу отдыхать без фона»
-  await expect(page.getByText('Сделай криво, и вечер будет твоим')).toBeVisible()
-  // фразы кота на Доме нет (решение владельца), чат — за запиской
-  await expect(page.getByPlaceholder('Напиши напарнику…')).toHaveCount(0)
-
-  await page.getByRole('link', { name: 'Разломать на шаг' }).click()
-  await expect(page).toHaveURL(/\/app\/session\?step=.+&plan=1$/)
-  await expect(page.getByText('Найти файл курсовой')).toBeVisible()
-  expect(asked).toBe('Открыть файл с курсовой')
-  // дробление не запускается второй раз при перезагрузке: пометки break в адресе больше нет
-  expect(page.url()).not.toContain('break=1')
-  expect(errors).toEqual([])
-})
-
 test('ничего не положено: «Что сейчас висит?», сфера из знакомства подсвечена, своё дело уходит на дробление', async ({ page }) => {
   await seed(page, { onboarding: { sphere: 'study', blocker: 'tired', motive: 'safety' } })
   await page.route('**/api/breakdown', (route) => route.fulfill({ json: { steps: ['Открыть реферат', 'Найти тему', 'Написать одну фразу'], source: 'model' } }))
@@ -72,6 +43,8 @@ test('первый визит без знакомства: поле и подс�
   await expect(page.getByText('ЧТО СЕЙЧАС ВИСИТ?')).toBeVisible()
   for (const name of [/Учёба/, /Работа/, /Дом$/]) await expect(page.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByText(/находк/)).toHaveCount(0)
+  // строка над кнопкой есть и без знакомства — общая из утверждённых (владелец 13.11)
+  await expect(page.getByText('Можно криво. Сначала просто начнём')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
 })
 
@@ -109,32 +82,28 @@ test('Дом не прокручивается ни вбок, ни вниз; н�
 
 // ---------- проверка 13.11: дыры, найденные независимым разбором ----------
 
-test('дробление следующего шага не стирает остальную очередь дела', async ({ page }) => {
+test('Фокус: дробление следующего шага не стирает остальную очередь дела', async ({ page }) => {
   await page.addInitScript(() => {
     if (sessionStorage.getItem('seeded')) return
     sessionStorage.setItem('seeded', '1')
     localStorage.setItem('naparnik:stepQueue', JSON.stringify({ task: 'Курсовая', steps: ['Найти файл курсовой', 'Написать план из трёх пунктов'] }))
   })
   await page.route('**/api/breakdown', (route) => route.fulfill({ json: { steps: ['Открыть папку', 'Найти файл', 'Открыть его'], source: 'model' } }))
-  await page.goto('/app')
-  await expect(page.getByText('СЛЕДУЮЩИЙ ШАГ')).toBeVisible()
-  await page.getByRole('link', { name: 'Разломать на шаг' }).click()
+  await page.goto('/app/session?step=' + encodeURIComponent('Найти файл курсовой') + '&break=1')
   await page.getByRole('button', { name: 'Открыть папку' }).click()
   const q = await page.evaluate(() => JSON.parse(localStorage.getItem('naparnik:stepQueue') ?? 'null'))
   // подшаги встали на место раздробленного шага, второй шаг дела на месте
   expect(q).toEqual({ task: 'Курсовая', steps: ['Найти файл', 'Открыть его', 'Написать план из трёх пунктов'] })
 })
 
-test('план из прошлых дней, начатый с Дома, закрывается и больше не возвращается', async ({ page }) => {
+test('Фокус: план из прошлых дней, начатый по плану, закрывается и больше не возвращается', async ({ page }) => {
   await page.addInitScript((d) => {
     if (sessionStorage.getItem('seeded')) return
     sessionStorage.setItem('seeded', '1')
     localStorage.setItem('naparnik:plan', JSON.stringify({ forDate: d, task: 'Отчёт', firstStep: 'Открыть таблицу с отчётом', createdAt: '' }))
   }, today(-2))
   await page.route('**/api/breakdown', (route) => route.fulfill({ json: { steps: ['Открыть ноутбук', 'Найти таблицу', 'Открыть её'], source: 'model' } }))
-  await page.goto('/app')
-  await expect(page.getByText('ПРОДОЛЖИМ')).toBeVisible()
-  await page.getByRole('link', { name: 'Разломать на шаг' }).click()
+  await page.goto('/app/session?step=' + encodeURIComponent('Открыть таблицу с отчётом') + '&break=1&plan=1')
   await page.getByRole('button', { name: 'Открыть ноутбук' }).click()
   await page.getByRole('button', { name: /Начали/ }).click()
   await expect(page.getByRole('button', { name: 'Закончить раньше' })).toBeVisible({ timeout: 10_000 })
@@ -157,27 +126,9 @@ test('короткое дело с Дома не дробится с ошибк�
   await expect(page.getByText(/сеть подвела/)).toHaveCount(0)
 })
 
-test('длинный шаг на маленьком экране: кнопки над меню, без прокрутки', async ({ page }) => {
-  await page.setViewportSize({ width: 360, height: 640 })
-  await seed(page, {
-    plan: { forDate: today(), task: 'Курсовая по логистике и управлению цепями поставок для научного руководителя', firstStep: 'Открыть файл с курсовой, найти раздел про склад и написать в нём одно самое кривое предложение', startTime: 'в 9 вечера', createdAt: '' },
-    onboarding: { sphere: 'study', blocker: 'boring', motive: 'relief' },
-  })
-  await page.goto('/app')
-  await expect(page.getByText('ПО ПЛАНУ · 21:00')).toBeVisible()
-  await page.waitForTimeout(500)
-  const m = await page.evaluate(() => ({
-    chatBottom: document.querySelector('.btn-paper')!.getBoundingClientRect().bottom,
-    navTop: document.querySelector('nav')!.getBoundingClientRect().top,
-    sh: document.documentElement.scrollHeight,
-  }))
-  expect(m.chatBottom).toBeLessThanOrEqual(m.navTop)
-  expect(m.sh).toBeLessThanOrEqual(640)
-})
-
-test('холодная загрузка: ничего видимого не прыгает — кнопки на месте, кот виден только на своём окончательном месте', async ({ page }) => {
-  // блок шага по содержимому, поэтому до чтения памяти кот и затемнение скрыты (visibility). Скрипты задерживаем и
-  // замедляем процессор, чтобы первый кадр с пустым блоком успел отрисоваться до гидратации; дальше — каждый кадр.
+test('холодная загрузка: ничего не прыгает — кнопки и кот на своих местах с первого кадра', async ({ page }) => {
+  // блок одной высоты при любых данных: кот и кнопки не двигаются, когда память прочитана. Скрипты задерживаем и
+  // замедляем процессор, чтобы первый кадр до гидратации успел отрисоваться; дальше — каждый кадр.
   await page.setViewportSize({ width: 390, height: 664 })
   await seed(page, {
     plan: { forDate: today(), task: 'Курсовая по логистике', firstStep: 'Открыть файл с курсовой, найти раздел про склад и написать в нём одно предложение', startTime: '09:00', createdAt: '' },
@@ -205,7 +156,7 @@ test('холодная загрузка: ничего видимого не пр
   const cdp = await page.context().newCDPSession(page)
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 })
   await page.goto('/app', { waitUntil: 'domcontentloaded' })
-  await expect(page.getByText('ПО ПЛАНУ · 9:00')).toBeVisible()
+  await expect(page.getByText('Две минуты, и ещё одно доказательство')).toBeVisible()
   await page.waitForTimeout(800)
   const frames = await page.evaluate(() => (window as unknown as { __f: { cta: number | null; cat: number | null; catVisible: boolean }[] }).__f)
   const cta = frames.map((f) => f.cta).filter((v): v is number => v !== null)
@@ -303,69 +254,6 @@ test('у кота есть тень под лапами на каждом экр
   }
 })
 
-test('Дом без пустот при любом шаге: кот прямо над текстом, кнопки на одном месте, кот не прыгает при загрузке', async ({ page }) => {
-  // владелец, 13.11: «пустота — это баг», «в независимости от модели телефона картинка выглядит одинаково»
-  const states: Record<string, { plan?: object; onboarding?: object }> = {
-    empty: { onboarding: { sphere: 'study', blocker: 'fear' } },
-    long: {
-      plan: { forDate: today(), task: 'Курсовая по логистике и управлению цепями поставок для руководителя', firstStep: 'Открыть файл с курсовой, найти раздел про склад и написать в нём одно самое кривое предложение', startTime: '09:00', createdAt: '' },
-      onboarding: { sphere: 'study', blocker: 'boring', motive: 'proof' },
-    },
-    short: { plan: { forDate: today(), task: 'Н', firstStep: 'Н', createdAt: '' } },
-    shortAnswers: { plan: { forDate: today(), task: 'Н', firstStep: 'Н', createdAt: '' }, onboarding: { sphere: 'study', blocker: 'phone', motive: 'rest' } },
-  }
-  for (const [w, h] of [[390, 844], [390, 664], [360, 640], [430, 932]]) {
-    const seen: Record<string, { catTop: number; ctaTop: number; below: number }> = {}
-    for (const [name, st] of Object.entries(states)) {
-      const p = await page.context().newPage()
-      await p.setViewportSize({ width: w, height: h })
-      await p.addInitScript((d) => {
-        if (d.plan) localStorage.setItem('naparnik:plan', JSON.stringify(d.plan))
-        if (d.onboarding) localStorage.setItem('naparnik:onboarding', JSON.stringify(d.onboarding))
-        ;(window as unknown as { __cls: number }).__cls = 0
-        new PerformanceObserver((l) => {
-          for (const e of l.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[]) if (!e.hadRecentInput) (window as unknown as { __cls: number }).__cls += e.value
-        }).observe({ type: 'layout-shift', buffered: true })
-      }, st)
-      await p.goto('/app')
-      await expect(p.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
-      await expect(p.locator('.cat-doll')).toBeVisible()
-      await p.waitForTimeout(500)
-      const m = await p.evaluate(() => {
-        const c = document.querySelector('.cat-doll')!.getBoundingClientRect()
-        const sec = document.querySelector('section[aria-label="Шаг на сейчас"]')!
-        const label = sec.querySelector('p')!.getBoundingClientRect()
-        const cta = document.querySelector('.btn-chunky')!.getBoundingClientRect()
-        const nav = document.querySelector('nav')!.getBoundingClientRect()
-        const paws = c.top + c.height * 0.9716
-        // видимые строки блока сверху вниз: дыра между соседними — тот самый дефект с iPhone владельца
-        const rows = [...sec.querySelectorAll('p, h2, form, [role=group]')]
-          .map((e) => e.getBoundingClientRect())
-          .filter((r) => r.height > 0)
-          .sort((a, b) => a.top - b.top)
-        let holes = 0
-        for (let i = 1; i < rows.length; i++) holes = Math.max(holes, rows[i].top - rows[i - 1].bottom)
-        return { catTop: c.top, ctaTop: cta.top, below: label.top - paws, holes, catOverNav: cta.bottom <= nav.top, cls: (window as unknown as { __cls: number }).__cls, sh: document.documentElement.scrollHeight }
-      })
-      const tag = `${w}×${h} ${name}`
-      expect(m.holes, tag).toBeLessThanOrEqual(24)
-      expect(m.below, tag).toBeGreaterThan(15)
-      expect(m.below, tag).toBeLessThan(60)
-      expect(m.catOverNav, tag).toBe(true)
-      expect(m.sh, tag).toBeLessThanOrEqual(h)
-      seen[name] = { catTop: m.catTop, ctaTop: m.ctaTop, below: m.below }
-      await p.close()
-    }
-    // кнопки стоят на одном месте при любом состоянии, расстояние от лап до подписи у всех одинаково
-    for (const name of Object.keys(states)) {
-      expect(seen[name].ctaTop, `${w}×${h} ${name}`).toBeCloseTo(seen.empty.ctaTop, 0)
-      expect(Math.abs(seen[name].below - seen.empty.below), `${w}×${h} ${name}`).toBeLessThanOrEqual(2)
-    }
-    // короткий шаг — кот ниже, чем у длинного (сидит над своим текстом, а не висит на фиксированном месте)
-    expect(seen.short.catTop).toBeGreaterThan(seen.long.catTop)
-  }
-})
-
 test('на компьютере поле и кнопки — колонкой, как в Фокусе, а не на всю ширину экрана', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 })
   await page.goto('/app')
@@ -395,4 +283,113 @@ test('тень кота не висит на холме, пока самого �
   await expect(shadow).toHaveCSS('visibility', 'hidden')
   release()
   await expect(shadow).toHaveCSS('visibility', 'visible')
+})
+
+// ---------- 13.11, владелец: «всегда, у всех, при любых обстоятельствах — как на примере; отличается только строка
+// над кнопкой (а позже и сама кнопка) в зависимости от ответов знакомства» ----------
+
+test('план, очередь и старты в памяти не меняют Дом: всегда «Что сейчас висит?», поле, три сферы, строка', async ({ page }) => {
+  const sets: Record<string, Record<string, unknown>> = {
+    'пусто': {},
+    'план «Н»': { plan: { forDate: today(), task: 'Н', firstStep: 'Н', createdAt: '' } },
+    'длинный план': { plan: { forDate: today(), task: 'Курсовая по логистике', firstStep: 'Открыть файл с курсовой, найти раздел про склад и написать в нём одно предложение', startTime: '09:00', createdAt: '' } },
+    'очередь': { stepQueue: { task: 'Курсовая', steps: ['Написать план из трёх пунктов'] } },
+    'план на завтра': { plan: { forDate: today(1), task: 'Отчёт', firstStep: 'Открыть таблицу', startTime: '9:00', createdAt: '' } },
+  }
+  for (const [w, h] of [[390, 664], [390, 844], [360, 640]]) {
+    const where: Record<string, number[]> = {}
+    for (const [name, data] of Object.entries(sets)) {
+      const p = await page.context().newPage()
+      await p.setViewportSize({ width: w, height: h })
+      await p.addInitScript((d) => {
+        for (const [k, v] of Object.entries(d)) localStorage.setItem('naparnik:' + k, JSON.stringify(v))
+        localStorage.setItem('naparnik:onboarding', JSON.stringify({ sphere: 'work', blocker: 'phone', motive: 'rest' }))
+      }, data)
+      await p.goto('/app')
+      const tag = `${w}×${h} ${name}`
+      await expect(p.getByText('ЧТО СЕЙЧАС ВИСИТ?'), tag).toBeVisible()
+      await expect(p.getByLabel('Что сейчас висит'), tag).toBeVisible()
+      await expect(p.getByRole('button', { name: /Работа/ }), tag).toHaveAttribute('aria-pressed', 'true')
+      await expect(p.getByText('Две минуты без ленты, и вечер твой'), tag).toBeVisible()
+      await expect(p.getByRole('heading', { level: 2 }), tag).toHaveCount(0)
+      await expect(p.getByText(/^(ПО ПЛАНУ|ЗАВТРА|СЛЕДУЮЩИЙ ШАГ|ПРОДОЛЖИМ|СЕГОДНЯ СТАРТ)/), tag).toHaveCount(0)
+      const m = await p.evaluate(() => {
+        const c = document.querySelector('.cat-doll')!.getBoundingClientRect()
+        const label = document.querySelector('section[aria-label="Дело на сейчас"] p')!.getBoundingClientRect()
+        const cta = document.querySelector('.btn-chunky')!.getBoundingClientRect()
+        const paper = document.querySelector('.btn-paper')!.getBoundingClientRect()
+        const nav = document.querySelector('nav')!.getBoundingClientRect()
+        return { cat: Math.round(c.top), cta: Math.round(cta.top), below: label.top - (c.top + c.height * 0.9716), overNav: paper.bottom <= nav.top, sh: document.documentElement.scrollHeight }
+      })
+      expect(m.below, tag).toBeGreaterThan(15)
+      expect(m.below, tag).toBeLessThan(40)
+      expect(m.overNav, tag).toBe(true)
+      expect(m.sh, tag).toBeLessThanOrEqual(h)
+      where[name] = [m.cat, m.cta]
+      await p.close()
+    }
+    // экран один и тот же: кот и кнопка на тех же местах при любых данных
+    for (const name of Object.keys(sets)) expect(where[name], `${w}×${h} ${name}`).toEqual(where['пусто'])
+  }
+})
+
+test('знакомство с конкретными ответами → Дом помнит их: своя сфера подсвечена, своя строка над кнопкой', async ({ page }) => {
+  const errors = collectErrors(page)
+  // проходим знакомство как человек: «Работа / проекты», «Неделю-две», «тянется к телефону», «отдыхать без фона»
+  const pause = () => page.waitForTimeout(500)
+  await page.goto('/app/start')
+  for (const answer of ['Работа / проекты', 'Неделю-две', 'Рука сама тянется к телефону', /Смогу отдыхать/, 'Около часа']) {
+    await page.getByRole('radiogroup').getByRole('radio', { name: answer }).click()
+    await page.getByRole('button', { name: 'Продолжить' }).click()
+    await pause()
+  }
+  await page.getByRole('button', { name: 'Продолжить' }).click() // «твоя цифра»
+  await pause()
+  await page.getByRole('radiogroup', { name: 'Первый шаг' }).waitFor()
+  await page.getByRole('button', { name: 'Продолжить' }).click()
+  await page.getByRole('button', { name: /Начать первые/ }).waitFor({ timeout: 6000 })
+  // ответы в памяти устройства
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('naparnik:onboarding') ?? 'null'))
+  expect(saved).toMatchObject({ sphere: 'work', hanging: 'week', blocker: 'phone', motive: 'rest' })
+  await page.goto('/app')
+  await expect(page.getByText('ЧТО СЕЙЧАС ВИСИТ?')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Работа/ })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: /Учёба/ })).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByText('Две минуты без ленты, и вечер твой')).toBeVisible()
+  await expect(page.getByLabel('Что сейчас висит')).toHaveAttribute('placeholder', /презентац|отчёт|письмо|проект/i)
+  expect(errors).toEqual([])
+})
+
+test('после «Забудь всё» в чате новые ответы знакомства снова помнятся', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return
+    sessionStorage.setItem('seeded', '1')
+    localStorage.setItem('naparnik:profileForgotten', 'true')
+    localStorage.setItem('naparnik:onboarding', JSON.stringify({ sphere: 'study', blocker: 'fear', motive: 'proof' }))
+  })
+  await page.goto('/app')
+  // забытое не показывается: общая строка и ничего не подсвечено
+  await expect(page.getByText('Можно криво. Сначала просто начнём')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Учёба/ })).toHaveAttribute('aria-pressed', 'false')
+  // человек снова отвечает в знакомстве — метка «забыто» снимается
+  await page.goto('/app/start')
+  await page.getByRole('radiogroup').getByRole('radio', { name: 'Учёба' }).click()
+  expect(await page.evaluate(() => localStorage.getItem('naparnik:profileForgotten'))).toBeNull()
+  await page.goto('/app')
+  await expect(page.getByRole('button', { name: /Учёба/ })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText('Криво тоже считается. Это и есть доказательство')).toBeVisible()
+})
+
+test('пустое поле: «Разломать на шаг» дробит дело из ответов знакомства, а не ведёт в никуда', async ({ page }) => {
+  await seed(page, { onboarding: { sphere: 'study', blocker: 'where', motive: 'relief' } })
+  let asked = ''
+  await page.route('**/api/breakdown', async (route) => {
+    asked = (route.request().postDataJSON() as { task: string }).task
+    await route.fulfill({ json: { steps: ['Открыть ноутбук', 'Найти файл', 'Прочитать абзац'], source: 'model' } })
+  })
+  await page.goto('/app')
+  await page.getByRole('link', { name: 'Разломать на шаг' }).click()
+  await expect(page).toHaveURL(/\/app\/session\?step=/)
+  await expect(page.getByText('Найти файл')).toBeVisible()
+  expect(asked.length).toBeGreaterThan(5)
 })
