@@ -52,6 +52,13 @@ export async function chatTurn(input: {
   summary?: { lines: unknown; madeOn?: string }
   /** ответов кота подряд без реплики человека (клиент сам шлёт повтор после инструмента) */
   autoRounds?: number
+  /**
+   * инструменты, которых у канала нет (OWASP LLM06: модель видит только то, что канал умеет исполнить). У бота нет
+   * памяти о человеке и архива переписки, поэтому memory и recall ему не предлагаются
+   */
+  withoutTools?: readonly string[]
+  /** канал сам знает, подключены ли напоминания (бот — всегда да); у сайта это сообщает устройство */
+  reminders?: 'on' | 'off'
   signal?: AbortSignal
 }): Promise<ReadableStream<TextStreamPart<ToolSet>>> {
   const snapshot = await prefetchWithin(input.memory, input.ctx)
@@ -61,7 +68,7 @@ export async function chatTurn(input: {
     memory: renderMemory(snapshot),
     summary: summary.block,
     skills: renderSkills(snapshot, input.userTexts.at(-1) ?? ''),
-    situation: situation(input.clientHour),
+    situation: situation(input.clientHour, input.reminders),
     // знания под реплику (каталог пуст до утверждения владельцем — тогда блока нет)
     knowledge: renderKnowledge(selectKnowledge(KNOWLEDGE, [input.userTexts.at(-1) ?? ''])),
     // бюджет истории (prompt/context-budget.ts): сайт укладывается и так, боту с длинной историей — обязательно
@@ -75,9 +82,14 @@ export async function chatTurn(input: {
   // звали его, проверка хода отбрасывала (номер не о том), повтор без инструмента не успевал или говорил «забыл» —
   // человек получал заготовку (набор задач 13.11: 1 из 4 и на прежнем коде). Теперь ход сразу идёт словами
   const nothing = nothingToForget(last, snapshot)
-  const noMemoryTool = unstorable || nothing
-  const note = unstorable ? UNSTORABLE_NOTE : nothing ? NOTHING_TO_FORGET_NOTE : null
-  const allTools = tools.forTask('chat')
+  // у канала нет памяти (бот), а человек просит запомнить или забыть: без прямой строки модели отвечали «запомнил»,
+  // проверка честности отбрасывала все три ответа, и человек получал заготовку (живой прогон 13.11: 3 из 5)
+  const channelHasNoMemory = input.withoutTools?.includes('memory') === true && explicitMemoryAsk(last) && memoryAskTool(last, lastCatText(input.conversation)) === 'memory'
+  const noMemoryTool = unstorable || nothing || channelHasNoMemory
+  const note = channelHasNoMemory ? CHANNEL_NO_MEMORY_NOTE : unstorable ? UNSTORABLE_NOTE : nothing ? NOTHING_TO_FORGET_NOTE : null
+  const allTools = Object.fromEntries(Object.entries(tools.forTask('chat')).filter(([name]) => !input.withoutTools?.includes(name)))
+  // обязательным может быть только инструмент, который у канала есть (у бота нет памяти, но план он сохраняет)
+  const available = (name: 'memory' | 'savePlan') => (name in allTools ? name : undefined)
   const stream = streamTurn({
     ctx: input.ctx,
     instructions: note ? `${instructions}\n\n${note}` : instructions,
@@ -113,7 +125,7 @@ export async function chatTurn(input: {
         : explicitMemoryAsk(last)
           ? noMemoryTool
             ? undefined
-            : memoryAskTool(input.userTexts.at(-1) ?? '', lastCatText(input.conversation))
+            : available(memoryAskTool(last, lastCatText(input.conversation)))
           : acceptsStart(input.userTexts.at(-1) ?? '', lastCatText(input.conversation))
             ? 'startFocus'
             : undefined,
@@ -163,6 +175,9 @@ export function unstorableAsk(userText: string): boolean {
  * «забудь это» сюда не относятся: первое исполняется всегда, второе — о только что записанном (знает устройство).
  * Саму тему устройство всё равно помечает забытой: реплики о ней кот больше не видит (lib/memory-sync.ts).
  */
+const CHANNEL_NO_MEMORY_NOTE =
+  'В этом чате ты ничего не запоминаешь надолго и ничего не хранишь о человеке, кроме его текущего плана. Человек просит запомнить или забыть: одной тёплой фразой честно скажи, что здесь память не ведёшь, без слов «запомнил», «запомню», «записал», «забыл», «учту». Потом одним коротким вопросом вернись к делу.'
+
 const NOTHING_TO_FORGET_NOTE =
   'Человек просит забыть то, о чём у тебя ничего не записано. Память не трогай. Одной тёплой фразой честно скажи, что такого в твоих записях нет и возвращаться к этому ты не будешь, без слов «забыл», «стёр», «удалил», «запомнил». Потом можно одним коротким вопросом вернуться к делу.'
 

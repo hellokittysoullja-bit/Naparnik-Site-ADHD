@@ -10,6 +10,7 @@ import { aboutAny, contentWords } from '@/lib/ai/memory/stems'
 import { addForgotten } from '@/lib/forgotten'
 import { clearArchive, forgetInArchive } from '@/lib/chat-archive'
 import { clearSummary, forgetInSummary } from '@/lib/chat-summary'
+import { pushPlanToTg } from '@/lib/tg-link'
 import { activeSkills, applySkillOps, curate, relevantSkills, type Skill, type SkillOp, type SkillOpResult } from '@/lib/ai/memory/skills'
 
 export type Plan = {
@@ -246,6 +247,8 @@ export async function savePlan(input: {
   }
   // запись не легла — плана нет: вызывающий (инструмент savePlan) ответит модели отказом, кот не скажет «записал»
   if (!write(KEYS.plan, plan)) throw new Error('storage')
+  // браузер связан с ботом — бот позовёт на первый шаг в названное время (lib/tg-link.ts); нет — ничего не происходит
+  void pushPlanToTg({ task: plan.task, firstStep: plan.firstStep, startTime: plan.startTime })
   return plan
 }
 
