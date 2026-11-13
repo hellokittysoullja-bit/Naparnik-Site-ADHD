@@ -4,7 +4,10 @@ import { checkInput } from '../guards/input'
 import { checkOutput, echoWords, leakPrint, mentionsMedical, tidy, toolArgsOk, type ClaimKind, type OutputOpts } from '../guards/output'
 import { modelChain, type ModelStep } from '../models'
 import { emit, type AttemptResult } from './hooks'
+import './breaker' // предохранитель: до адаптивной страховки, чтобы та смотрела уже на здоровую первую модель
 import './latency' // наблюдатель задержек и адаптивная страховка подключаются вместе с ядром
+import './alerts' // сигналы владельцу: баланс, ключ, «ИИ лежит»
+import { classify } from './errors'
 import { applyRequestMiddleware, withExecutionMiddleware, type TurnRequest } from './middleware'
 import { SentenceGuard } from './stream-guard'
 import type { TurnContext } from './turn'
@@ -154,9 +157,7 @@ function retryable(a: { result?: AttemptResult; errorStatus?: number; textLength
   if (a.skippedRequiredTool) return false
   // провайдер оборвал ответ почти сразу (AnyModel 12.11: finish=length на 16 токенах при лимите 400) — сбой, не модель
   if (a.result === 'length' || (a.truncated && a.result === 'empty')) return (a.textLength ?? 0) < 120
-  if (a.result !== 'error') return false
-  const s = a.errorStatus
-  return s === undefined || s === 408 || s === 429 || s >= 500
+  return a.result !== undefined && (classify(a.result, a.errorStatus)?.retry ?? false)
 }
 
 /** сбой проверки агента — вызов не проходит (fail-closed: лучше не записать, чем записать непроверенное) */
@@ -617,6 +618,7 @@ class Race {
         ...(this.toolChoice() ? { toolChoice: this.toolChoice() } : {}),
         ...(typeof this.toolChoice() === 'object' ? { activeTools: [this.req.requiredTool!] } : {}),
         maxOutputTokens: this.input.maxOutputTokens,
+        ...(a.step.options ? { providerOptions: a.step.options } : {}),
         maxRetries: 0,
         abortSignal: AbortSignal.any([this.all, a.ctrl.signal]),
         onError: () => {}, // ошибка придёт частью 'error' и попадёт в журнал хода; второй лог не нужен

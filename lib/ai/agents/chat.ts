@@ -6,7 +6,6 @@ import { asksToForget, asksToForgetAll, asksToRemember, forgetMatches, forgetsLa
 import { prefetchWithin, type MemoryProvider, type MemoryWrite } from '../memory/provider'
 import { memoryWords, renderMemory, renderSkills } from '../memory/render'
 import { factRejection, writeAllowed } from '../memory/write-guard'
-import type { MemorySnapshot } from '../memory/schema'
 import { assemble } from '../prompt/assemble'
 import { KNOWLEDGE } from '../knowledge/catalog'
 import { renderKnowledge, selectKnowledge } from '../knowledge/select'
