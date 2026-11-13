@@ -51,11 +51,11 @@ describe('Дом: строка над кнопкой по двум ответа�
     expect(new Set(lines).size).toBe(25)
     for (const l of lines) expect(l).not.toMatch(/[—–]|надо|должен|обязан|опять|ленив/)
   })
-  it('один ответ — строка по нему; знакомства нет или его забыли — строки нет', () => {
+  it('один ответ — строка по нему; знакомства нет, ответы чужого формата или их забыли — общая строка, но не пусто', () => {
     expect(homeHint({ motive: 'safety' })).toBe('Чтобы быть в спокойствии')
     expect(homeHint({ blocker: 'boring' })).toBe('Всего 2 минуты, потом решишь, продолжать ли')
-    expect(homeHint(null)).toBeNull()
-    expect(homeHint({ blocker: 'чужое', motive: 'тоже' })).toBeNull()
+    expect(homeHint(null)).toBe('Можно криво. Сначала просто начнём')
+    expect(homeHint({ blocker: 'чужое', motive: 'тоже' })).toBe('Можно криво. Сначала просто начнём')
   })
 })
 

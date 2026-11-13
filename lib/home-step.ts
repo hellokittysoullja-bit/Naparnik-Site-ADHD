@@ -171,14 +171,20 @@ const BLOCKER_ONLY: Record<Blocker, string> = {
 const asBlocker = (v: string | undefined): Blocker | null => ((BLOCKER_KEYS as readonly string[]).includes(v ?? '') ? (v as Blocker) : null)
 const asMotive = (v: string | undefined): Motive | null => ((MOTIVE_KEYS as readonly string[]).includes(v ?? '') ? (v as Motive) : null)
 
-/** Строка над главной кнопкой; null — знакомство не проходили (или человек попросил его забыть) */
-export function homeHint(profile: HomeProfile): string | null {
+/**
+ * Строка над главной кнопкой есть всегда (владелец, 13.11: без неё экран не тот). По двум ответам знакомства — одна
+ * из 25, по одному — его строка; знакомства нет, ответы старого формата или человек попросил их забыть — общая
+ * строка из утверждённых (подходит и к плану, и к пустому Дому).
+ */
+export const HINT_DEFAULT = 'Можно криво. Сначала просто начнём'
+
+export function homeHint(profile: HomeProfile): string {
   const b = asBlocker(profile?.blocker)
   const m = asMotive(profile?.motive)
   if (b && m) return HINTS[b][m]
   if (m) return MOTIVE_ONLY[m]
   if (b) return BLOCKER_ONLY[b]
-  return null
+  return HINT_DEFAULT
 }
 
 // ---------- подсказки сфер на «Что сейчас висит?» ----------
