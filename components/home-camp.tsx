@@ -114,13 +114,13 @@ export function HomeCamp() {
         <div className="relative flex min-h-0 flex-1 items-end justify-center">
           {/* луна, как на лендинге: справа вверху, отдельно от видео */}
           <Moon className="pointer-events-none absolute right-[3%] top-0 w-[clamp(84px,26vw,112px)]" />
-          <div className="relative mb-2">
+          <div className="relative">
             {/* холм начинается от лап кота: макушка svg (y≈6 из 500) — у нижней кромки куклы */}
             <Knoll className="pointer-events-none absolute left-1/2 top-[86%] w-[440%] max-w-[900px] -translate-x-1/2" />
-            {/* Костёр стоит на склоне: всё в долях ширины кота W (холм — 4,4 W), центр костра в 0,66 W левее центра кота →
-                x = 280 из 800 у холма, земля там на 1,055 W от верха кота; низ поленьев (95 % рисунка) утоплен на 0,015 W.
-                Было bottom 4 % — поленья висели на ~0,1 W (≈ 20 px) над склоном. Тест: e2e/home-camp.spec.ts */}
-            <Campfire className="absolute bottom-[-9.2%] left-[-36%] z-[1] h-[46%] w-[40%]" />
+            {/* Костёр — как в первом макете, согласованном владельцем (скриншот 13.11): близко к коту, на макушке холма.
+                Всё в долях ширины кота W (холм — 4,4 W): центр костра на 0,52 W левее центра кота, низ поленьев
+                (95 % рисунка) на 0,07 W ниже лап и на ~0,025 W в земле. Тест: e2e/home-camp.spec.ts */}
+            <Campfire className="absolute bottom-[-6.5%] left-[-22%] z-[1] h-[46%] w-[40%]" />
             <MascotDoll
               expression="calm"
               size={190}
@@ -131,11 +131,13 @@ export function HomeCamp() {
         </div>
 
         {/* шаг и действия: земля под холмом уходит в темноту плавно, без кромки */}
-        {/* Высота блока зарезервирована (min-h, содержимое прижато к низу): пока память не прочитана после гидратации,
-            блок не растёт и не сдвигает сцену с котом вверх (CLS). Самые длинные состояния обрезаны line-clamp. */}
+        {/* Высота блока задаёт место кота: лапы на середине экрана, как в макете владельца (13.11), — 50dvh минус меню.
+            Но не меньше самого высокого состояния (план с длинным шагом, line-clamp): пока память не прочитана после
+            гидратации, блок не растёт и не сдвигает сцену с котом вверх (CLS). На экранах ≤ 700 px заголовок шага в две
+            строки — запас меньше. */}
         <section
           aria-label="Шаг на сейчас"
-          className="relative flex min-h-[clamp(350px,47dvh,380px)] flex-col justify-end bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.78)_72px,rgb(3_11_9)_150px)] px-4 pt-6 text-center"
+          className="relative flex min-h-[max(19rem,calc(50dvh-82px-env(safe-area-inset-bottom)))] [@media(min-height:701px)]:min-h-[max(21rem,calc(50dvh-82px-env(safe-area-inset-bottom)))] flex-col justify-end bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.78)_72px,rgb(3_11_9)_150px)] px-4 pt-3 text-center"
         >
           {step ? (
             <>

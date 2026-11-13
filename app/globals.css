@@ -1684,21 +1684,21 @@ body[data-focus-immersive] .session-main {
   width: 74.9%;
   top: 91.96%;
   height: 8.88%;
-  background: radial-gradient(closest-side, rgb(0 0 0 / 0.46), rgb(0 0 0 / 0.22) 60%, transparent);
+  background: radial-gradient(closest-side, rgb(0 0 0 / 0.62), rgb(0 0 0 / 0.36) 60%, transparent);
 }
 .cat-shadow-core {
   left: 22.4%;
   width: 38.84%;
-  top: 95%;
-  height: 3.61%;
-  background: radial-gradient(closest-side, rgb(0 0 0 / 0.8), rgb(0 0 0 / 0.5) 55%, transparent);
+  top: 94.45%;
+  height: 4.72%;
+  background: radial-gradient(closest-side, rgb(0 0 0 / 0.95), rgb(0 0 0 / 0.72) 55%, transparent);
 }
 .cat-shadow-tail {
   left: 65.4%;
   width: 16.64%;
   top: 94.17%;
   height: 2.22%;
-  background: radial-gradient(closest-side, rgb(0 0 0 / 0.55), transparent);
+  background: radial-gradient(closest-side, rgb(0 0 0 / 0.72), transparent);
 }
 
 /* Кнопка-записка «Поговорить с котом»: нажимная, как .btn-chunky, но тоньше (губа 3 px) и цветом листка;
