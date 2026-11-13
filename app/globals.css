@@ -1568,6 +1568,18 @@ html.vt-run .app-page-enter { animation: none; }
    и давало прокрутку (iPhone владельца, 11.11) */
 body[data-focus-immersive] .session-main {
   padding-bottom: 0;
+  /* Идёт сессия — экран ровно по видимой высоте и не прокручивается (iPhone владельца 13.11: справа была полоса
+     прокрутки). dvh — видимая область Safari вместе с адресной строкой; vh там больше видимого, и любой отступ в vh
+     делал страницу длиннее экрана. Всё содержимое Фокуса помещается по замерам от 375×553 (e2e/onboarding-v2). */
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+/* без «резинки» Safari, пока идёт сессия: страница не тянется и не показывает край под собой */
+html:has(body[data-focus-immersive]),
+body[data-focus-immersive] {
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 /* ==========================================================================

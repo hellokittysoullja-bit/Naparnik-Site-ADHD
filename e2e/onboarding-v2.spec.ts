@@ -164,7 +164,7 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
 
 // iPhone владельца (11.11): во время сессии фон приложения (fixed, без z-index) рисовался поверх названия дела,
 // таймера и переключателей — на экране была пустота; кольцо было меньше кота; страница прокручивалась.
-for (const height of [650, 844]) {
+for (const height of [553, 650, 664, 844]) {
   test(`сессия из знакомства: таймер виден, кольцо вокруг кота, без прокрутки (390×${height})`, async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: { width: 390, height } })
     const page = await ctx.newPage()
@@ -195,8 +195,11 @@ for (const height of [650, 844]) {
     const geo = await page.evaluate(() => {
       const ring = document.querySelector('svg circle[r="72"]')!.closest('svg')!.getBoundingClientRect()
       const cat = document.querySelector('[aria-label="Напарник работает рядом"]')!.getBoundingClientRect()
-      return { ring: ring.width, cat: cat.width, scroll: document.scrollingElement!.scrollHeight - innerHeight }
+      const quit = [...document.querySelectorAll('button')].find((b) => /Закончить раньше/.test(b.textContent ?? ''))!.getBoundingClientRect()
+      // экран сессии не прокручивается (overflow: hidden), поэтому проверяем, что ничего и не обрезано: выход виден целиком
+      return { ring: ring.width, cat: cat.width, scroll: document.scrollingElement!.scrollHeight - innerHeight, quitBottom: quit.bottom }
     })
+    expect(geo.quitBottom, '«Закончить раньше» виден целиком').toBeLessThanOrEqual(height)
     expect(geo.ring).toBeGreaterThanOrEqual(geo.cat + 25)
     expect(geo.scroll).toBeLessThanOrEqual(0)
     await ctx.close()
