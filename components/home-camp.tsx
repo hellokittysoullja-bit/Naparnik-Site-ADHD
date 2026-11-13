@@ -97,7 +97,7 @@ export function HomeCamp() {
 
       <div className="relative z-10 flex h-full flex-col pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
         {/* находки острова — тихая плашка, ведёт в Мир; у новичка её нет */}
-        <div className="flex min-h-14 items-start justify-end px-5 pt-[max(1rem,env(safe-area-inset-top))]">
+        <div className="flex min-h-14 items-start justify-end px-5 pt-[max(1rem,env(safe-area-inset-top))] [@media(max-height:620px)]:min-h-10 [@media(max-height:620px)]:pt-2">
           {data && data.finds > 0 && (
             <Link
               href="/app/world"
@@ -114,87 +114,87 @@ export function HomeCamp() {
         <div className="relative flex min-h-0 flex-1 items-end justify-center">
           {/* луна, как на лендинге: справа вверху, отдельно от видео */}
           <Moon className="pointer-events-none absolute right-[3%] top-0 w-[clamp(84px,26vw,112px)]" />
-          <div className="relative mb-2">
-            {/* холм начинается от лап кота: макушка svg (y≈6 из 500) — у нижней кромки куклы */}
-            <Knoll className="pointer-events-none absolute left-1/2 top-[86%] w-[440%] max-w-[900px] -translate-x-1/2" />
-            <Campfire className="absolute bottom-[4%] left-[-40%] z-[1] h-[46%] w-[40%]" />
+          <div className="relative">
+            {/* холм поднят над лапами (макушка svg, y≈6 из 500, на 0,15 W выше лап): кот сидит в холме, не на кромке */}
+            <Knoll className="pointer-events-none absolute left-1/2 top-[82%] w-[440%] max-w-[900px] -translate-x-1/2" />
+            {/* Костёр — как в первом макете, согласованном владельцем (скриншот 13.11): близко к коту, на макушке холма.
+                Всё в долях ширины кота W (холм — 4,4 W): центр костра на 0,52 W левее центра кота, низ поленьев
+                (95 % рисунка) на 0,03 W ниже лап и на ~0,025 W в земле. Холм поднят (top 82 %, 13.11 владелец: «холм симметрично выше»): макушка на 0,15 W выше лап, кот и костёр сидят в холме, а не на кромке. Тест: e2e/home-camp.spec.ts */}
+            <Campfire className="absolute bottom-[-2.5%] left-[-22%] z-[1] h-[46%] w-[40%]" />
             <MascotDoll
               expression="calm"
               size={190}
               label="Напарник"
-              className="size-[clamp(120px,24dvh,196px)]"
+              className="size-[clamp(96px,calc(100dvh-480px-env(safe-area-inset-bottom)),196px)] [@media(max-height:620px)]:size-[clamp(90px,calc(100dvh-440px-env(safe-area-inset-bottom)),196px)]"
             />
           </div>
         </div>
 
-        {/* шаг и действия: земля под холмом уходит в темноту плавно, без кромки */}
-        {/* Высота блока зарезервирована (min-h, содержимое прижато к низу): пока память не прочитана после гидратации,
-            блок не растёт и не сдвигает сцену с котом вверх (CLS). Самые длинные состояния обрезаны line-clamp. */}
-        <section
-          aria-label="Шаг на сейчас"
-          className="relative flex min-h-[clamp(350px,47dvh,380px)] flex-col justify-end bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.78)_72px,rgb(3_11_9)_150px)] px-4 pt-6 text-center"
-        >
-          {step ? (
-            <>
-              <p className="font-mono text-[10.5px] font-semibold tracking-[0.26em] text-primary/90">{step.label}</p>
-              {empty ? (
-                <>
-                  <form
-                    className="mt-3"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      router.push(href);
-                    }}
-                  >
-                    <label className="sr-only" htmlFor="home-task">
-                      Что сейчас висит
-                    </label>
-                    <input
-                      id="home-task"
-                      value={text}
-                      onChange={(e) => setText(e.target.value.slice(0, 120))}
-                      placeholder={homeExample(sphere)}
-                      enterKeyHint="go"
-                      autoComplete="off"
-                      className="h-12 w-full rounded-[14px] border border-white/15 bg-[oklch(0.22_0.012_130/0.9)] px-4 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    />
-                  </form>
-                  <div className="mt-3 flex justify-center gap-2" role="group" aria-label="Сфера дела">
-                    {homeChips(data?.profile ?? null).map((c) => (
-                      <button
-                        key={c.sphere}
-                        type="button"
-                        aria-pressed={sphere === c.sphere}
-                        onClick={() => setSphere(sphere === c.sphere ? null : c.sphere)}
-                        className={`press min-h-11 rounded-full border px-3.5 text-[13px] font-semibold transition-colors ${
-                          sphere === c.sphere
-                            ? "border-transparent bg-[oklch(0.97_0.005_100)] text-[#141a10] shadow-[0_2px_0_oklch(0.75_0.01_100)]"
-                            : "border-white/10 bg-[oklch(0.24_0.014_130/0.9)] text-foreground"
-                        }`}
-                      >
-                        <span aria-hidden="true">{c.icon}</span> {c.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h2 className="mx-auto mt-2.5 line-clamp-3 max-w-[22ch] [@media(max-height:700px)]:line-clamp-2 text-balance text-[clamp(22px,6.6vw,27px)] font-bold leading-[1.12] tracking-[-0.01em]">
-                    {step.title}
-                  </h2>
-                  {step.sub && <p className="mx-auto mt-1.5 line-clamp-1 max-w-[34ch] text-[13.5px] font-medium text-muted-foreground">{step.sub}</p>}
-                </>
-              )}
-              {hint && (
-                <p className="mx-auto mt-4 line-clamp-2 max-w-[34ch] text-balance text-[16px] font-bold leading-snug text-[oklch(0.93_0.04_90)]">
-                  {hint}
-                </p>
-              )}
-            </>
-          ) : (
-            // гидратация: место под шаг занято, чтобы кнопки не прыгали, когда память прочитана
-            <div aria-hidden="true" />
-          )}
+        {/* Шаг и действия. Высота блока одна и та же при любом шаге и любых ответах знакомства (13.11, владелец: «на
+            любом телефоне выглядит одинаково, строчки меняются»): у каждой строки своё место фиксированной высоты —
+            подпись, середина (шаг с делом или поле с подсказками сфер), строка над кнопкой. Кот сидит прямо над блоком,
+            разницу высоты экранов забирает небо. Пока память не прочитана после гидратации, места уже заняты — ничего
+            не сдвигается (CLS 0). */}
+        <section aria-label="Шаг на сейчас" className="relative px-4 pt-5 text-center [@media(max-height:620px)]:pt-3">
+          {/* Затемнение земли начинается под лапами, а не выше: холм между котом и подписью виден, текст и кнопки
+              стоят на тёмном. isolate — слой затемнения над холмом, но под текстом и кнопками. Колонка не шире 448 px, как
+              у Фокуса (на компьютере поле и кнопки тянулись на всю ширину), а затемнение — на всю ширину экрана */}
+          <div className="relative isolate mx-auto w-full max-w-md before:pointer-events-none before:absolute before:-inset-x-[50vw] before:-top-5 before:bottom-0 before:-z-10 before:bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.8)_52px,rgb(3_11_9)_100px)] before:content-['']">
+          <p className="h-4 font-mono text-[10.5px] font-semibold leading-4 tracking-[0.26em] text-primary/90">{step?.label}</p>
+          <div className="mt-3 flex h-[158px] flex-col justify-center">
+            {step && empty ? (
+              <>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    router.push(href);
+                  }}
+                >
+                  <label className="sr-only" htmlFor="home-task">
+                    Что сейчас висит
+                  </label>
+                  <input
+                    id="home-task"
+                    value={text}
+                    onChange={(e) => setText(e.target.value.slice(0, 120))}
+                    placeholder={homeExample(sphere)}
+                    enterKeyHint="go"
+                    autoComplete="off"
+                    className="h-12 w-full rounded-[14px] border border-white/15 bg-[oklch(0.22_0.012_130/0.9)] px-4 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </form>
+                <div className="mt-3 flex justify-center gap-2" role="group" aria-label="Сфера дела">
+                  {homeChips(data?.profile ?? null).map((c) => (
+                    <button
+                      key={c.sphere}
+                      type="button"
+                      aria-pressed={sphere === c.sphere}
+                      onClick={() => setSphere(sphere === c.sphere ? null : c.sphere)}
+                      className={`press min-h-11 rounded-full border px-3.5 text-[13px] font-semibold transition-colors ${
+                        sphere === c.sphere
+                          ? "border-transparent bg-[oklch(0.97_0.005_100)] text-[#141a10] shadow-[0_2px_0_oklch(0.75_0.01_100)]"
+                          : "border-white/10 bg-[oklch(0.24_0.014_130/0.9)] text-foreground"
+                      }`}
+                    >
+                      <span aria-hidden="true">{c.icon}</span> {c.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : step ? (
+              <>
+                <h2 className="mx-auto line-clamp-2 max-w-[22ch] text-balance text-[clamp(22px,6.6vw,27px)] font-bold leading-[1.12] tracking-[-0.01em]">
+                  {step.title}
+                </h2>
+                {step.sub && <p className="mx-auto mt-1.5 line-clamp-1 max-w-[34ch] text-[13.5px] font-medium text-muted-foreground">{step.sub}</p>}
+              </>
+            ) : null}
+            {/* строка над кнопкой — в том же блоке: шаг и строка центрируются вместе, и когда строки нет (нет ответов
+                знакомства) или шаг короткий, пустое место делится сверху и снизу, а не дырой над кнопкой */}
+            {step && hint && (
+              <p className="mx-auto mt-2.5 line-clamp-2 max-w-[34ch] text-balance text-[16px] font-bold leading-[22px] text-[oklch(0.93_0.04_90)]">{hint}</p>
+            )}
+          </div>
 
           <Link
             href={href}
@@ -210,13 +210,14 @@ export function HomeCamp() {
           <Link
             href="/app/chat"
             onTouchStart={() => {}}
-            className="btn-paper mt-5 block w-full select-none rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="btn-paper mt-5 [@media(max-height:620px)]:mt-3 block w-full select-none rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <span className="btn-paper-face flex h-[52px] items-center justify-center rounded-[14px] px-12 text-[18px] font-bold">
               <PawPrint className="absolute left-[18px] top-1/2 size-6 -translate-y-1/2 fill-[#6b4e2a] text-[#6b4e2a] opacity-70" aria-hidden="true" />
               Поговорить с котом
             </span>
           </Link>
+          </div>
         </section>
       </div>
     </main>

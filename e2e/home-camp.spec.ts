@@ -182,3 +182,173 @@ test('длинный шаг на маленьком экране: кот не п
   expect(m.chatBottom).toBeLessThanOrEqual(m.navTop)
   expect(m.sh).toBeLessThanOrEqual(640)
 })
+
+// ---------- 13.11, владелец: «костёр где-то там летает», «горит циклично, без багов» ----------
+
+test('костёр стоит на склоне холма, а не висит над ним', async ({ page }) => {
+  for (const [w, h] of [[390, 844], [360, 640], [1280, 720]]) {
+    await page.setViewportSize({ width: w, height: h })
+    await page.goto('/app')
+    await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
+    const m = await page.evaluate(() => {
+      const knoll = document.querySelector('svg[viewBox="0 0 800 500"]') as SVGSVGElement
+      const hill = knoll.querySelector('path') as SVGPathElement
+      const fire = document.querySelector('.campfire-flame')!.parentElement!
+      const logs = [...fire.querySelectorAll('rect')].map((r) => r.getBoundingClientRect())
+      const bottom = Math.max(...logs.map((r) => r.bottom))
+      const x = (Math.min(...logs.map((r) => r.left)) + Math.max(...logs.map((r) => r.right))) / 2
+      const inv = knoll.getScreenCTM()!.inverse()
+      const inside = (y: number) => {
+        const p = new DOMPoint(x, y).matrixTransform(inv)
+        return hill.isPointInFill(p)
+      }
+      // чуть ниже поленьев — уже земля; заметно выше — ещё небо (поленья не утоплены в холм)
+      return { under: inside(bottom + 3), above: inside(bottom - 12) }
+    })
+    expect(m, `${w}×${h}`).toEqual({ under: true, above: false })
+  }
+})
+
+test('пламя качается без рывков: каждый язык — плавный маятник, стык циклов незаметен', async ({ page }) => {
+  await page.goto('/app')
+  await expect(page.locator('.campfire-flame').first()).toBeVisible()
+  const res = await page.evaluate(
+    () =>
+      new Promise<{ range: number; maxStep: number }[]>((done) => {
+        const els = [...document.querySelectorAll<HTMLElement>('.campfire-flame')]
+        const series: number[][] = els.map(() => [])
+        const t0 = performance.now()
+        const tick = () => {
+          els.forEach((e, i) => series[i].push(new DOMMatrix(getComputedStyle(e).transform).c))
+          if (performance.now() - t0 < 2500) requestAnimationFrame(tick)
+          else
+            done(
+              series.map((s) => ({
+                range: Math.max(...s) - Math.min(...s),
+                maxStep: Math.max(...s.slice(1).map((v, i) => Math.abs(v - s[i]))),
+              })),
+            )
+        }
+        requestAnimationFrame(tick)
+      }),
+  )
+  expect(res).toHaveLength(3)
+  for (const s of res) {
+    // за 2,5 с язык прошёл весь размах (несколько циклов) и ни разу не прыгнул больше чем на четверть размаха за кадр
+    expect(s.range).toBeGreaterThan(0.08)
+    expect(s.maxStep).toBeLessThan(s.range / 4)
+  }
+})
+
+// ---------- 13.11, владелец: «везде, где кот, нужна тень; кот не должен летать» ----------
+
+test('у кота есть тень под лапами на каждом экране, и пока кукла не ожила (постер)', async ({ page }) => {
+  for (const url of ['/?intro=1', '/app', '/app/chat', '/app/session', '/app/start', '/sdvg-test', '/nope-404']) {
+    await page.goto(url)
+    const cat = page.locator('.cat-doll').first()
+    await expect(cat, url).toBeVisible()
+    const m = await cat.evaluate((el) => {
+      const r = el.getBoundingClientRect()
+      const core = el.querySelector('.cat-shadow-core')
+      if (!core) return null
+      const s = core.getBoundingClientRect()
+      return {
+        // пятно — под лапами: в нижних 6 % кота, по центру тела (левее середины — справа хвост)
+        top: (s.top - r.top) / r.height,
+        bottom: (s.bottom - r.top) / r.height,
+        cx: (s.left + s.width / 2 - r.left) / r.width,
+        // тень — первым слоем, под постером и холстом куклы
+        first: el.firstElementChild?.classList.contains('cat-shadow') ?? false,
+        visible: getComputedStyle(core).backgroundImage.includes('radial-gradient'),
+      }
+    })
+    expect(m, url).not.toBeNull()
+    expect(m!.first, url).toBe(true)
+    expect(m!.visible, url).toBe(true)
+    expect(m!.top, url).toBeGreaterThan(0.93)
+    expect(m!.bottom, url).toBeLessThan(1)
+    expect(m!.cx, url).toBeGreaterThan(0.38)
+    expect(m!.cx, url).toBeLessThan(0.46)
+  }
+})
+
+test('Дом выглядит одинаково при любом шаге и ответах знакомства: кот прямо над блоком, блок одной высоты, без сдвигов', async ({ page }) => {
+  // владелец, 13.11: «в независимости от модели телефона картинка выглядит одинаково, строчки меняются по онбордингу»
+  const states: Record<string, { plan?: object; onboarding?: object }> = {
+    empty: { onboarding: { sphere: 'study', blocker: 'fear' } },
+    long: {
+      plan: { forDate: today(), task: 'Курсовая по логистике и управлению цепями поставок для руководителя', firstStep: 'Открыть файл с курсовой, найти раздел про склад и написать в нём одно самое кривое предложение', startTime: '09:00', createdAt: '' },
+      onboarding: { sphere: 'study', blocker: 'boring', motive: 'proof' },
+    },
+    short: { plan: { forDate: today(), task: 'Н', firstStep: 'Н', createdAt: '' } },
+  }
+  for (const [w, h] of [[390, 844], [390, 664], [360, 640], [430, 932]]) {
+    const seen: Record<string, number[]> = {}
+    for (const [name, st] of Object.entries(states)) {
+      const p = await page.context().newPage()
+      await p.setViewportSize({ width: w, height: h })
+      await p.addInitScript((d) => {
+        if (d.plan) localStorage.setItem('naparnik:plan', JSON.stringify(d.plan))
+        if (d.onboarding) localStorage.setItem('naparnik:onboarding', JSON.stringify(d.onboarding))
+        ;(window as unknown as { __cls: number }).__cls = 0
+        new PerformanceObserver((l) => {
+          for (const e of l.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[]) if (!e.hadRecentInput) (window as unknown as { __cls: number }).__cls += e.value
+        }).observe({ type: 'layout-shift', buffered: true })
+      }, st)
+      await p.goto('/app')
+      await expect(p.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
+      await p.waitForTimeout(500)
+      const m = await p.evaluate(() => {
+        const c = document.querySelector('.cat-doll')!.getBoundingClientRect()
+        const label = document.querySelector('section[aria-label="Шаг на сейчас"] p')!.getBoundingClientRect()
+        const cta = document.querySelector('.btn-chunky')!.getBoundingClientRect()
+        const nav = document.querySelector('nav')!.getBoundingClientRect()
+        const paws = c.top + c.height * 0.9716
+        return { catTop: c.top, ctaTop: cta.top, gap: label.top - paws, catOverNav: cta.bottom <= nav.top, cls: (window as unknown as { __cls: number }).__cls, sh: document.documentElement.scrollHeight }
+      })
+      const tag = `${w}×${h} ${name}`
+      // подпись — сразу под лапами, между ними виден холм
+      expect(m.gap, tag).toBeGreaterThan(15)
+      expect(m.gap, tag).toBeLessThan(35)
+      expect(m.cls, tag).toBeLessThan(0.01)
+      expect(m.catOverNav, tag).toBe(true)
+      expect(m.sh, tag).toBeLessThanOrEqual(h)
+      seen[name] = [m.catTop, m.ctaTop]
+      await p.close()
+    }
+    // кот и кнопка стоят на тех же местах при любом состоянии
+    expect(seen.long, `${w}×${h}`).toEqual(seen.empty)
+    expect(seen.short, `${w}×${h}`).toEqual(seen.empty)
+  }
+})
+
+test('на компьютере поле и кнопки — колонкой, как в Фокусе, а не на всю ширину экрана', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto('/app')
+  await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
+  const m = await page.evaluate(() => ({
+    cta: document.querySelector('.btn-chunky')!.getBoundingClientRect().width,
+    field: document.querySelector('#home-task')!.getBoundingClientRect().width,
+    sw: document.documentElement.scrollWidth,
+  }))
+  expect(m.cta).toBeLessThanOrEqual(448)
+  expect(m.field).toBeLessThanOrEqual(448)
+  expect(m.sw).toBeLessThanOrEqual(1280)
+})
+
+test('тень кота не висит на холме, пока самого кота ещё нет', async ({ page }) => {
+  // постер кота держим в сети: тень должна ждать его, а не рисоваться пятном на пустом холме (3G, 13.11)
+  let release!: () => void
+  const held = new Promise<void>((r) => (release = r))
+  await page.route('**/mascot/poster/neutral.webp*', async (route) => {
+    await held
+    await route.continue()
+  })
+  await page.route('**/mascot/doll/**', (route) => route.abort())
+  await page.goto('/app', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
+  const shadow = page.locator('.cat-doll .cat-shadow')
+  await expect(shadow).toHaveCSS('visibility', 'hidden')
+  release()
+  await expect(shadow).toHaveCSS('visibility', 'visible')
+})

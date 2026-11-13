@@ -75,3 +75,12 @@ describe('Дом: подсказки сфер, кнопка, находки', ()
     expect([1, 2, 5, 11, 21, 104].map(findsLabel)).toEqual(['1 находка', '2 находки', '5 находок', '11 находок', '21 находка', '104 находки'])
   })
 })
+
+describe('Дом: дело под шагом не повторяет шаг', () => {
+  it('план «Н» / «Н» — строка дела пустая (iPhone владельца 13.11)', () => {
+    const p: Plan = { forDate: key(13), task: 'Н', firstStep: 'н ', createdAt: '' }
+    expect(at({ plan: p })).toMatchObject({ title: 'н ', sub: null })
+    expect(at({ queue: { task: 'Курсовая', steps: ['Курсовая'] } })).toMatchObject({ sub: null })
+    expect(at({ plan: plan(key(13)) }).sub).toBe('Курсовая по логистике')
+  })
+})

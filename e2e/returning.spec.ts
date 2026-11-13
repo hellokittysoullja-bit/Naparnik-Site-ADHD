@@ -51,8 +51,9 @@ test('после визита в /app сервер сам уводит с лен
   await seedStarts(page, 3)
   await page.goto('/app')
   await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
-  const cookie = (await context.cookies()).find((c) => c.name === 'naparnik_home')
-  expect(cookie?.value).toBe('1')
+  // метку ставит сервер отдельным запросом после загрузки (POST /api/home) — ждём ответа, а не первый кадр:
+  // под нагрузкой полного прогона кнопка успевала появиться раньше, и проверка падала через раз
+  await expect.poll(async () => (await context.cookies()).find((c) => c.name === 'naparnik_home')?.value, { timeout: 5_000 }).toBe('1')
   for (const path of ['/', '/app/start']) {
     const res = await page.request.get(path, { maxRedirects: 0 })
     expect(res.status(), path).toBe(307)

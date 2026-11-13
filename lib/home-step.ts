@@ -61,6 +61,12 @@ export function planMinutes(startTime: string | undefined): number | null {
 
 const hhmm = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`
 
+/** Строка дела под шагом — только если она не повторяет сам шаг (iPhone владельца 13.11: «Н» и под ним «Н»). */
+function other(task: string, title: string): string | null {
+  const t = task.trim()
+  return t && t.toLowerCase() !== title.trim().toLowerCase() ? t : null
+}
+
 export function homeStep(input: {
   now: Date
   plan: Plan | null
@@ -81,18 +87,18 @@ export function homeStep(input: {
       kind: later ? 'plan-later' : 'plan-now',
       label: at !== null ? `ПО ПЛАНУ · ${hhmm(at)}` : 'ПО ПЛАНУ',
       title: plan.firstStep,
-      sub: plan.task,
+      sub: other(plan.task, plan.firstStep),
       fromPlan: true,
     }
   }
   if (plan && !planDone && plan.forDate > today) {
-    return { kind: 'tomorrow', label: at !== null ? `ЗАВТРА · ${hhmm(at)}` : 'ЗАВТРА', title: plan.firstStep, sub: plan.task, fromPlan: true }
+    return { kind: 'tomorrow', label: at !== null ? `ЗАВТРА · ${hhmm(at)}` : 'ЗАВТРА', title: plan.firstStep, sub: other(plan.task, plan.firstStep), fromPlan: true }
   }
   if (queue && queue.steps.length > 0) {
-    return { kind: 'queue', label: 'СЛЕДУЮЩИЙ ШАГ', title: queue.steps[0], sub: queue.task, fromPlan: false }
+    return { kind: 'queue', label: 'СЛЕДУЮЩИЙ ШАГ', title: queue.steps[0], sub: other(queue.task, queue.steps[0]), fromPlan: false }
   }
   if (plan && !planDone && plan.forDate < today && daysBetween(plan.forDate, today) <= CARRY_DAYS) {
-    return { kind: 'carry', label: 'ПРОДОЛЖИМ', title: plan.firstStep, sub: plan.task, fromPlan: true }
+    return { kind: 'carry', label: 'ПРОДОЛЖИМ', title: plan.firstStep, sub: other(plan.task, plan.firstStep), fromPlan: true }
   }
   if (startedToday.length > 0) {
     const last = startedToday[startedToday.length - 1]

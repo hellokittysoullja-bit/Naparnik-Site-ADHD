@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
-import { DollAnimator, drawDollFx, drawDollShadow, setDollFxColor, type DollAction, type DollExpression } from "@/lib/rig/doll";
+import { DollAnimator, drawDollFx, setDollFxColor, type DollAction, type DollExpression } from "@/lib/rig/doll";
 import { loadRigImages, preloadRigImages, RigRenderer } from "@/lib/rig/renderer";
 import { DOLL_LAYERS } from "@/lib/rig/doll-layers";
 import { asset } from "@/lib/asset-versions";
@@ -82,7 +82,7 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
   const reduce = useReducedMotion();
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);   // кот: WebGL прямо здесь
-  const under = useRef<HTMLCanvasElement>(null);    // тень под лапами (2D), перерисовывается только когда меняется высота прыжка
+  const shadow = useRef<HTMLDivElement>(null);      // тень под лапами (DOM, есть и у постера); в прыжке сжимается и светлеет
   const over = useRef<HTMLCanvasElement>(null);     // звёздочки и Z (2D), рисуются только пока есть
   const anim = useRef<DollAnimator | null>(null);
   const rig = useRef<Rig | null>(null);
@@ -96,6 +96,12 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
   const [drawn, setDrawn] = useState(false);
   // постер уже на экране (декодирован) — для переходов между экранами: снимок нового экрана ждёт, пока кот виден
   const [posterShown, setPosterShown] = useState(false);
+  const posterImg = useRef<HTMLImageElement>(null);
+  // постер мог догрузиться до гидратации — тогда onLoad React не увидит; проверяем сами
+  useEffect(() => {
+    const img = posterImg.current;
+    if (img?.complete && img.naturalWidth > 0) setPosterShown(true);
+  }, []);
   // в кадре ли кот (с запасом 60 px — успеть ожить до появления): без IntersectionObserver считаем, что да; с ним — ждём первого ответа, а не создаём контексты
   // всем котам разом при монтировании длинной переписки
   const [inView, setInView] = useState(() => typeof IntersectionObserver === "undefined");
@@ -219,20 +225,22 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
   // кадр: WebGL — кот; 2D-слои трогаем только когда есть что менять (в покое кадр = один вызов draw)
   useEffect(() => {
     if (state !== "doll" || !ready || !px) return;
-    const cv = canvas.current, uc = under.current, oc = over.current, a = anim.current, r = rend.current, rg = rig.current;
-    if (!cv || !uc || !oc || !a || !r || !rg) return;
-    cv.width = px; cv.height = px; uc.width = px; uc.height = px; oc.width = px; oc.height = px;
-    const uctx = uc.getContext("2d"), octx = oc.getContext("2d");
+    const cv = canvas.current, sh = shadow.current, oc = over.current, a = anim.current, r = rend.current, rg = rig.current;
+    if (!cv || !oc || !a || !r || !rg) return;
+    cv.width = px; cv.height = px; oc.width = px; oc.height = px;
+    const octx = oc.getContext("2d");
     let raf = 0, last = performance.now(), lift = -1, fxShown = false;
     const frame = (now: number) => {
       const dt = (now - last) / 1000; last = now;
       a.update(dt);
       r.draw(px, px, a.pose.skin, a.parts);
+      // тень меняем только в прыжке (высота в единицах рисунка): в покое — ни одной записи в стиль
       const l = Math.max(0, -a.pose.ty[0]);
-      if (uctx && rg.cat && Math.abs(l - lift) > 0.25) {
+      if (sh && Math.abs(l - lift) > 0.25) {
         lift = l;
-        uctx.clearRect(0, 0, px, px);
-        drawDollShadow(uctx, a, rg.cat, rg.view, px, px);
+        const k = Math.min(1, l / 90);
+        sh.style.transform = k ? `scale(${1 - 0.25 * k})` : "";
+        sh.style.opacity = k ? String(1 - 0.5 * k) : "";
       }
       if (octx && (a.fx.length || fxShown)) {
         octx.clearRect(0, 0, px, px);
@@ -260,6 +268,13 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
       style={{ ...(/(^|\s)(lg:|md:|sm:)?size-/.test(className ?? "") ? {} : { width: size, height: size }), position: "relative", display: "inline-block", verticalAlign: "bottom", touchAction: "manipulation" }}
       onPointerDown={interactive ? () => anim.current?.poke() : undefined}
     >
+      {/* тень — первым слоем, под постером и куклой: кот всегда стоит на земле, даже пока кукла грузится или без WebGL */}
+      {/* тень появляется вместе с котом: без него на холме висело тёмное пятно (3G, первый вход, 13.11) */}
+      <div ref={shadow} className="cat-shadow" aria-hidden="true" style={inlinePoster || posterShown || (ready && drawn) ? undefined : { visibility: "hidden" }}>
+        <span className="cat-shadow-soft" />
+        <span className="cat-shadow-core" />
+        <span className="cat-shadow-tail" />
+      </div>
       {state !== "doll" || !ready || !drawn || !view || !cat ? (
         // первый кадр до загрузки рига — тот же эталонный рисунок неподвижно, на своём месте: лёгкая копия
         // эталона (900 px, webp ≈ 86 КБ, предзагружена из layout) — PNG 1,3 МБ на 3G качался 13 с и
@@ -273,14 +288,13 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
           ) : null}
           {/* у героя внешний постер идёт обычным приоритетом картинки в кадре: первый кадр уже дал инлайн, а шрифты
               первого экрана вшиты в CSS (app/hero-fonts.css), уступать полосу ему больше некому */}
-          <img src={asset("/mascot/poster/neutral.webp")} alt="" draggable={false} loading={inlinePoster ? "eager" : "lazy"} decoding="async"
+          <img ref={posterImg} src={asset("/mascot/poster/neutral.webp")} alt="" draggable={false} loading={inlinePoster ? "eager" : "lazy"} decoding="async"
             onLoad={() => setPosterShown(true)}
             style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
         </>
       ) : null}
       {state === "doll" ? (
         <>
-          <canvas ref={under} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: ready ? "block" : "none" }} />
           <canvas key={`${gen}-${texPx}`} ref={canvas} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: ready ? "block" : "none" }} />
           <canvas ref={over} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: ready ? "block" : "none", pointerEvents: "none" }} />
         </>

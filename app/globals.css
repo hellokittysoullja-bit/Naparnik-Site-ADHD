@@ -1593,31 +1593,42 @@ body[data-focus-immersive] .session-main {
     transform: scale(0.96);
   }
 }
-/* слой языка пламени: HTML-элемент на всю площадь костра, качается от основания (низ огня — 88 % высоты рисунка) */
+/* слой языка пламени: HTML-элемент на всю площадь костра, качается от основания (низ огня — 88 % высоты рисунка).
+   Два независимых движения (13.11, владелец: «горит циклично, без багов»): наклон (transform) и вытягивание
+   (свойство scale), каждое — маятник между двумя крайними точками (alternate + ease-in-out): скорость гаснет только
+   в крайних точках, как у настоящего языка огня. Прежний вариант (0 % → 30 % → 65 % → 100 % с ease-in-out на каждом
+   отрезке) замирал в среднем положении на стыке циклов — раз в секунду огонь «спотыкался». Периоды у наклона и
+   вытягивания разные и не кратные, поэтому рисунок пламени не повторяется кадр в кадр, а каждое движение — бесшовно. */
 .campfire-flame {
   position: absolute;
   inset: 0;
   transform-origin: 50% 88%;
-  animation: campfire-lick 1.1s ease-in-out infinite;
+  animation:
+    campfire-sway 1.15s ease-in-out infinite alternate,
+    campfire-stretch 0.83s ease-in-out infinite alternate;
 }
 .campfire-flame-b {
-  animation-duration: 0.9s;
-  animation-delay: -0.3s;
+  animation-duration: 0.93s, 0.61s;
+  animation-delay: -0.4s, -0.2s;
 }
 .campfire-flame-c {
-  animation-duration: 0.7s;
-  animation-delay: -0.5s;
+  animation-duration: 0.71s, 0.47s;
+  animation-delay: -0.3s, -0.1s;
 }
-@keyframes campfire-lick {
-  0%,
-  100% {
-    transform: scale(1, 1) skewX(0deg);
+@keyframes campfire-sway {
+  from {
+    transform: skewX(-3deg);
   }
-  30% {
-    transform: scale(0.94, 1.07) skewX(-3deg);
+  to {
+    transform: skewX(3deg);
   }
-  65% {
-    transform: scale(1.04, 0.95) skewX(3deg);
+}
+@keyframes campfire-stretch {
+  from {
+    scale: 0.95 1.06;
+  }
+  to {
+    scale: 1.04 0.95;
   }
 }
 .campfire-spark {
@@ -1651,6 +1662,43 @@ body[data-focus-immersive] .session-main {
   .campfire-spark {
     display: none;
   }
+}
+
+/* Тень кота (владелец, 13.11: «везде, где кот, нужна тень, кот не должен летать»). Слой под постером и куклой
+   (components/mascot-doll.tsx), поэтому тень есть с первого кадра, без WebGL и при потере контекста. Места — в
+   процентах окна рисунка [-48, -428, 1442, 1442] по силуэту эталона (design/mascot/png/neutral.png): лапы и низ тела
+   x 300–800, низ y≈970; кончик хвоста лежит на земле x 950–1110, y≈946. Три пятна: плотное у лап (контакт), мягкое
+   шире (полутень, накрывает и хвост) и у хвоста. Градиенты без blur — отдельных размытых слоёв на iPhone нет. */
+.cat-shadow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform-origin: 41.8% 96.8%;
+}
+.cat-shadow > span {
+  position: absolute;
+  border-radius: 50%;
+}
+.cat-shadow-soft {
+  left: 10.26%;
+  width: 74.9%;
+  top: 91.96%;
+  height: 8.88%;
+  background: radial-gradient(closest-side, rgb(0 0 0 / 0.62), rgb(0 0 0 / 0.36) 60%, transparent);
+}
+.cat-shadow-core {
+  left: 22.4%;
+  width: 38.84%;
+  top: 94.45%;
+  height: 4.72%;
+  background: radial-gradient(closest-side, rgb(0 0 0 / 0.95), rgb(0 0 0 / 0.72) 55%, transparent);
+}
+.cat-shadow-tail {
+  left: 65.4%;
+  width: 16.64%;
+  top: 94.17%;
+  height: 2.22%;
+  background: radial-gradient(closest-side, rgb(0 0 0 / 0.72), transparent);
 }
 
 /* Кнопка-записка «Поговорить с котом»: нажимная, как .btn-chunky, но тоньше (губа 3 px) и цветом листка;

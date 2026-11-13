@@ -330,21 +330,7 @@ export class DollAnimator {
   }
 }
 
-/** Мягкая контактная тень под лапами (как у прежнего кота): рисуется ПОД котом, в прыжке меньше и светлее. */
-export function drawDollShadow(ctx: CanvasRenderingContext2D, a: DollAnimator, cat: number[], view: number[], w: number, h: number) {
-  const [vx, vy, vw, vh] = view;
-  const lift = Math.max(0, -a.pose.ty[0]) / 90;
-  const cx = (cat[0] + cat[2] * 0.62) / 1.62, cy = cat[3] - 8, rx = (cat[2] - cat[0]) * 0.36 * (1 - 0.25 * lift), ry = 26 * (1 - 0.25 * lift);
-  ctx.save();
-  ctx.globalCompositeOperation = "destination-over";
-  ctx.setTransform(w / vw, 0, 0, h / vh, (-vx * w) / vw, (-vy * h) / vh);
-  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx);
-  g.addColorStop(0, `rgba(0,0,0,${0.32 * (1 - 0.5 * lift)})`); g.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = g;
-  ctx.translate(cx, cy); ctx.scale(1, ry / rx); ctx.translate(-cx, -cy);
-  ctx.beginPath(); ctx.arc(cx, cy, rx, 0, Math.PI * 2); ctx.fill();
-  ctx.restore();
-}
+// Тень под лапами — DOM-слой в components/mascot-doll.tsx (.cat-shadow в app/globals.css): есть и у постера.
 
 // ---------------------------------------------------------------- звёздочки и Z (Canvas 2D, координаты рисунка)
 let fxColor = "rgb(170, 220, 70)";
