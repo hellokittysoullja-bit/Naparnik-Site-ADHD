@@ -12,6 +12,8 @@ test('хранилище заблокировано (Safari «Блокирова
   })
   const errors = collectErrors(page)
   await page.goto('/app')
+  await expect(page.getByText('ЧТО СЕЙЧАС ВИСИТ?')).toBeVisible()
+  await page.goto('/app/chat')
   await expect(page.getByText('Первый старт за 15 минут')).toBeVisible()
   await expect(page.getByText('Я споткнулся')).toHaveCount(0)
   expect(errors).toEqual([])
@@ -32,7 +34,8 @@ test('испорченная память не роняет ни один экр
   const errors = collectErrors(page)
   // не только «нет страницы ошибки», но и «экран дорисовался», а не завис на скелетоне
   const ready: Record<string, string> = {
-    '/app': 'Следующий старт вырастит',
+    '/app': 'Разломать на шаг',
+    '/app/chat': 'Следующий старт вырастит',
     '/app/session': 'Фокус-сессия: выбери первый шаг',
     '/app/world': 'Каждый старт — новый кусочек',
     '/app/start': 'Продолжить',
@@ -59,14 +62,14 @@ test('переход по табу на Дом: готовый экран с п�
     requestAnimationFrame(tick)
   })
   await page.getByRole('link', { name: 'Дом' }).click()
-  await expect(page.getByText('Следующий старт вырастит')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
   await page.waitForTimeout(600)
   const frames = await page.evaluate(() => (window as unknown as { __sk: number[] }).__sk)
   expect(Math.max(...frames)).toBe(0)
 })
 
 test('чат без ключа ИИ: напарник отвечает скриптом, а не молчит', async ({ page }) => {
-  await page.goto('/app')
+  await page.goto('/app/chat')
   const box = page.getByRole('textbox').last()
   await box.fill('не могу начать отчёт')
   await box.press('Enter')
@@ -82,6 +85,10 @@ test('испорченная память и переход по табу: До�
   await page.goto('/app/world')
   await expect(page.getByRole('heading', { name: 'Остров' })).toBeVisible()
   await page.getByRole('link', { name: 'Дом' }).click()
+  await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
+  await expect(page.getByText('Я споткнулся')).toHaveCount(0)
+  // переписка (теперь на /app/chat) с той же испорченной памятью тоже открывается
+  await page.getByRole('link', { name: 'Поговорить с котом' }).click()
   await expect(page.getByText('Следующий старт вырастит')).toBeVisible()
   await expect(page.getByText('Я споткнулся')).toHaveCount(0)
   await expect(page.locator('.conversation-rail')).toBeVisible()

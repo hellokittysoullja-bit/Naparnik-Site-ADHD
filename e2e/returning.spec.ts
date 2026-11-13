@@ -23,7 +23,7 @@ test('вернувшийся открывает лендинг — сразу д
   const errors = collectErrors(page)
   await page.goto('/')
   await expect(page).toHaveURL(/\/app$/)
-  await expect(page.getByText('Следующий старт вырастит')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
   expect(await page.evaluate(() => sessionStorage.getItem('painted:/'))).not.toBe('true')
   expect(errors).toEqual([])
 })
@@ -50,7 +50,7 @@ test('новичок остаётся на лендинге; ?intro=1 показ
 test('после визита в /app сервер сам уводит с лендинга и знакомства домой (без загрузки лендинга)', async ({ page, context }) => {
   await seedStarts(page, 3)
   await page.goto('/app')
-  await expect(page.getByText('Следующий старт вырастит')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
   const cookie = (await context.cookies()).find((c) => c.name === 'naparnik_home')
   expect(cookie?.value).toBe('1')
   for (const path of ['/', '/app/start']) {
@@ -63,7 +63,7 @@ test('после визита в /app сервер сам уводит с лен
 
 test('без стартов метки нет — сервер лендинг не трогает', async ({ page, context }) => {
   await page.goto('/app')
-  await expect(page.getByText('Первый старт за 15 минут')).toBeVisible()
+  await expect(page.getByText('ЧТО СЕЙЧАС ВИСИТ?')).toBeVisible()
   expect((await context.cookies()).find((c) => c.name === 'naparnik_home')).toBeUndefined()
   expect((await page.request.get('/', { maxRedirects: 0 })).status()).toBe(200)
 })

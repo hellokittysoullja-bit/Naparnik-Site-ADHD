@@ -10,7 +10,7 @@ test('реплика не теряется, если уйти с Дома, по�
     await new Promise((r) => setTimeout(r, 4000))
     await route.abort()
   })
-  await page.goto('/app')
+  await page.goto('/app/chat')
   const box = page.getByRole('textbox').last()
   await box.fill('пишу диплом и не могу начать уже неделю')
   await box.press('Enter')
@@ -20,6 +20,7 @@ test('реплика не теряется, если уйти с Дома, по�
   const saved = await page.evaluate(() => localStorage.getItem('naparnik:chat') ?? '')
   expect(saved).toContain('пишу диплом и не могу начать уже неделю')
   await page.getByRole('link', { name: 'Дом' }).click()
+  await page.getByRole('link', { name: 'Поговорить с котом' }).click()
   await expect(page.getByText('пишу диплом и не могу начать уже неделю', { exact: true })).toBeVisible()
   // кот отвечает на оставшуюся без ответа реплику сам (здесь ИИ недоступен — заготовкой), реплика не задваивается
   await expect
@@ -28,13 +29,14 @@ test('реплика не теряется, если уйти с Дома, по�
   // повторное открытие Дома второй раз не отвечает
   await page.getByRole('link', { name: 'Мир' }).click()
   await page.getByRole('link', { name: 'Дом' }).click()
+  await page.getByRole('link', { name: 'Поговорить с котом' }).click()
   await page.waitForTimeout(1500)
   expect(await page.evaluate(() => (JSON.parse(localStorage.getItem('naparnik:chat') ?? '[]') as unknown[]).length)).toBe(2)
 })
 
 test('ИИ недоступен и человек пишет о кризисе: проверенный ответ с 112, без кнопки старта', async ({ page }) => {
   await page.route('**/api/companion', (route) => route.fulfill({ status: 429, body: '{}' }))
-  await page.goto('/app')
+  await page.goto('/app/chat')
   const box = page.getByRole('textbox').last()
   await box.fill('не хочу жить')
   await box.press('Enter')
@@ -46,8 +48,8 @@ test('вторая вкладка не затирает переписку пе�
   const a = await context.newPage()
   const b = await context.newPage()
   for (const p of [a, b]) await p.route('**/api/companion', (route) => route.fulfill({ status: 500, body: '{}' }))
-  await a.goto('/app')
-  await b.goto('/app')
+  await a.goto('/app/chat')
+  await b.goto('/app/chat')
   const say = async (p: typeof a, text: string) => {
     const box = p.getByRole('textbox').last()
     await box.fill(text)

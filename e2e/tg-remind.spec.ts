@@ -24,7 +24,7 @@ async function seedPlanCard(page: Page) {
 test('бота нет: под планом нет ни кнопки, ни обещания', async ({ page }) => {
   await seedPlanCard(page)
   await page.route('**/api/tg/status', (route) => route.fulfill({ json: { available: false, linked: false } }))
-  await page.goto('/app')
+  await page.goto('/app/chat')
   await expect(page.getByText('план положен')).toBeVisible()
   await page.waitForTimeout(800)
   await expect(page.getByText('Напоминать в Telegram')).toHaveCount(0)
@@ -41,7 +41,7 @@ test('бот есть: кнопка ведёт в бота с одноразов
   })
   // сам Telegram в тесте не открываем
   await page.route('https://t.me/**', (route) => route.fulfill({ contentType: 'text/html', body: '<title>telegram</title>ok' }))
-  await page.goto('/app')
+  await page.goto('/app/chat')
   const button = page.getByRole('button', { name: 'Напоминать в Telegram' })
   await expect(button).toBeVisible()
   // зона нажатия не меньше 44 px по высоте (Apple HIG)
@@ -63,7 +63,7 @@ test('браузер связан с ботом: вместо кнопки ти�
     reminders = (route.request().postDataJSON() as { reminders?: unknown }).reminders
     await route.fulfill({ status: 500, body: '{}' })
   })
-  await page.goto('/app')
+  await page.goto('/app/chat')
   await expect(page.getByText('Напомню в Telegram')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Напоминать в Telegram' })).toHaveCount(0)
   const box = page.getByRole('textbox').last()
