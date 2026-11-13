@@ -102,6 +102,23 @@ describe('предохранитель', () => {
     expect(breakerOpen('ag')).toBe(true)
     expect(breakerOpen('g')).toBe(false)
   })
+  it('ответ любой модели поставщика снимает паузу с поставщика: один отказ ключа не держит остальных (проверка 13.11)', () => {
+    const steps = [step('gc', 'anymodel'), step('ag', 'anymodel'), step('g', 'google')]
+    order(steps)
+    end('gc', 'error', { status: 403 })
+    expect(breakerOpen('ag')).toBe(true)
+    emit({ type: 'model.commit', model: 'ag', ms: 900 }, ctx())
+    expect(breakerOpen('ag')).toBe(false)
+    expect(order(steps)).toEqual(['gc', 'ag', 'g'])
+  })
+  it('редкие одиночные сбои за долгое время в счёт не копятся', () => {
+    vi.useFakeTimers()
+    for (let i = 0; i < 6; i++) {
+      end('a', 'error')
+      vi.advanceTimersByTime(BREAKER.staleMs + 1)
+    }
+    expect(breakerOpen('a')).toBe(false)
+  })
   it('лежит всё: порядок прежний, пробуем как есть (лучше попытка, чем молчание)', () => {
     const steps = [step('a'), step('b')]
     for (const m of ['a', 'b']) for (let i = 0; i < 3; i++) end(m, 'error')
@@ -173,8 +190,13 @@ describe('предохранитель в настоящем ходе', () => {
 describe('сигналы владельцу', () => {
   it('пять ходов подряд без ответа модели: «ИИ лежит», один раз за десять минут', () => {
     const alerts: string[] = []
-    setAlertSinkForTests((l) => alerts.push(l))
-    const fallback = () => emit({ type: 'turn.end', outcome: 'fallback', ms: 100 }, ctx())
+    setAlertSinkForTests((l) => l.includes('"ai-alert"') && alerts.push(l)) // паузы предохранителя («ai-breaker») — не сигнал владельцу
+    // ход без ответа из-за сбоя поставщика: попытка упала по сети, затем заготовка
+    const fallback = () => {
+      const c = ctx()
+      emit({ type: 'model.end', model: 'a', ms: 100, result: 'error', status: 503 }, c)
+      emit({ type: 'turn.end', outcome: 'fallback', ms: 100 }, c)
+    }
     for (let i = 0; i < 4; i++) fallback()
     expect(alerts).toHaveLength(0)
     fallback()
@@ -182,14 +204,29 @@ describe('сигналы владельцу', () => {
     expect(alerts).toHaveLength(1)
     expect(JSON.parse(alerts[0])).toMatchObject({ t: 'ai-alert', kind: 'all-down' })
   })
+  it('модели отвечали, но ответы отбросили проверки: это не «ИИ лежит» (проверка 13.11)', () => {
+    const alerts: string[] = []
+    setAlertSinkForTests((l) => l.includes('"ai-alert"') && alerts.push(l)) // паузы предохранителя («ai-breaker») — не сигнал владельцу
+    for (let i = 0; i < 8; i++) {
+      const c = ctx()
+      emit({ type: 'model.end', model: 'a', ms: 100, result: 'language' }, c)
+      emit({ type: 'turn.end', outcome: 'fallback', ms: 100 }, c)
+    }
+    expect(alerts).toHaveLength(0)
+  })
   it('ответ модели обнуляет счёт; кризис и отмена в него не входят', () => {
     const alerts: string[] = []
-    setAlertSinkForTests((l) => alerts.push(l))
-    for (let i = 0; i < 4; i++) emit({ type: 'turn.end', outcome: 'fallback', ms: 1 }, ctx())
+    setAlertSinkForTests((l) => l.includes('"ai-alert"') && alerts.push(l)) // паузы предохранителя («ai-breaker») — не сигнал владельцу
+    const down = () => {
+      const c = ctx()
+      emit({ type: 'model.end', model: 'a', ms: 100, result: 'error' }, c)
+      emit({ type: 'turn.end', outcome: 'fallback', ms: 1 }, c)
+    }
+    for (let i = 0; i < 4; i++) down()
     emit({ type: 'turn.end', outcome: 'crisis', ms: 1 }, ctx())
     emit({ type: 'turn.end', outcome: 'aborted', ms: 1 }, ctx())
     emit({ type: 'turn.end', outcome: 'model', ms: 1 }, ctx())
-    for (let i = 0; i < 4; i++) emit({ type: 'turn.end', outcome: 'fallback', ms: 1 }, ctx())
+    for (let i = 0; i < 4; i++) down()
     expect(alerts).toHaveLength(0)
   })
   it('наблюдатель видит размыкание событием breaker.open', () => {

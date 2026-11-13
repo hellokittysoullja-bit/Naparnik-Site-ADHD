@@ -1,3 +1,4 @@
+import { classify } from './errors'
 import { observe } from './hooks'
 
 /**
@@ -11,17 +12,23 @@ import { observe } from './hooks'
 export type AlertKind = 'billing' | 'auth' | 'all-down'
 
 const THROTTLE_MS = 10 * 60_000
-/** столько ходов подряд без ответа модели — «ИИ лежит» (кризисные и отменённые ходы не считаются) */
+/**
+ * столько ходов подряд без ответа модели ИЗ-ЗА СБОЯ ПОСТАВЩИКА — «ИИ лежит». Кризисные и отменённые ходы не считаются;
+ * ход, где модели ответили, но ответы отбросили проверки (человек пять раз просит писать по-английски), — тоже
+ */
 const DOWN_AFTER = 5
 
 const last = new Map<AlertKind, number>()
 let fallbacks = 0
+/** ходы, в которых хотя бы одна попытка упала сбоем поставщика (ограничено: ход без turn.end не копится вечно) */
+const infraTurns = new Set<string>()
 let sink: (line: string) => void = (l) => console.error(l)
 
 export function setAlertSinkForTests(fn?: (line: string) => void) {
   sink = fn ?? ((l) => console.error(l))
   last.clear()
   fallbacks = 0
+  infraTurns.clear()
 }
 
 function alert(kind: AlertKind, detail: Record<string, string | number | undefined>) {
@@ -37,8 +44,14 @@ observe((e, ctx) => {
     // обычная пауза после сбоев — не тревога, но в журнале её должно быть видно: по ней понятно, почему ходы
     // какое-то время шли через запасную модель. Частоту ограничивает сама пауза предохранителя
     else sink(JSON.stringify({ t: 'ai-breaker', model: e.model, reason: e.reason, ms: e.ms }))
+  } else if (e.type === 'model.end') {
+    if (classify(e.result, e.status)?.infra) {
+      if (infraTurns.size >= 500) infraTurns.delete(infraTurns.values().next().value as string)
+      infraTurns.add(ctx.turnId)
+    }
   } else if (e.type === 'turn.end') {
+    const infra = infraTurns.delete(ctx.turnId)
     if (e.outcome === 'model') fallbacks = 0
-    else if (e.outcome === 'fallback' && ++fallbacks >= DOWN_AFTER) alert('all-down', { turns: fallbacks, task: ctx.task })
+    else if (e.outcome === 'fallback' && infra && ++fallbacks >= DOWN_AFTER) alert('all-down', { turns: fallbacks, task: ctx.task })
   }
 })

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { collectReply } from '@/lib/ai/channels/telegram'
 import { SentenceGuard } from '@/lib/ai/core/stream-guard'
 import { cannedStream } from '@/lib/ai/core/stream-turn'
+import { parseSteps } from '@/lib/ai/agents/breakdown'
 import { tidy } from '@/lib/ai/guards/output'
 import { EMPHASIS_PAIR, ownMarkup, plainText } from '@/lib/emphasis'
 
@@ -29,14 +30,25 @@ describe('разметка в ответе кота', () => {
     expect(own('# Заголовок\nтекст `код` и _курсив_ и имя_файла_тут')).toBe('Заголовок\nтекст код и курсив и имя_файла_тут')
   })
   it('звёздочки с пробелами внутри и умножение акцентом не считаются', () => {
-    expect(own('* шаг * дальше')).toBe(' шаг дальше')
+    expect(own('шаг * дальше * всё')).toBe('шаг дальше всё')
     expect(own('2 * 3 * 4')).toBe('2 * 3 * 4')
-    expect('2 * 3 * 4'.match(new RegExp(EMPHASIS_PAIR.source, 'g'))).toBeNull()
+    expect('2 * 3 * 4'.match(new RegExp(EMPHASIS_PAIR.source, EMPHASIS_PAIR.flags))).toBeNull()
+  })
+  it('умножение без пробелов, маска файла и служебные имена остаются как написаны (независимая проверка 13.11)', () => {
+    expect(own('Умножь 3*4. Потом 5*6.')).toBe('Умножь 3*4. Потом 5*6.')
+    expect(ownMarkup('Умножь 3*4. Потом 5*6. Это *два*.')).toEqual({ text: 'Умножь 3*4. Потом 5*6. Это *два*.', used: 1 })
+    expect(plainText('2*3*4 = 24')).toBe('2*3*4 = 24')
+    expect(own('Найди *.txt и __init__.py')).toBe('Найди *.txt и __init__.py')
+    expect(own('3 *\n4')).toBe('3 \n4')
+  })
+  it('список со звёздочками остаётся списком: маркер становится точкой, шаги дробления не теряются', () => {
+    expect(own('* Открыть документ\n* Написать заголовок')).toBe('• Открыть документ\n• Написать заголовок')
+    expect(parseSteps(tidy('Три шага для тебя.\n* Открыть документ\n* Написать заголовок\n* Сохранить файл'))).toEqual(['Открыть документ', 'Написать заголовок', 'Сохранить файл'])
   })
   it('после разбора в тексте остаются только парные звёздочки', () => {
     for (const raw of ['*а', 'а*', '**а* б*', '*а* *б* *в* *', '`*а*`', '_*а*_', '*\nа*', '*' + 'д'.repeat(80) + '*']) {
       const text = own(raw)
-      expect(text.replace(new RegExp(EMPHASIS_PAIR.source, 'g'), ''), raw).not.toContain('*')
+      expect(text.replace(new RegExp(EMPHASIS_PAIR.source, EMPHASIS_PAIR.flags), ''), raw).not.toContain('*')
     }
   })
   it('готовый ответ разовой задачи проходит тот же разбор', () => {

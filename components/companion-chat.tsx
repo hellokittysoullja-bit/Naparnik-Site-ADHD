@@ -502,7 +502,8 @@ export function CompanionChat({
   useEffect(() => {
     if (!idleForMemory || messages.length === 0) return
     // конспект — после выжимки памяти (Hermes: перед сжатием память сбрасывается в хранилище): факты из реплик,
-    // которые сейчас уйдут в пересказ, сначала должны лечь в память дословно
+    // которые сейчас уйдут в пересказ, сначала должны лечь в память дословно. Если выжимка уже идёт в другом вызове,
+    // конспект её не ждёт: выжимка читает сами реплики, а не конспект, так что порядок здесь удобство, не условие
     const summarize = (keepalive = false) => {
       const hidden = hiddenFromModel(messages)
       return syncSummary(messages, { hidden: (m) => hidden.has(m.id), today: todayKey(), keepalive })

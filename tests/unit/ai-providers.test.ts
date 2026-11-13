@@ -3,7 +3,7 @@ import { streamText } from 'ai'
 import { aiHealth, aiState, resetHealthForTests } from '@/lib/ai/health'
 import { configuredProviders, modelChain, resetModelsForTests } from '@/lib/ai/models'
 import { GET as healthRoute } from '@/app/api/health/ai/route'
-import { IP_CEILING, rateLimit } from '@/lib/api-guard'
+import { hitsSize, IP_CEILING, rateLimit } from '@/lib/api-guard'
 
 /**
  * Поставщики моделей и состояние ИИ (этап 2, 13.11; аудит 12.11, находки 24–25): второй независимый поставщик
@@ -94,7 +94,7 @@ describe('состояние ИИ', () => {
     expect(await state(balance({}, 401))).toBe('down')
     expect(await state(balance({ balance: 5_000_000, status: 'blocked' }))).toBe('down')
   })
-  it('сбой сети при проверке — не тревога и не кэшируется; подтверждённый ответ кэшируется на 5 минут', async () => {
+  it('сбой сети при проверке — не тревога и держится 30 секунд; подтверждённый ответ — 5 минут', async () => {
     vi.stubEnv('ANYMODEL_API_KEY', 'k')
     let calls = 0
     const flaky = (async () => {
@@ -103,10 +103,13 @@ describe('состояние ИИ', () => {
       return new Response(JSON.stringify({ balance: 9_000_000, status: 'active' }))
     }) as unknown as typeof fetch
     expect(await aiHealth({ fetchImpl: flaky, now: 1_000 })).toMatchObject({ ai: 'ok', balance: 'unknown' })
-    expect(await aiHealth({ fetchImpl: flaky, now: 2_000 })).toMatchObject({ balance: 'ok' })
-    await aiHealth({ fetchImpl: flaky, now: 60_000 })
+    // публичная страница не ходит к поставщику с ключом на каждый запрос, даже когда баланс не подтверждён
+    await aiHealth({ fetchImpl: flaky, now: 20_000 })
+    expect(calls).toBe(1)
+    expect(await aiHealth({ fetchImpl: flaky, now: 32_000 })).toMatchObject({ balance: 'ok' })
+    await aiHealth({ fetchImpl: flaky, now: 90_000 })
     expect(calls).toBe(2)
-    await aiHealth({ fetchImpl: flaky, now: 2_000 + 5 * 60_000 + 1 })
+    await aiHealth({ fetchImpl: flaky, now: 32_000 + 5 * 60_000 + 1 })
     expect(calls).toBe(3)
   })
   it('маршрут: 503, когда ИИ выключен; strict — 503 и когда баланс на исходе', async () => {
@@ -157,6 +160,13 @@ describe('лимит запросов: человек и адрес', () => {
     const address = `198.51.100.${ip}`
     for (let i = 0; i < 5; i++) expect(hit(req(address, i % 2 ? 'nid=short' : undefined), 't3', 5)).toBe(200)
     expect(hit(req(address), 't3', 5)).toBe(429)
+  })
+  it('отказанные запросы с перебором cookie не плодят записи в памяти сервера (проверка 13.11)', () => {
+    const address = `198.51.100.${ip}`
+    for (let i = 0; i < 15; i++) hit(req(address, `nid=${String(i).padStart(22, 'y')}`), 't5', 5)
+    const before = hitsSize()
+    for (let i = 100; i < 200; i++) expect(hit(req(address, `nid=${String(i).padStart(22, 'y')}`), 't5', 5)).toBe(429)
+    expect(hitsSize()).toBe(before)
   })
   it('отказ не съедает место: исчерпавший свой лимит не отнимает запросы у соседей', () => {
     const address = `198.51.100.${ip}`

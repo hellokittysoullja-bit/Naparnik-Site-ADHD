@@ -92,14 +92,19 @@ export function planSummary(
   let cut = fresh.length - SUMMARY_WINDOW.keep
   while (cut > 0 && fresh[cut].role !== 'user') cut--
   if (cut <= 0) return null
-  const chunk = fresh.slice(0, cut)
-  const lines = chunk
-    .filter((m) => !hidden(m))
-    .map((m): SummarizeLine => ({ role: m.role === 'user' ? 'user' : 'cat', text: textOf(m).slice(0, m.role === 'user' ? SUMMARY_LIMITS.userText : SUMMARY_LIMITS.catText) }))
-    .filter((l) => l.text)
-    // сервер принимает не больше chunk реплик: берём самые поздние, ранние уже отражены в прошлом конспекте хуже всего
-    .slice(-SUMMARY_LIMITS.chunk)
-  return { lines, upTo: chunk[chunk.length - 1].id }
+  // сервер принимает не больше chunk реплик за раз: берём самые ранние и ставим курсор на последнюю взятую, остальное
+  // уйдёт следующим заходом (после долгих сбоев кусок бывает длиннее; пропускать реплики без пересказа нельзя)
+  const lines: SummarizeLine[] = []
+  let upTo = ''
+  for (const m of fresh.slice(0, cut)) {
+    upTo = m.id
+    if (hidden(m)) continue
+    const text = textOf(m).slice(0, m.role === 'user' ? SUMMARY_LIMITS.userText : SUMMARY_LIMITS.catText)
+    if (!text) continue
+    lines.push({ role: m.role === 'user' ? 'user' : 'cat', text })
+    if (lines.length === SUMMARY_LIMITS.chunk) break
+  }
+  return { lines, upTo }
 }
 
 let inFlight = false
@@ -140,9 +145,11 @@ export async function syncSummary(
     const data = (await res.json()) as { summary?: unknown }
     const parsed = SummarySchema.safeParse(data.summary)
     if (!parsed.success) return false
-    lastTry = NEVER
-    // сервер вернул прошлый конспект как был (кризис в куске) или пустой («ничего»): курсор всё равно сдвигается
-    return store({ lines: parsed.data, upTo: plan.upTo, at })
+    // сервер вернул обновлённый конспект, прошлый как был (кризис в куске) или пустой: курсор сдвигается в любом случае
+    const saved = store({ lines: parsed.data, upTo: plan.upTo, at })
+    // запись не удалась (хранилище переполнено или закрыто): пауза остаётся, иначе каждый ход слал бы платный запрос заново
+    if (saved) lastTry = NEVER
+    return saved
   } catch {
     return false // нет сети — курсор не сдвинут
   } finally {

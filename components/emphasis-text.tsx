@@ -18,7 +18,7 @@ export function EmphasisText({ text }: { text: string }) {
   if (!text.includes('*')) return <>{text}</>
 
   // то же правило пары, что у сервера (lib/emphasis.ts): «2 * 3 * 4» акцентом не становится
-  const re = new RegExp(EMPHASIS_PAIR.source, 'g')
+  const re = new RegExp(EMPHASIS_PAIR.source, EMPHASIS_PAIR.flags)
   const parts: React.ReactNode[] = []
   let lastIndex = 0
   let match: RegExpExecArray | null

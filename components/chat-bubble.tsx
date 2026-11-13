@@ -146,8 +146,8 @@ export function ChatBubble({
 
   async function copyText() {
     try {
-      // в буфер — слова без звёздочек акцента: вставленный в заметки текст не должен нести нашу разметку
-      await navigator.clipboard?.writeText(plainText(text))
+      // реплика кота уходит в буфер без звёздочек акцента; слова человека — как он их написал
+      await navigator.clipboard?.writeText(isUser ? text : plainText(text))
       hapticDone()
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1200)

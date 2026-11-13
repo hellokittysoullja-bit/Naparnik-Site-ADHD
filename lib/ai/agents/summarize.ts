@@ -1,7 +1,7 @@
 import { dataBlock } from '../context'
 import { runTurn } from '../core/run-turn'
 import { newTurn, type TurnContext } from '../core/turn'
-import { parseSummary, parseSummaryReply, SUMMARY_LABEL, SUMMARY_LIMITS, vetSummary, type SummarizeLine, type SummaryLine } from '../memory/summary'
+import { fallbackSummary, parseSummary, parseSummaryReply, SUMMARY_LABEL, SUMMARY_LIMITS, vetSummary, type SummarizeLine, type SummaryLine } from '../memory/summary'
 
 /**
  * Конспект прошлой части разговора (Hermes agent/context_compressor.py: голова и хвост целы, середину заменяет
@@ -83,5 +83,8 @@ export async function summarize(input: {
   // модели не ответили: устройство не сдвигает курсор и пришлёт кусок ещё раз
   if (outcome !== 'model' || value === null) return { summary: previous, ok: false }
   const source = [...input.lines.map((l) => l.text), ...previous.map((l) => l.text)]
-  return { summary: vetSummary(value, source), ok: true }
+  const vetted = vetSummary(value, source)
+  if (vetted.length > 0) return { summary: vetted, ok: true }
+  // модель сказала «ничего» или все строки отброшены: прошлый конспект не теряем, а без него берём слова человека
+  return { summary: previous.length > 0 ? previous : fallbackSummary(input.lines), ok: true }
 }

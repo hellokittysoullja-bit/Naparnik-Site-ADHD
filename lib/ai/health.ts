@@ -24,6 +24,8 @@ export type AiHealth = {
 
 const DEFAULT_LOW = 1_500_000
 const TTL_MS = 5 * 60_000
+/** неподтверждённый баланс (сеть, таймаут) держим недолго: страница публичная, каждый её запрос иначе шёл бы к поставщику с ключом */
+const UNKNOWN_TTL_MS = 30_000
 const BALANCE_TIMEOUT_MS = 4_000
 
 export function balanceLowMark(): number {
@@ -61,23 +63,23 @@ export function aiState(balance: BalanceState, providers: readonly ProviderName[
   return balance === 'low' ? 'low' : 'ok'
 }
 
-let cached: { at: number; value: AiHealth } | null = null
+let cached: { at: number; ttl: number; balance: BalanceState } | null = null
 
 export async function aiHealth(opts: { fetchImpl?: typeof fetch; now?: number; fresh?: boolean } = {}): Promise<AiHealth> {
   const now = opts.now ?? Date.now()
-  if (!opts.fresh && cached && now - cached.at < TTL_MS) return cached.value
-  const providers = configuredProviders()
-  const balance = await anymodelBalance(opts.fetchImpl ?? fetch)
-  const value: AiHealth = {
-    ai: aiState(balance, providers),
-    balance,
-    providers: providers.length,
-    paused: breakerSnapshot(now).length,
-    checkedAt: new Date(now).toISOString(),
+  if (opts.fresh || !cached || now - cached.at >= cached.ttl) {
+    const balance = await anymodelBalance(opts.fetchImpl ?? fetch)
+    cached = { at: now, ttl: balance === 'unknown' ? UNKNOWN_TTL_MS : TTL_MS, balance }
   }
-  // неподтверждённое состояние не кэшируем: следующая проверка спросит заново
-  if (balance !== 'unknown') cached = { at: now, value }
-  return value
+  const providers = configuredProviders()
+  return {
+    ai: aiState(cached.balance, providers),
+    balance: cached.balance,
+    providers: providers.length,
+    // паузы предохранителя — всегда свежие: кэшируется только ответ поставщика о балансе
+    paused: breakerSnapshot(now).length,
+    checkedAt: new Date(cached.at).toISOString(),
+  }
 }
 
 export function resetHealthForTests() {

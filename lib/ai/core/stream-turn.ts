@@ -693,8 +693,11 @@ class Race {
   /** никто не зафиксировался: канал получает маркер недоступности и берёт заготовку */
   private giveUp(): void {
     if (this.settled || this.winner) return
-    for (const a of this.attempts) this.endAttempt(a, 'timeout')
-    if (this.input.signal?.aborted) return this.settle('aborted')
+    // человек сам отменил запрос (закрыл вкладку) — это не «модель не дождались»: предохранитель и оценка задержек
+    // такое сбоем не считают, иначе три закрытые вкладки ставили бы здоровую модель на паузу для всех
+    const byPerson = this.input.signal?.aborted === true
+    for (const a of this.attempts) this.endAttempt(a, byPerson ? 'cancelled' : 'timeout')
+    if (byPerson) return this.settle('aborted')
     this.write([{ type: 'error', error: new Error(HARNESS_UNAVAILABLE) } as Part])
     this.settle('fallback')
   }

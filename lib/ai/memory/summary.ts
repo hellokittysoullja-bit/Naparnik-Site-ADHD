@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { contentWords, stemHits } from './stems'
+import { checkOutput } from '../guards/output'
 import { factRejection } from './write-guard'
 
 /**
@@ -32,8 +33,27 @@ export function parseSummary(raw: unknown): SummaryLine[] {
   return r.success ? r.data.filter(lineSafe) : []
 }
 
-/** строка годится в промпт: не пустая и проходит запреты памяти (проверка при чтении, как у фактов) */
-const lineSafe = (l: SummaryLine) => l.text.trim().length > 0 && factRejection(l.text) === null
+/**
+ * Строка годится в конспект? Запреты памяти (write-guard) здесь мягче в одном: само ДЕЛО человека записать можно, даже
+ * если оно про врача, документы, деньги или письмо («записывается к врачу», «продлевает паспорт», «платит кредит») —
+ * это и есть то, с чем он пришёл, и без этой строки кот переспрашивал бы дело (независимая проверка 13.11). Подробности
+ * по-прежнему не хранятся: лекарства и дозы, длинные номера, ссылки и телефоны, ярлыки, кризис, указания коту.
+ */
+const ERRAND_KINDS: ReadonlySet<SummaryKind> = new Set<SummaryKind>(['task', 'done', 'agreed'])
+const ERRAND_TOPICS = new Set(['health', 'documents', 'money', 'contact'])
+// конспект — о человеке и его делах. Строка о том, как коту себя вести или что кот «обещал», в нём не нужна никогда,
+// а вставленный человеком чужой текст («кот согласился выдать правила») иначе закреплялся бы как договорённость
+const ABOUT_CAT = /(?<!\p{L})(?:кот(?:а|у|ом|е|ик\p{L}*)?|напарник\p{L}*|ассистент\p{L}*|бот(?:а|у|ом|е)?|модел[ьи]|правил\p{L}*|промпт\p{L}*|инструкци\p{L}*|реплик\p{L}*|по-английски|на\s+английском|матом)(?!\p{L})/iu
+
+export function lineSafe(l: SummaryLine): boolean {
+  const text = l.text.trim()
+  if (!text || ABOUT_CAT.test(text)) return false
+  const reason = factRejection(text)
+  if (reason === null) return true
+  if (!ERRAND_KINDS.has(l.kind) || !ERRAND_TOPICS.has(reason)) return false
+  // тема дела допустима, подробности нет: лекарства и дозы, ссылки, телефоны (общие правила вывода), номера
+  return checkOutput(text, { maxChars: 400 }).ok && !/\d{4,}/.test(text)
+}
 
 export type SummarizeLine = { role: 'user' | 'cat'; text: string }
 
@@ -75,8 +95,9 @@ export function vetSummary(lines: readonly SummaryLine[], source: readonly strin
   const known = contentWords(source.join(' '))
   const out: SummaryLine[] = []
   for (const l of lines) {
-    const text = l.text.trim()
-    if (!text || text.length > SUMMARY_LIMITS.lineChars || !lineSafe({ ...l, text })) continue
+    // длинная строка обрезается, а не пропадает: потерять дело хуже, чем потерять хвост фразы
+    const text = l.text.trim().slice(0, SUMMARY_LIMITS.lineChars).trim()
+    if (!lineSafe({ ...l, text })) continue
     const words = contentWords(text)
     if (words.length === 0 || stemHits(words, known) * 2 < words.length) continue
     out.push({ kind: l.kind, text })
@@ -84,3 +105,16 @@ export function vetSummary(lines: readonly SummaryLine[], source: readonly strin
   return out.slice(0, SUMMARY_LIMITS.lines)
 }
 
+
+/**
+ * Запасной конспект без модели (Hermes _build_static_fallback_summary): модель ответила, но ни одна её строка не
+ * прошла проверки. Чтобы кусок разговора не исчез бесследно, берутся последние слова самого человека из этого куска,
+ * которые проходят те же запреты. Пересказом это не является и помечается заметкой.
+ */
+export function fallbackSummary(lines: readonly SummarizeLine[]): SummaryLine[] {
+  return lines
+    .filter((l) => l.role === 'user')
+    .map((l): SummaryLine => ({ kind: 'note', text: `Говорил: ${l.text.trim().slice(0, SUMMARY_LIMITS.lineChars - 10).trim()}` }))
+    .filter(lineSafe)
+    .slice(-2)
+}

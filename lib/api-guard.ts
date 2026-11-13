@@ -65,6 +65,8 @@ export async function readJsonBody(req: Request, maxBytes: number): Promise<unkn
 export const IP_CEILING = 3
 
 const hits = new Map<string, number[]>()
+/** для тестов: сколько ключей держит счётчик */
+export const hitsSize = () => hits.size
 function clientIp(req: Request): string {
   return (
     req.headers.get('x-real-ip') ??
@@ -81,7 +83,9 @@ function visitorId(req: Request): string | null {
 /** сколько секунд ждать, если ключ исчерпал лимит; 0 — место есть */
 function retryAfter(key: string, limit: number, windowMs: number, now: number): number {
   const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs)
-  hits.set(key, recent)
+  // пустой ключ не храним: отказанные запросы с перебором cookie иначе плодили бы записи
+  if (recent.length > 0) hits.set(key, recent)
+  else hits.delete(key)
   return recent.length >= limit ? Math.max(1, Math.ceil((windowMs - (now - recent[0])) / 1000)) : 0
 }
 
@@ -95,7 +99,7 @@ export function rateLimit(req: Request, bucket: string, limit: number, windowMs 
   // сначала проверяем все уровни, потом записываем: отказ на одном уровне не съедает место на другом
   const retry = Math.max(...keys.map(([k, n]) => retryAfter(k, n, windowMs, now)))
   if (retry > 0) throw fail(429, { 'Retry-After': String(retry) })
-  for (const [k] of keys) hits.get(k)!.push(now)
+  for (const [k] of keys) hits.set(k, [...(hits.get(k) ?? []), now])
   // память не растёт бесконечно: изредка выметаем остывшие ключи
   if (hits.size > 5000) {
     for (const [k, ts] of hits) if (ts.length === 0 || now - ts[ts.length - 1] >= windowMs) hits.delete(k)

@@ -12,16 +12,18 @@ import { registerRequestMiddleware } from './middleware'
  * (живой прогон 13.11: 3 запроса из 12 закончились заготовкой, все три модели не успели).
  *
  * Правила:
- *  - THRESHOLD сбоев поставщика подряд (сеть, 429, 5xx, таймаут после SLOW_MS) — звено разомкнуто на COOLDOWN_MS;
+ *  - THRESHOLD сбоев поставщика без ответа этой модели между ними и не реже раза в STALE_MS (сеть, 429, 5xx, таймаут
+ *    после SLOW_MS) — звено разомкнуто на COOLDOWN_MS; редкие одиночные сбои за дни работы в счёт не копятся;
  *  - 401/402/403 — разомкнуто сразу и надолго, причём весь поставщик: ключ и баланс у его моделей общие;
- *  - ответ модели (точка фиксации) замыкает звено; негодный ответ (проверки, разбор) сбоем не считается;
- *  - пауза истекла — звено возвращается на своё место с одной пробной попыткой: снова сбой — снова пауза;
+ *  - ответ модели (точка фиксации) замыкает и её звено, и её поставщика; негодный ответ (проверки, разбор) и отмена
+ *    человеком сбоем не считаются;
+ *  - пауза истекла — звено возвращается на своё место: первый же сбой размыкает его снова, ответ замыкает;
  *  - разомкнутые звенья не выбрасываются, а идут последними: когда лежит всё, лучше попробовать, чем молчать.
  * Состояние — на тёплый экземпляр сервера, как у оценки задержек (core/latency.ts): холодный старт начинает с нуля.
  */
-export const BREAKER = { threshold: 3, cooldownMs: 30_000, fatalCooldownMs: 5 * 60_000, slowMs: 3_000 } as const
+export const BREAKER = { threshold: 3, cooldownMs: 30_000, fatalCooldownMs: 5 * 60_000, slowMs: 3_000, staleMs: 2 * 60_000 } as const
 
-type State = { fails: number; openUntil: number; reason?: FailureKind }
+type State = { fails: number; openUntil: number; lastFailAt?: number; reason?: FailureKind }
 const steps = new Map<string, State>()
 const providers = new Map<string, State>()
 /** модель → поставщик: событие model.end поставщика не несёт, его знает цепочка (заполняет middleware) */
@@ -62,8 +64,10 @@ export function resetBreakerForTests() {
 
 observe((e, ctx) => {
   if (e.type === 'model.commit') {
-    const s = steps.get(e.model)
-    if (s) {
+    // модель ответила: здоровы и она, и её поставщик (один отказ ключа у одной модели не держит на паузе остальные)
+    const provider = providerOf.get(e.model)
+    for (const s of [steps.get(e.model), provider ? providers.get(provider) : undefined]) {
+      if (!s) continue
       s.fails = 0
       s.openUntil = 0
     }
@@ -86,6 +90,8 @@ observe((e, ctx) => {
     return
   }
   const s = stateOf(steps, e.model)
+  if (s.lastFailAt !== undefined && now - s.lastFailAt > BREAKER.staleMs && s.openUntil === 0) s.fails = 0
+  s.lastFailAt = now
   s.fails++
   if (s.fails >= BREAKER.threshold && s.openUntil <= now) {
     s.openUntil = now + BREAKER.cooldownMs
