@@ -981,7 +981,7 @@ export function CompanionChat({
         // контекстом «Дома» верх ленты в покое (scrollTop 0) — это маскот и
         // приветствие: гасить их первые пиксели нельзя. Шапка и так открывает
         // ленту с чистого края (pt-4), растворять там нечего.
-        className={`flex flex-1 flex-col overflow-y-auto ${
+        className={`flex flex-1 flex-col overflow-y-auto overflow-x-hidden ${
           header
             ? ""
             : "[mask-image:linear-gradient(to_bottom,transparent_0,black_24px)]"

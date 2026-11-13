@@ -184,10 +184,12 @@ export function ChatBubble({
 
   return (
     <div className={`relative ${isUser ? 'ml-auto max-w-[82%]' : 'max-w-[88%]'}`}>
-      {/* Иконка-цель ответа лежит ПОД пузырём и открывается протяжкой. */}
+      {/* Иконка-цель ответа лежит ПОД пузырём, у края, который пузырь открывает протяжкой. Раньше она стояла
+          СНАРУЖИ (-right-9): у пузыря человека это за правым краем экрана — иконку не было видно, а лента от неё
+          становилась шире экрана и ездила вбок (скриншоты владельца 13.11). */}
       <motion.span
         aria-hidden="true"
-        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${isUser ? '-right-9' : '-left-9'}`}
+        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${isUser ? 'right-3' : 'left-3'}`}
         style={{ opacity: replyOpacity, scale: replyScale }}
       >
         <Reply className="size-4 text-primary" />
