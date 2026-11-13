@@ -18,7 +18,7 @@ html,body{width:390px;height:844px;overflow:hidden;background:#020a08;font-famil
 /* холм под котом: тёплый свет костра прямо в заливке, без масок и размытия */
 .knoll{position:absolute;left:-60px;right:-60px;top:398px;height:150px;border-radius:50% 50% 0 0/100% 100% 0 0;
  background:radial-gradient(120px 70px at 34% 18%,oklch(0.55 0.11 60/.55),transparent 75%),radial-gradient(260px 90px at 50% 10%,oklch(0.36 0.06 85/.9),oklch(0.16 0.02 120) 80%)}
-.ground{position:absolute;left:0;right:0;top:470px;bottom:0;background:linear-gradient(oklch(0.14 0.018 120),#030b09 40%)}
+.ground{position:absolute;left:0;right:0;top:440px;bottom:0;background:linear-gradient(rgb(3 11 9/0) 0,rgb(3 11 9/.75) 70px,#030b09 150px)}
 /* верхняя строка */
 .top{position:absolute;left:20px;right:20px;top:58px;display:flex;justify-content:space-between;align-items:center}
 .day{font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.22em;color:oklch(0.86 0.02 110/.7)}
@@ -96,8 +96,8 @@ html,body{width:390px;height:844px;overflow:hidden;background:#020a08;font-famil
 <div class="sky"></div><div class="moon"></div>
 <div class="glow"></div>
 <div class="knoll"></div><div class="ground"></div>
-<div class="top"><div class="day">ЧЕТВЕРГ · ВЕЧЕР</div>
- <div class="isle"><svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.86 0.22 130)" stroke-width="2" stroke-linecap="round"><path d="M7 20h10M12 20c0-5 0-8 4-11M12 13c-2-3-5-3-6-3 0 3 2 5 6 5"/></svg>5 находок</div></div>
+<div class="top"><div class="day"></div>
+ <div class="isle" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.86 0.22 130)" stroke-width="2" stroke-linecap="round"><path d="M7 20h10M12 20c0-5 0-8 4-11M12 13c-2-3-5-3-6-3 0 3 2 5 6 5"/></svg>5 находок</div></div>
 <div class="shadow"></div>
 <div class="cat"><img src="/mascot/poster/neutral.webp" alt=""></div>
 <div class="fire">
