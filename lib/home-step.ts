@@ -1,111 +1,12 @@
 import { defaultStep, type Blocker, type Motive, type Sphere } from './onboarding'
-import type { Plan, StartEntry, StepQueue } from './memory'
-
 /**
- * Что показать на Доме (research/22-chat-and-home/E-home-design.md §8–12, согласовано владельцем 13.11).
- * Чистая функция над памятью устройства: никаких случайных фраз — только то, о чём человек договорился сам
- * (план, очередь шагов, старты) или что выбрал в знакомстве (сфера, помеха, «ради чего»).
- *
- * Порядок (берётся первое подходящее): план на сегодня → план на завтра → очередь шагов → план из прошлых дней
- * (до 7 дней) → сегодня уже был старт → «Что сейчас висит?».
+ * Дом «Привал» (research/22-chat-and-home/E-home-design.md §10–12, согласовано владельцем 13.11): у всех один экран —
+ * «Что сейчас висит?», поле, три сферы, строка над кнопкой, «Разломать на шаг». От ответов знакомства зависят только
+ * подсвеченная сфера, пример в поле, строка над кнопкой и дело для дробления при пустом поле. Состояний «по плану»,
+ * «следующий шаг» и т. п. на Доме нет — решение владельца 13.11 («всегда должно быть как на примере»).
  */
-
-export type HomeKind = 'plan-now' | 'plan-later' | 'tomorrow' | 'queue' | 'carry' | 'done-today' | 'empty'
-
-export type HomeStep = {
-  kind: HomeKind
-  /** Моно-надпись над шагом: состояние и время */
-  label: string
-  /** Шаг крупно — словами человека; null у «Что сейчас висит?» (там поле ввода) */
-  title: string | null
-  /** Подпись под шагом: дело */
-  sub: string | null
-  /** Старт засчитывается плану (`plan=1` в адресе Фокуса) */
-  fromPlan: boolean
-}
 
 export type HomeProfile = { sphere?: string; blocker?: string; motive?: string } | null
-
-/** План из прошлых дней держится неделю, потом уходит (дни не считаем и не показываем) */
-const CARRY_DAYS = 7
-/** «Позже» — если до времени плана больше получаса */
-const LATER_MIN = 30
-
-const dayKey = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-
-function daysBetween(fromKey: string, toKey: string): number {
-  const [a, b] = [fromKey, toKey].map((k) => {
-    const [y, m, d] = k.split('-').map(Number)
-    return Date.UTC(y, m - 1, d)
-  })
-  return Math.round((b - a) / 86_400_000)
-}
-
-/**
- * Точное время плана — только если вся строка и есть время: «09:00», «9.30», «в 18», «в 9 вечера».
- * «через 15 минут», «после 2 пары», «утром» → null: тогда на Доме просто «ПО ПЛАНУ», без выдуманного часа
- * (проверка 13.11: поле времени у плана — свободный текст до 40 знаков, его пишет и ИИ).
- */
-const CLOCK = /^\s*(?:в\s*)?(\d{1,2})(?:[:.](\d{2}))?\s*(утра|дня|вечера)?\s*$/i
-
-export function planMinutes(startTime: string | undefined): number | null {
-  const m = startTime?.match(CLOCK)
-  if (!m) return null
-  let h = Number(m[1])
-  const min = m[2] ? Number(m[2]) : 0
-  const part = m[3]?.toLowerCase()
-  if ((part === 'дня' || part === 'вечера') && h < 12) h += 12
-  return h <= 23 && min <= 59 ? h * 60 + min : null
-}
-
-const hhmm = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`
-
-/** Строка дела под шагом — только если она не повторяет сам шаг (iPhone владельца 13.11: «Н» и под ним «Н»). */
-function other(task: string, title: string): string | null {
-  const t = task.trim()
-  return t && t.toLowerCase() !== title.trim().toLowerCase() ? t : null
-}
-
-export function homeStep(input: {
-  now: Date
-  plan: Plan | null
-  queue: StepQueue | null
-  starts: StartEntry[]
-}): HomeStep {
-  const { now, plan, queue, starts } = input
-  const today = dayKey(now)
-  const startedToday = starts.filter((s) => s.date === today)
-  // по плану уже начинали сегодня — план исполнен, он не висит на Доме
-  const planDone = plan !== null && startedToday.some((s) => s.fromPlan)
-  const at = plan ? planMinutes(plan.startTime) : null
-
-  if (plan && !planDone && plan.forDate === today) {
-    const nowMin = now.getHours() * 60 + now.getMinutes()
-    const later = at !== null && at - nowMin > LATER_MIN
-    return {
-      kind: later ? 'plan-later' : 'plan-now',
-      label: at !== null ? `ПО ПЛАНУ · ${hhmm(at)}` : 'ПО ПЛАНУ',
-      title: plan.firstStep,
-      sub: other(plan.task, plan.firstStep),
-      fromPlan: true,
-    }
-  }
-  if (plan && !planDone && plan.forDate > today) {
-    return { kind: 'tomorrow', label: at !== null ? `ЗАВТРА · ${hhmm(at)}` : 'ЗАВТРА', title: plan.firstStep, sub: other(plan.task, plan.firstStep), fromPlan: true }
-  }
-  if (queue && queue.steps.length > 0) {
-    return { kind: 'queue', label: 'СЛЕДУЮЩИЙ ШАГ', title: queue.steps[0], sub: other(queue.task, queue.steps[0]), fromPlan: false }
-  }
-  if (plan && !planDone && plan.forDate < today && daysBetween(plan.forDate, today) <= CARRY_DAYS) {
-    return { kind: 'carry', label: 'ПРОДОЛЖИМ', title: plan.firstStep, sub: other(plan.task, plan.firstStep), fromPlan: true }
-  }
-  if (startedToday.length > 0) {
-    const last = startedToday[startedToday.length - 1]
-    return { kind: 'done-today', label: 'СЕГОДНЯ СТАРТ УЖЕ БЫЛ', title: last.label, sub: 'это достаточно на сегодня', fromPlan: false }
-  }
-  return { kind: 'empty', label: 'ЧТО СЕЙЧАС ВИСИТ?', title: null, sub: null, fromPlan: false }
-}
 
 // ---------- строка над кнопкой: «что мешает» × «что изменится первым» (§12, 25 вариантов) ----------
 
@@ -219,9 +120,8 @@ export function homeFallbackTask(sphere: Sphere | null, profile: HomeProfile): s
 }
 
 /** Адрес «Разломать на шаг»: Фокус с делом в поле и сразу запущенным дроблением */
-export function breakHref(step: string, fromPlan: boolean): string {
+export function breakHref(step: string): string {
   const q = new URLSearchParams({ step: step.trim().slice(0, 120), break: '1' })
-  if (fromPlan) q.set('plan', '1')
   return `/app/session?${q.toString()}`
 }
 
