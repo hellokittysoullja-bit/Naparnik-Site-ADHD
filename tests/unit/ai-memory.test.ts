@@ -364,10 +364,24 @@ describe('честность о действиях: «забыл / запомн�
       { id: 'liar', model: scripted(say('Принято, забыл про диплом.'), []) },
       { id: 'honest', model: scripted(say('Скажи, что именно забыть?'), []) },
     ]
-    const parts = await collect(await turn('забудь про диплом'))
+    // в памяти есть факт о дипломе — вызов обязателен: лжец отвечает текстом в обход обязательности, ход отбрасывается
+    const memory = new InProcessMemory(() => NOW)
+    const ctx = newTurn({ task: 'chat', sessionId: 'h-fact' })
+    await memory.onTurnEnd(ctx, [{ kind: 'memory', input: { op: 'add', category: 'task', text: 'Пишет диплом', evidence: 'пишу диплом' } }], { lastUserText: 'пишу диплом' })
+    const parts = await collect(await chatTurn({ ctx, memory, mode: 'companion', conversation: [{ role: 'user', content: 'забудь про диплом' }], userTexts: ['забудь про диплом'] }))
     expect(shown(parts)).toBe('Скажи, что именно забыть?')
-    // «забудь» — вызов обязателен: лжец отвечает текстом в обход обязательности, его ход отбрасывается целиком
     expect(events).toContainEqual(expect.objectContaining({ type: 'model.end', model: 'liar', result: 'no-tool' }))
+  })
+  it('в памяти о дипломе ничего нет: память не предлагается, «забыл» ловит проверка утверждений, честный ответ проходит', async () => {
+    const seen: string[] = []
+    chain.steps = [
+      { id: 'liar', model: scripted(say('Принято, забыл про диплом.'), seen) },
+      { id: 'honest', model: scripted(say('Про диплом у меня ничего не записано, возвращаться к нему не буду.'), []) },
+    ]
+    const parts = await collect(await turn('забудь про диплом'))
+    expect(shown(parts)).toBe('Про диплом у меня ничего не записано, возвращаться к нему не буду.')
+    expect(events).toContainEqual(expect.objectContaining({ type: 'model.end', model: 'liar', result: 'claim' }))
+    expect(parts.some((p) => p.type === 'tool-call')).toBe(false)
   })
   it('без обязательного вызова «забыл» без вызова ловит проверка утверждений', async () => {
     chain.steps = [

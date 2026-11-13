@@ -6,6 +6,7 @@ import { Check, Copy, Heart, PawPrint, Reply, Sparkle } from 'lucide-react'
 import { SPRING_GESTURE, SPRING_SNAPPY } from '@/lib/motion'
 import { hapticDone, hapticReaction, hapticThreshold } from '@/lib/haptics'
 import { EmphasisText } from '@/components/emphasis-text'
+import { plainText } from '@/lib/emphasis'
 
 /**
  * Материал одной реплики. Вынесен из companion-chat (900 строк) отдельным
@@ -145,7 +146,8 @@ export function ChatBubble({
 
   async function copyText() {
     try {
-      await navigator.clipboard?.writeText(text)
+      // реплика кота уходит в буфер без звёздочек акцента; слова человека — как он их написал
+      await navigator.clipboard?.writeText(isUser ? text : plainText(text))
       hapticDone()
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1200)

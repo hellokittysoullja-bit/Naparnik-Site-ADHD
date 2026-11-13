@@ -22,6 +22,10 @@ export type TurnInput<T> = {
   bare?: boolean
   /** данные человека — уже собранные dataMessage(); в роли user только они (security-ai.md R16) */
   data: string
+  /** ярус 2: блок памяти о человеке под эту задачу (memory/render.ts renderTaskMemory); нет — запрос как раньше */
+  memory?: string
+  /** латинские слова из памяти, которые кот вправе повторить */
+  echoExtra?: readonly string[]
   /** тексты человека для проверки входа (кризис, взлом промпта) */
   userTexts: string[]
   /** бюджет времени на весь ход (все попытки вместе) */
@@ -45,12 +49,14 @@ export type TurnResult<T> = { value: T } & TurnOutcome
 export const DEFAULT_HEDGE_MS = 1500
 
 export async function runTurn<T>(input: TurnInput<T>): Promise<TurnResult<T>> {
-  const messages: ModelMessage[] = [{ role: 'user', content: input.data }]
+  // память (меняется редко) перед данными задачи (меняются каждый вызов): тот же порядок ярусов, что у чата
+  const messages: ModelMessage[] = [...(input.memory ? [{ role: 'user' as const, content: input.memory }] : []), { role: 'user', content: input.data }]
   const { stream, result } = raceTurn({
     ctx: input.ctx,
     instructions: input.bare ? input.system : systemFor(input.system),
     messages,
     userTexts: input.userTexts,
+    echoExtra: input.echoExtra,
     commitTimeoutMs: input.timeoutMs,
     totalTimeoutMs: input.timeoutMs,
     hedgeAfterMs: input.hedgeAfterMs ?? DEFAULT_HEDGE_MS,

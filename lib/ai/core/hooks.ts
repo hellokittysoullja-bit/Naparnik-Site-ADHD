@@ -26,6 +26,8 @@ export type HarnessEvent =
       type: 'model.end'; model: string; ms: number; result: AttemptResult; committed?: boolean; status?: number
       inTokens?: number; outTokens?: number; cachedTokens?: number
     }
+  /** предохранитель разомкнул модель или поставщика (core/breaker.ts): reason — вид сбоя, ms — на сколько */
+  | { type: 'breaker.open'; model: string; reason: string; ms: number }
   | { type: 'tool.call'; tool: string; executor: 'client' | 'server'; valid: boolean }
   /** модель предложила запись в память (до конца хода) */
   | { type: 'memory.proposed'; kind: string }

@@ -1,3 +1,5 @@
+import { isNid } from './visitor'
+
 /**
  * Общая защита AI-маршрутов (app/api/*). Каждый вызов модели стоит денег и квоты ключа: без этих проверок любой
  * скрипт мог гонять /api/companion как бесплатный Gemini-прокси (тело до 4,5 МБ ≈ миллион токенов за запрос), а
@@ -49,11 +51,22 @@ export async function readJsonBody(req: Request, maxBytes: number): Promise<unkn
 }
 
 /**
- * Лимит запросов на IP: скользящее окно в памяти экземпляра функции. Это не распределённый счётчик — у каждого
- * тёплого экземпляра свой, — но цикл из одного источника он режет сразу, бесплатно и без внешних сервисов.
- * Глобальный потолок — правило Vercel Firewall (Rate Limit на /api/*) и квота/бюджет ключа в Google Cloud.
+ * Лимит запросов: скользящее окно в памяти экземпляра функции. Это не распределённый счётчик (у каждого тёплого
+ * экземпляра свой), но цикл из одного источника он режет сразу, бесплатно и без внешних сервисов. Глобальный потолок —
+ * правило Vercel Firewall (Rate Limit на /api/*) и баланс ключа у поставщика (GET /api/health/ai).
+ *
+ * Два уровня (аудит 12.11, находка 24): у мобильных операторов сотни людей выходят с одного адреса (CGNAT), и общий
+ * лимит на адрес отдавал им заготовки вместо кота.
+ *  - посетитель с нашей cookie `nid` (её ставит сервер, lib/visitor.ts) считается отдельно: limit на человека;
+ *  - адрес целиком — не больше limit × IP_CEILING: cookie может прислать и скрипт, поэтому потолок на адрес остаётся;
+ *  - без cookie (скрипт, первый запрос до /api/visit) — прежний limit на адрес.
+ * Подделанная cookie даёт скрипту не больше IP_CEILING × limit с адреса; честным людям за одним адресом — по limit каждому.
  */
+export const IP_CEILING = 3
+
 const hits = new Map<string, number[]>()
+/** для тестов: сколько ключей держит счётчик */
+export const hitsSize = () => hits.size
 function clientIp(req: Request): string {
   return (
     req.headers.get('x-real-ip') ??
@@ -61,19 +74,35 @@ function clientIp(req: Request): string {
     'unknown'
   )
 }
+
+function visitorId(req: Request): string | null {
+  const m = /(?:^|;\s*)nid=([^;]+)/.exec(req.headers.get('cookie') ?? '')
+  return m && isNid(m[1]) ? m[1] : null
+}
+
+/** сколько секунд ждать, если ключ исчерпал лимит; 0 — место есть */
+function retryAfter(key: string, limit: number, windowMs: number, now: number): number {
+  const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs)
+  // пустой ключ не храним: отказанные запросы с перебором cookie иначе плодили бы записи
+  if (recent.length > 0) hits.set(key, recent)
+  else hits.delete(key)
+  return recent.length >= limit ? Math.max(1, Math.ceil((windowMs - (now - recent[0])) / 1000)) : 0
+}
+
 export function rateLimit(req: Request, bucket: string, limit: number, windowMs = 60_000): void {
   const now = Date.now()
-  const key = `${bucket}:${clientIp(req)}`
-  const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs)
-  if (recent.length >= limit) {
-    const retry = Math.ceil((windowMs - (now - recent[0])) / 1000)
-    throw fail(429, { 'Retry-After': String(retry) })
-  }
-  recent.push(now)
-  hits.set(key, recent)
+  const visitor = visitorId(req)
+  const ipKey = `${bucket}:ip:${clientIp(req)}`
+  const keys: [string, number][] = visitor
+    ? [[`${bucket}:v:${visitor}`, limit], [ipKey, limit * IP_CEILING]]
+    : [[ipKey, limit]]
+  // сначала проверяем все уровни, потом записываем: отказ на одном уровне не съедает место на другом
+  const retry = Math.max(...keys.map(([k, n]) => retryAfter(k, n, windowMs, now)))
+  if (retry > 0) throw fail(429, { 'Retry-After': String(retry) })
+  for (const [k] of keys) hits.set(k, [...(hits.get(k) ?? []), now])
   // память не растёт бесконечно: изредка выметаем остывшие ключи
   if (hits.size > 5000) {
-    for (const [k, ts] of hits) if (now - ts[ts.length - 1] >= windowMs) hits.delete(k)
+    for (const [k, ts] of hits) if (ts.length === 0 || now - ts[ts.length - 1] >= windowMs) hits.delete(k)
   }
 }
 

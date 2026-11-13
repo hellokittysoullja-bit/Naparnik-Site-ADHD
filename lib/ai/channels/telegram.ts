@@ -1,3 +1,4 @@
+import { plainText } from '@/lib/emphasis'
 import { createHmac } from 'node:crypto'
 import type { ModelMessage, TextStreamPart, ToolSet } from 'ai'
 import { chatTurn } from '../agents/chat'
@@ -73,7 +74,8 @@ export async function collectReply(stream: ReadableStream<TextStreamPart<ToolSet
       if (parsed?.success) startFocus = parsed.data as TgReply['startFocus']
     }
   }
-  return { text: text.trim(), startFocus, unavailable }
+  // в боте рукописного шрифта нет, а parse_mode выключен намеренно: акцент остался бы звёздочками в тексте
+  return { text: plainText(text).trim(), startFocus, unavailable }
 }
 
 export type TgSendMessage = {

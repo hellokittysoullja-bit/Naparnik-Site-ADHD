@@ -1,3 +1,4 @@
+import { ownMarkup } from '@/lib/emphasis'
 import { forMatching, matchVariants } from './normalize'
 
 /**
@@ -333,9 +334,8 @@ export function plainWords(text: string): string {
 }
 
 export function tidy(text: string): string {
-  return plainWords(stripPetNames(undash(text)))
+  return plainWords(stripPetNames(undash(ownMarkup(text).text)))
     .trim()
-    .replace(/\*\*(.+?)\*\*/g, '*$1*')
     // кавычки снимаются, только если обёрнута вся реплика: «A» — шаг «B» остаётся как есть
     .replace(/^["«„]([^"«»„“]*)["»“]$/, '$1')
     .trim()

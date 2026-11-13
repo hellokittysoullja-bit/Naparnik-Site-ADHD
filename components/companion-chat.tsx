@@ -50,6 +50,7 @@ import {
 import { scriptedReply } from '@/lib/scripted-companion'
 import { archiveMessages, searchArchive } from '@/lib/chat-archive'
 import { RECALL_NONE, rawRecall } from '@/lib/ai/memory/recall-text'
+import { afterSummary, peekSummary, summaryDue, syncSummary } from '@/lib/chat-summary'
 import { enforceExplicitMemory, hiddenFromModel, pendingUserTurns, purgeForgottenChips, REVIEW_EVERY_TURNS, syncMemory } from '@/lib/memory-sync'
 import { factKey } from '@/lib/ai/memory/fact-key'
 
@@ -213,6 +214,9 @@ function formatDayLabel(iso: string): string {
   return DAY_MONTH.format(d)
 }
 
+/** на реплику без ответа кот отвечает при открытии Дома, если она не старше этого */
+const UNANSWERED_MAX_MS = 12 * 60 * 60_000
+
 export function CompanionChat({
   mode,
   greeting,
@@ -301,7 +305,7 @@ export function CompanionChat({
   )
 
   const sentUserIdsRef = useRef(new Set<string>())
-  const { messages, sendMessage, status, addToolOutput, setMessages } = useChat({
+  const { messages, sendMessage, status, addToolOutput, setMessages, regenerate } = useChat({
     ...(boot && boot.chat.length > 0 ? { messages: boot.chat } : {}),
     transport: new DefaultChatTransport({
       api: '/api/companion',
@@ -320,7 +324,18 @@ export function CompanionChat({
         if (lastUser) sentUserIdsRef.current.add(lastUser.id)
         // забытое кот не видит: реплики о забытой теме старше просьбы не уходят модели (lib/forgotten.ts)
         const hidden = hiddenFromModel(all)
-        return { body: { ...body, id, messages: all.filter((m) => !hidden.has(m.id)).slice(-30), trigger, messageId } }
+        // старая часть разговора идёт конспектом, дословно — только реплики после него (lib/chat-summary.ts)
+        const summary = peekSummary()
+        return {
+          body: {
+            ...body,
+            id,
+            messages: afterSummary(all, summary).filter((m) => !hidden.has(m.id)).slice(-30),
+            summary: summary && summary.lines.length > 0 ? { lines: summary.lines, madeOn: summary.at.slice(0, 10) } : undefined,
+            trigger,
+            messageId,
+          },
+        }
       },
     }),
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
@@ -464,7 +479,27 @@ export function CompanionChat({
     ]).then(([saved, loadedTimes]) => {
       setTimes(loadedTimes)
       if (saved.length > 0) setMessages(saved)
+      answerUnanswered(saved, loadedTimes)
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Человек написал и ушёл с Дома, пока кот отвечал: реплика сохранена, а ответа нет (аудит 12.11: «кот не отвечает
+  // на неё сам»). При открытии Дома кот отвечает на такую реплику — один раз за открытие и только при самом
+  // открытии: реплику, пришедшую из второй вкладки, уже обслуживает та вкладка. На вчерашний вопрос не отвечаем:
+  // человек давно в другом настроении, ответ «из ниоткуда» хуже тишины
+  const answeredOnOpenRef = useRef(false)
+  function answerUnanswered(list: readonly (typeof messages)[number][], at: Readonly<Record<string, string>>) {
+    if (answeredOnOpenRef.current) return
+    answeredOnOpenRef.current = true
+    const last = list.at(-1)
+    if (!last || last.role !== 'user') return
+    const said = at[last.id]
+    if (said && Date.now() - Date.parse(said) > UNANSWERED_MAX_MS) return
+    void regenerate()
+  }
+  useEffect(() => {
+    if (boot) answerUnanswered(boot.chat, boot.times)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -489,10 +524,21 @@ export function CompanionChat({
   }, [messages, idleForMemory, status])
   useEffect(() => {
     if (!idleForMemory || messages.length === 0) return
+    // конспект — после выжимки памяти (Hermes: перед сжатием память сбрасывается в хранилище): факты из реплик,
+    // которые сейчас уйдут в пересказ, сначала должны лечь в память дословно. Если выжимка уже идёт в другом вызове,
+    // конспект её не ждёт: выжимка читает сами реплики, а не конспект, так что порядок здесь удобство, не условие
+    const summarize = (keepalive = false) => {
+      const hidden = hiddenFromModel(messages)
+      return syncSummary(messages, { hidden: (m) => hidden.has(m.id), today: todayKey(), keepalive })
+    }
     const run = (keepalive = false) =>
-      void syncMemory(messages, { keepalive }).then((n) => {
-        if (n > 0) void buildMemoryContext().then((m) => (memoryRef.current = m))
-      })
+      void syncMemory(messages, { keepalive })
+        .then((n) => {
+          if (n > 0) void buildMemoryContext().then((m) => (memoryRef.current = m))
+        })
+        .then(() => summarize(keepalive))
+    // непересказанных реплик набралось на конспект: не ждём тишины, иначе старшие выйдут из переписки (30 реплик)
+    if (summaryDue(messages)) run()
     // долгий разговор без пауз: ревью каждые 10 ходов человека, не дожидаясь тишины
     if (pendingUserTurns(messages) >= REVIEW_EVERY_TURNS) run()
     const timer = window.setTimeout(() => run(), MEMORY_IDLE_MS)

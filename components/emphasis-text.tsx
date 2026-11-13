@@ -1,3 +1,5 @@
+import { EMPHASIS_PAIR } from '@/lib/emphasis'
+
 /**
  * Рукописные слова внутри обычного текста. Раньше вся речь напарника шла
  * шрифтом Caveat целиком — в топовых чат-продуктах (Apple Messages, Linear,
@@ -15,7 +17,8 @@
 export function EmphasisText({ text }: { text: string }) {
   if (!text.includes('*')) return <>{text}</>
 
-  const re = /\*([^*]+)\*/g
+  // то же правило пары, что у сервера (lib/emphasis.ts): «2 * 3 * 4» акцентом не становится
+  const re = new RegExp(EMPHASIS_PAIR.source, EMPHASIS_PAIR.flags)
   const parts: React.ReactNode[] = []
   let lastIndex = 0
   let match: RegExpExecArray | null

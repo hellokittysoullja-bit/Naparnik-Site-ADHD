@@ -21,6 +21,8 @@ import {
   getPlan,
   getStarts,
   getStepQueue,
+  markSkillsShown,
+  peekMemoryContext,
   recordStart,
   saveActiveSession,
   savePlan,
@@ -90,16 +92,22 @@ const fallbackVoice: Record<Moment, string> = {
   start: 'Я рядом. *Одно действие* за раз.',
   middle: '*Половина* есть. Ты реально в игре.',
   late: 'Осталось чуть-чуть. *Финишная прямая*.',
-  done: 'Начато и отработано. Мой остров стал чуть больше. Без пафоса: ты *красавчик*.',
-  'early-exit': 'Ты начал — это *главное*. Остров всё равно вырос. Ноль стыда.',
+  // без рода и без тире (правила владельца 12.11); без «всё равно»: оно звучит как утешение за неудачу
+  done: 'Начато и отработано. Мой остров стал чуть больше. Без пафоса: это *сильно*.',
+  'early-exit': 'Старт есть, это *главное*. Остров вырос. Ноль стыда.',
 }
 
-async function fetchVoice(moment: Moment, task: string, minutes: number): Promise<string> {
+/** Память для разовых задач Фокуса: тот же снимок, что уходит с чатом, без внутренних id устройства */
+function memoryForTask() {
+  return { ...peekMemoryContext(), factIds: undefined, skillIds: undefined }
+}
+
+async function fetchVoice(moment: Moment, task: string): Promise<string> {
   try {
     const res = await fetch('/api/session-voice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ moment, task, minutes }),
+      body: JSON.stringify({ moment, task, memory: memoryForTask() }),
     })
     if (!res.ok) return fallbackVoice[moment]
     const data = (await res.json()) as { text: string | null }
@@ -196,12 +204,17 @@ export function FocusSession() {
       const res = await fetch('/api/breakdown', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: task.trim() }),
+        body: JSON.stringify({ task: task.trim(), memory: memoryForTask() }),
       })
       if (res.ok) {
-        const data = (await res.json()) as { steps: string[] | null; reply?: string }
+        const data = (await res.json()) as { steps: string[] | null; reply?: string; source?: string }
         if (data.reply) setCareReply(data.reply)
-        else if (data.steps) setBrokenSteps(data.steps)
+        else if (data.steps) {
+          setBrokenSteps(data.steps)
+          // шаги сделаны с навыками, подходящими к делу: отмечаем их «применён», старт в ближайшие полчаса зачтётся им
+          // (тот же учёт, что в чате; lib/memory.ts markSkillsShown)
+          if (data.source === 'model') markSkillsShown(task.trim())
+        }
         else setBreakError(true)
       } else {
         setBreakError(true)
@@ -352,10 +365,10 @@ export function FocusSession() {
   const startedAtRef = useRef<number>(0)
   const firedMomentsRef = useRef<Set<Moment>>(new Set())
 
-  const speak = useCallback((moment: Moment, taskLabel: string, mins: number) => {
+  const speak = useCallback((moment: Moment, taskLabel: string) => {
     if (firedMomentsRef.current.has(moment)) return
     firedMomentsRef.current.add(moment)
-    fetchVoice(moment, taskLabel, mins).then(setVoice)
+    fetchVoice(moment, taskLabel).then(setVoice)
   }, [])
 
   // Мягкий возврат из отвлечения: СДВГ-мозг уходит в другую вкладку —
@@ -463,8 +476,8 @@ export function FocusSession() {
   useEffect(() => {
     if (phase !== 'running' || totalRef.current === 0) return
     const progress = 1 - secondsLeft / totalRef.current
-    if (progress >= 0.85) speak('late', task, minutes)
-    else if (progress >= 0.5) speak('middle', task, minutes)
+    if (progress >= 0.85) speak('late', task)
+    else if (progress >= 0.5) speak('middle', task)
   }, [secondsLeft, phase, speak, task, minutes])
 
   // двойной тап по «Закончить раньше»: второй вызов писал бы минуты и награду повторно
@@ -510,7 +523,7 @@ export function FocusSession() {
       await clearPlan()
     }
 
-    speak('start', task, minutes)
+    speak('start', task)
   }
 
   async function finish(early: boolean) {
@@ -606,7 +619,7 @@ export function FocusSession() {
 
     setPhase('done')
     trackEvent('session_completed')
-    fetchVoice(early ? 'early-exit' : 'done', task, minutes).then(setDoneVoice)
+    fetchVoice(early ? 'early-exit' : 'done', task).then(setDoneVoice)
   }
 
   async function saveTomorrowPlan() {

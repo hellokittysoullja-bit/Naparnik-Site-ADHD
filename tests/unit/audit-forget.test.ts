@@ -178,3 +178,25 @@ describe('замена не о том же', () => {
     ])
   })
 })
+
+describe('«забудь» о том, чего кот не хранит (набор задач 13.11)', () => {
+  const snap = (over: Record<string, unknown> = {}) => ({ plan: null, recentStarts: [], patterns: { totalStarts: 0, runningDays: 0, favoriteHour: null, lastStartDate: null }, ...over }) as never
+  it('в памяти нет ничего о теме: вызывать нечего, кот отвечает словами', async () => {
+    const { nothingToForget } = await import('@/lib/ai/agents/chat')
+    expect(nothingToForget('забудь, пожалуйста, что я рассказывал про переезд', snap({ facts: [{ category: 'helps', text: 'Начинать помогает чай' }] }))).toBe(true)
+    expect(nothingToForget('забудь про переезд', null)).toBe(true)
+  })
+  it('о теме есть факт, навык или план: память остаётся обязательной', async () => {
+    const { nothingToForget } = await import('@/lib/ai/agents/chat')
+    expect(nothingToForget('забудь про переезд', snap({ facts: [{ category: 'event', text: 'Переезжает в Казань в декабре' }] }))).toBe(false)
+    expect(nothingToForget('забудь про Машу', snap({ facts: [{ category: 'people', text: 'Маша — научный руководитель' }] }))).toBe(false)
+    expect(nothingToForget('забудь про отчёт', snap({ skills: [{ name: 'Отчёт по частям', when: 'садится за отчёт', steps: 'начать с таблицы' }] }))).toBe(false)
+    expect(nothingToForget('забудь про диплом', snap({ plan: { forDate: '2026-11-14', task: 'Диплом', firstStep: 'Открыть файл' } }))).toBe(false)
+  })
+  it('«забудь всё», «забудь это» и не просьба забыть сюда не относятся', async () => {
+    const { nothingToForget } = await import('@/lib/ai/agents/chat')
+    expect(nothingToForget('забудь всё', null)).toBe(false)
+    expect(nothingToForget('забудь это', null)).toBe(false)
+    expect(nothingToForget('я опять забыл про переезд', null)).toBe(false)
+  })
+})

@@ -19,6 +19,8 @@ export type AssembleInput = {
   taskSystem: string
   /** ярус 2: блок памяти (memory/render.ts) или данные задачи (context.ts dataMessage) */
   memory?: string
+  /** ярус 2: конспект прошлой части этого разговора (memory/render.ts renderSummary) — после памяти, перед перепиской */
+  summary?: string
   /** ярус 3 */
   situation?: string
   /** знания под этот ход (knowledge/select.ts) — рядом с ситуацией, перед последней репликой человека */
@@ -38,6 +40,8 @@ export function systemFor(taskSystem: string): string {
 export function assemble(input: AssembleInput): Assembled {
   const messages: ModelMessage[] = []
   if (input.memory) messages.push({ role: 'user', content: input.memory })
+  // меняется раз в ~12 реплик: префикс «память + конспект» стабилен между обновлениями и кэшируется провайдером
+  if (input.summary) messages.push({ role: 'user', content: input.summary })
   const conv = input.conversation
   let lastUser = -1
   for (let i = conv.length - 1; i >= 0; i--) {

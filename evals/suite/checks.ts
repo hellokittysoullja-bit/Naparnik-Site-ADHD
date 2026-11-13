@@ -13,7 +13,7 @@ export type ExtractOp = { op: string; category?: string; ref?: string; text?: st
 
 /** Что вернул маршрут — одно и то же для всех каналов, чтобы проверки писались одинаково */
 export type Reply = {
-  route: 'chat' | 'voice' | 'breakdown' | 'memory'
+  route: 'chat' | 'voice' | 'breakdown' | 'memory' | 'summary'
   status: number
   /** то, что увидит человек: текст чата, фраза голоса, шаги через « / », кризисный ответ дробления */
   text: string

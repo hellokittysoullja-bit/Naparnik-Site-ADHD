@@ -1,6 +1,6 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { google } from '@ai-sdk/google'
-import type { LanguageModel } from 'ai'
+import type { LanguageModel, streamText } from 'ai'
 import type { TaskName } from './core/turn'
 
 /**
@@ -18,6 +18,10 @@ export const ANYMODEL_BASE_URL = 'https://anymodel.org/v1'
 export type ModelStep = {
   id: string
   model: LanguageModel
+  /** чей это ключ и баланс: предохранитель размыкает поставщика целиком при 401/402/403 (core/breaker.ts) */
+  provider?: ProviderName
+  /** настройки вызова, понятные только этому поставщику (например, выключенное рассуждение) */
+  options?: Parameters<typeof streamText>[0]['providerOptions']
   /** устойчивее к взлому промпта: при подозрении цепочка начинается с неё (core/middleware.ts) */
   robust?: boolean
 }
@@ -42,7 +46,36 @@ function anyModel() {
  * Профили моделей — данные, а не ветки кода (Hermes providers/base.py: профиль провайдера как запись).
  * robust — устойчивее к взлому промпта (core/middleware.ts ставит её первой при подозрении).
  */
-type Profile = { id: string; robust?: boolean }
+type Profile = { provider: ProviderName; id: string; robust?: boolean }
+
+/**
+ * Поставщики — независимые точки отказа (свой хост, свой ключ, свой баланс). До 13.11 все три модели шли через один
+ * AnyModel: его заминка или кончившийся баланс тихо выключали ИИ у всех (аудит 12.11, находка 25; живой прогон 13.11:
+ * в 3 запросах из 12 не ответила ни одна из трёх моделей разом). Второй поставщик включается ключом в окружении, без
+ * правки кода; без ключа его звено в цепочку не попадает.
+ */
+export type ProviderName = 'anymodel' | 'google'
+
+const PROVIDERS: Record<ProviderName, { available: () => boolean; step: (p: Profile) => ModelStep | null }> = {
+  anymodel: {
+    available: () => !!process.env.ANYMODEL_API_KEY,
+    step: (p) => {
+      const am = anyModel()
+      return am && { id: p.id, model: am.chatModel(p.id), provider: 'anymodel', robust: p.robust }
+    },
+  },
+  // Gemini напрямую у Google: тот же ответ кота, другой хост и другой счёт. Рассуждение выключено, как у AnyModel
+  google: {
+    available: () => !!process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+    step: (p) => ({
+      id: `google/${p.id}`,
+      model: google(p.id),
+      provider: 'google',
+      robust: p.robust,
+      options: { google: { thinkingConfig: { thinkingBudget: 0 } } },
+    }),
+  },
+}
 
 /**
  * Выбор владельца 11.11 по замеру (5 запросов на модель, настоящая инструкция кота, research/20-ai-harness/proof.md §4):
@@ -63,11 +96,22 @@ export const PRIMARY_MODEL = 'gc/gemini-2.5-flash'
 export const RESERVE_MODEL = 'ag/gemini-2.5-flash'
 export const FALLBACK_MODEL = 'ds/deepseek-v4-flash'
 
-const PROFILES: Record<string, Profile> = {
-  primary: { id: PRIMARY_MODEL },
-  reserve: { id: RESERVE_MODEL },
-  fallback: { id: FALLBACK_MODEL },
-}
+/** Независимый поставщик: та же Gemini 2.5 Flash напрямую у Google (нужен GOOGLE_GENERATIVE_AI_API_KEY) */
+export const INDEPENDENT_MODEL = 'gemini-2.5-flash'
+
+const PROFILES = {
+  primary: { provider: 'anymodel', id: PRIMARY_MODEL },
+  reserve: { provider: 'anymodel', id: RESERVE_MODEL },
+  fallback: { provider: 'anymodel', id: FALLBACK_MODEL },
+  independent: { provider: 'google', id: INDEPENDENT_MODEL },
+} satisfies Record<string, Profile>
+
+/**
+ * Порядок по умолчанию. Независимый поставщик стоит последним намеренно: он дороже (цена Google против цены
+ * посредника), и при здоровом AnyModel до него дело не доходит. Когда AnyModel сбоит, предохранитель переносит его
+ * звенья в конец, и независимый оказывается первым без ожидания страховки.
+ */
+const DEFAULT_ROUTE = ['primary', 'reserve', 'fallback', 'independent'] as const
 
 /**
  * Маршруты задач (Hermes hermes_cli/config_defaults.py: у каждой вспомогательной задачи свой маршрут). Сейчас у
@@ -75,13 +119,14 @@ const PROFILES: Record<string, Profile> = {
  * модель (например, дешёвую для фоновой выжимки памяти), не трогая ядро и маршруты.
  */
 const ROUTES: Record<TaskName, readonly (keyof typeof PROFILES)[]> = {
-  test: ['primary', 'reserve', 'fallback'],
-  chat: ['primary', 'reserve', 'fallback'],
-  'session-voice': ['primary', 'reserve', 'fallback'],
-  breakdown: ['primary', 'reserve', 'fallback'],
-  'onboarding-first-step': ['primary', 'reserve', 'fallback'],
-  'memory-extract': ['primary', 'reserve', 'fallback'],
-  recall: ['primary', 'reserve', 'fallback'],
+  test: DEFAULT_ROUTE,
+  chat: DEFAULT_ROUTE,
+  'session-voice': DEFAULT_ROUTE,
+  breakdown: DEFAULT_ROUTE,
+  'onboarding-first-step': DEFAULT_ROUTE,
+  'memory-extract': DEFAULT_ROUTE,
+  recall: DEFAULT_ROUTE,
+  summarize: DEFAULT_ROUTE,
 }
 
 /**
@@ -94,19 +139,25 @@ function legacyChain(task: TaskName): ModelStep[] {
   const chat = task === 'chat'
   if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     const id = chat ? 'gemini-2.5-flash' : 'gemini-2.5-flash-lite'
-    return [{ id, model: google(id) }]
+    return [{ id, model: google(id), provider: 'google' }]
   }
   const id = chat ? 'google/gemini-3.6-flash' : 'openai/gpt-5.4-nano'
   return [{ id, model: id }]
 }
 
 export function modelChain(task: TaskName): ModelStep[] {
-  const am = anyModel()
-  if (!am) return legacyChain(task)
-  return ROUTES[task].map((k) => {
-    const p = PROFILES[k]
-    return { id: p.id, model: am.chatModel(p.id), robust: p.robust }
+  if (!PROVIDERS.anymodel.available()) return legacyChain(task)
+  return ROUTES[task].flatMap((k) => {
+    const p: Profile = PROFILES[k]
+    const provider = PROVIDERS[p.provider]
+    const step = provider.available() ? provider.step(p) : null
+    return step ? [step] : []
   })
+}
+
+/** Какие поставщики сейчас настроены (для страницы здоровья; имена, не ключи) */
+export function configuredProviders(): ProviderName[] {
+  return (Object.keys(PROVIDERS) as ProviderName[]).filter((n) => PROVIDERS[n].available())
 }
 
 /** Для тестов: сбросить кэш провайдера после смены переменных окружения */

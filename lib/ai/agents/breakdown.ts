@@ -1,5 +1,7 @@
 import { dataMessage } from '../context'
 import { newTurn, type TurnContext } from '../core/turn'
+import { NoMemory, prefetchWithin, type MemoryProvider } from '../memory/provider'
+import { memoryWords, renderTaskMemory } from '../memory/render'
 import { runTurn } from '../core/run-turn'
 
 /**
@@ -11,7 +13,8 @@ export const BREAKDOWN_SYSTEM = `Режим: ДРОБЛЕНИЕ ЗАДАЧИ. Ч
 - Каждый начинается с глагола («Открыть…», «Найти…», «Написать…»)
 - Первый шаг самый крошечный, почти смешной («Открыть документ»)
 - Максимум 6 слов на шаг
-- Никаких пояснений: ответь ТОЛЬКО тремя строками, по шагу на строку`
+- Никаких пояснений: ответь ТОЛЬКО тремя строками, по шагу на строку
+- Если перед делом есть блок ПАМЯТЬ О ЧЕЛОВЕКЕ, делай шаги под этого человека: его программы и места, то, с чего он уже начинал это дело, то, что ему мешает и помогает. Саму память не пересказывай и не упоминай: в ответе только три шага`
 
 export const BREAKDOWN_FALLBACK = ['Открыть то, что нужно для дела', 'Сделать одно крошечное действие', 'Записать, что дальше']
 
@@ -60,14 +63,20 @@ export type BreakdownResult =
 export async function breakdown(input: {
   ctx?: TurnContext
   task: string
+  /** память о человеке (Фокус); знакомство зовёт без неё: человек только пришёл */
+  memory?: MemoryProvider
   /** контекст знакомства: сфера и помеха (необязательно) */
   context?: Record<string, string | undefined>
   timeoutMs?: number
   signal?: AbortSignal
 }): Promise<BreakdownResult> {
+  const ctx = input.ctx ?? newTurn({ task: 'breakdown' })
+  const snapshot = await prefetchWithin(input.memory ?? NoMemory, ctx)
   const { value, outcome } = await runTurn<BreakdownResult>({
-    ctx: input.ctx ?? newTurn({ task: 'breakdown' }),
+    ctx,
     system: BREAKDOWN_SYSTEM,
+    memory: renderTaskMemory(snapshot, input.task, 'breakdown'),
+    echoExtra: memoryWords(snapshot),
     data: dataMessage({ Дело: input.task, ...input.context }),
     userTexts: [input.task],
     timeoutMs: input.timeoutMs ?? 8000,

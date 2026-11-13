@@ -9,6 +9,7 @@ import { activeFacts, applyFactOps, FACT_CATEGORIES, type Fact, type FactOp, typ
 import { aboutAny, contentWords } from '@/lib/ai/memory/stems'
 import { addForgotten } from '@/lib/forgotten'
 import { clearArchive, forgetInArchive } from '@/lib/chat-archive'
+import { clearSummary, forgetInSummary } from '@/lib/chat-summary'
 import { activeSkills, applySkillOps, curate, relevantSkills, type Skill, type SkillOp, type SkillOpResult } from '@/lib/ai/memory/skills'
 
 export type Plan = {
@@ -608,6 +609,8 @@ export function forgetTopics(texts: readonly string[]): void {
   if (topics.length === 0) return
   addForgotten(texts)
   forgetInArchive(texts)
+  // конспект прошлой части разговора тоже слова человека: о забытой теме он стирается (lib/chat-summary.ts)
+  forgetInSummary(texts)
   const skills = peekAllSkills()
   const keptSkills = skills.filter((sk) => !aboutAny(`${sk.name} ${sk.when} ${sk.steps} ${sk.avoid ?? ''}`, topics))
   if (keptSkills.length !== skills.length) write(KEYS.skills, keptSkills)
@@ -622,6 +625,7 @@ export function forgetEverything(): void {
   write(KEYS.skills, [])
   write(KEYS.plan, null)
   clearArchive()
+  clearSummary()
   write(KEYS.skillShown, null)
   try {
     window.localStorage.removeItem(STEP_QUEUE_KEY)

@@ -4,7 +4,10 @@ import { checkInput } from '../guards/input'
 import { checkOutput, echoWords, leakPrint, mentionsMedical, tidy, toolArgsOk, type ClaimKind, type OutputOpts } from '../guards/output'
 import { modelChain, type ModelStep } from '../models'
 import { emit, type AttemptResult } from './hooks'
+import './breaker' // предохранитель: до адаптивной страховки, чтобы та смотрела уже на здоровую первую модель
 import './latency' // наблюдатель задержек и адаптивная страховка подключаются вместе с ядром
+import './alerts' // сигналы владельцу: баланс, ключ, «ИИ лежит»
+import { classify } from './errors'
 import { applyRequestMiddleware, withExecutionMiddleware, type TurnRequest } from './middleware'
 import { SentenceGuard } from './stream-guard'
 import type { TurnContext } from './turn'
@@ -36,6 +39,8 @@ export type StreamTurnInput = {
   userTexts: string[]
   /** откуда брать разрешённые латинские слова (по умолчанию userTexts) */
   echoTexts?: string[]
+  /** ещё тексты, чьи латинские слова кот вправе повторить (память о человеке); на проверку входа не влияют */
+  echoExtra?: readonly string[]
   /** сколько ждать точки фиксации (все попытки вместе) */
   commitTimeoutMs: number
   /** потолок всего хода, включая допечатку после фиксации */
@@ -152,9 +157,7 @@ function retryable(a: { result?: AttemptResult; errorStatus?: number; textLength
   if (a.skippedRequiredTool) return false
   // провайдер оборвал ответ почти сразу (AnyModel 12.11: finish=length на 16 токенах при лимите 400) — сбой, не модель
   if (a.result === 'length' || (a.truncated && a.result === 'empty')) return (a.textLength ?? 0) < 120
-  if (a.result !== 'error') return false
-  const s = a.errorStatus
-  return s === undefined || s === 408 || s === 429 || s >= 500
+  return a.result !== undefined && (classify(a.result, a.errorStatus)?.retry ?? false)
 }
 
 /** сбой проверки агента — вызов не проходит (fail-closed: лучше не записать, чем записать непроверенное) */
@@ -496,7 +499,7 @@ class Race {
     this.guardOpts = {
       personMedical: this.personMedical,
       maxChars: input.maxChars,
-      echo: echoWords(input.echoTexts ?? input.userTexts),
+      echo: echoWords([...(input.echoTexts ?? input.userTexts), ...(input.echoExtra ?? [])]),
       leak: leakPrint(this.req.instructions),
       claim: input.claims ? { allowed: (k: ClaimKind) => input.claims!.fromStart.includes(k) } : undefined,
       // речь кота — без канцелярита; служебные задачи (выжимка, вспоминание) человеку не показываются
@@ -615,6 +618,7 @@ class Race {
         ...(this.toolChoice() ? { toolChoice: this.toolChoice() } : {}),
         ...(typeof this.toolChoice() === 'object' ? { activeTools: [this.req.requiredTool!] } : {}),
         maxOutputTokens: this.input.maxOutputTokens,
+        ...(a.step.options ? { providerOptions: a.step.options } : {}),
         maxRetries: 0,
         abortSignal: AbortSignal.any([this.all, a.ctrl.signal]),
         onError: () => {}, // ошибка придёт частью 'error' и попадёт в журнал хода; второй лог не нужен
@@ -689,8 +693,11 @@ class Race {
   /** никто не зафиксировался: канал получает маркер недоступности и берёт заготовку */
   private giveUp(): void {
     if (this.settled || this.winner) return
-    for (const a of this.attempts) this.endAttempt(a, 'timeout')
-    if (this.input.signal?.aborted) return this.settle('aborted')
+    // человек сам отменил запрос (закрыл вкладку) — это не «модель не дождались»: предохранитель и оценка задержек
+    // такое сбоем не считают, иначе три закрытые вкладки ставили бы здоровую модель на паузу для всех
+    const byPerson = this.input.signal?.aborted === true
+    for (const a of this.attempts) this.endAttempt(a, byPerson ? 'cancelled' : 'timeout')
+    if (byPerson) return this.settle('aborted')
     this.write([{ type: 'error', error: new Error(HARNESS_UNAVAILABLE) } as Part])
     this.settle('fallback')
   }

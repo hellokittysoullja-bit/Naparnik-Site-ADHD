@@ -33,7 +33,7 @@ describe('API: вход проверяется до вызова модели', 
   })
 
   it('тело больше потолка → 413', async () => {
-    expect((await breakdown(post(JSON.stringify({ task: 'а'.repeat(10_000) })))).status).toBe(413)
+    expect((await breakdown(post(JSON.stringify({ task: 'а'.repeat(40_000) })))).status).toBe(413)
   })
 
   it('запрос с чужого сайта → 403', async () => {

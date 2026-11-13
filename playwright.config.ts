@@ -17,6 +17,8 @@ export default defineConfig({
     locale: 'ru-RU',
     trace: 'retain-on-failure',
   },
+  // сценарии не запускаются против сборки, которая старее кода (e2e/global-setup.ts)
+  globalSetup: './e2e/global-setup.ts',
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : { command: `npx next start -p ${port}`, url: baseURL, reuseExistingServer: !process.env.CI, timeout: 60_000 },

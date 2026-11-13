@@ -5,6 +5,7 @@ import { POST as breakdownRoute } from '@/app/api/breakdown/route'
 import { POST as chatRoute } from '@/app/api/companion/route'
 import { POST as memoryRoute } from '@/app/api/memory/route'
 import { POST as voiceRoute } from '@/app/api/session-voice/route'
+import { POST as summaryRoute } from '@/app/api/summary/route'
 import { registerExecutionMiddleware } from '@/lib/ai/core/middleware'
 import { explicitForgetOps } from '@/lib/memory-sync'
 import { honestClaims, memoryWritesClean, noGreetingMidway, speech, type ExtractOp, type Reply, type ToolCall } from './checks'
@@ -74,7 +75,7 @@ registerExecutionMiddleware({
 
 // ── запрос ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-const HANDLERS = { chat: chatRoute, voice: voiceRoute, breakdown: breakdownRoute, memory: memoryRoute } as const
+const HANDLERS = { chat: chatRoute, voice: voiceRoute, breakdown: breakdownRoute, memory: memoryRoute, summary: summaryRoute } as const
 
 // у каждого запроса свой адрес: лимит запросов на адрес (lib/api-guard.ts) не должен влиять на поведение кота
 let ipSeq = 0
@@ -113,7 +114,7 @@ const lastUserText = (c: Case): string => {
     const msgs = c.body.messages as { parts: { text: string }[] }[]
     return msgs.at(-1)?.parts[0]?.text ?? ''
   }
-  if (c.route === 'memory') return ((c.body.lines as { role: string; text: string }[]).filter((l) => l.role === 'user').at(-1)?.text) ?? ''
+  if (c.route === 'memory' || c.route === 'summary') return ((c.body.lines as { role: string; text: string }[]).filter((l) => l.role === 'user').at(-1)?.text) ?? ''
   return String(c.body.task ?? '')
 }
 
@@ -147,9 +148,10 @@ export async function runCase(c: Case, logs: string[]): Promise<RunResult> {
     streamError = r.streamError
     reply = { ...base, text: r.text, tools: r.tools }
   } else {
-    const data = (await res.json()) as { text?: string | null; steps?: string[] | null; reply?: string; source?: string; ops?: ExtractOp[] }
+    const data = (await res.json()) as { text?: string | null; steps?: string[] | null; reply?: string; source?: string; ops?: ExtractOp[]; summary?: { kind: string; text: string }[] | null }
     parts = [data]
-    const text = data.reply ?? data.text ?? (data.steps ? data.steps.join(' / ') : '')
+    // конспект — строками «вид: текст»: проверки смотрят на него как на текст
+    const text = data.reply ?? data.text ?? (data.steps ? data.steps.join(' / ') : data.summary ? data.summary.map((l) => `${l.kind}: ${l.text}`).join('\n') : '')
     reply = { ...base, text, steps: data.steps, source: data.source, tools: [], ops: data.ops }
   }
   // время до последнего байта ответа (у чата — весь поток, а не только заголовки)

@@ -1,3 +1,4 @@
+import { EMPHASIS_LIMIT, ownMarkup } from '@/lib/emphasis'
 import { checkOutput, plainWords, stripGreeting, stripPetNames, undash, type OutputOpts, type OutputViolation } from '../guards/output'
 
 /**
@@ -35,6 +36,8 @@ export class SentenceGuard {
   private released = ''
   private pending = ''
   private opened = false
+  /** сколько акцентов (*слово*) уже ушло человеку: на реплику их не больше EMPHASIS_LIMIT */
+  private emphasis = 0
 
   constructor(private readonly opts: OutputOpts) {}
 
@@ -85,7 +88,8 @@ export class SentenceGuard {
   }
 
   private release(cut: number, final: boolean): GuardStep {
-    let chunk = plainWords(stripPetNames(undash(this.pending.slice(0, cut).replace(/\*\*/g, '*'))))
+    const marked = ownMarkup(this.pending.slice(0, cut), EMPHASIS_LIMIT - this.emphasis)
+    let chunk = plainWords(stripPetNames(undash(marked.text)))
     // кавычки-обёртки снимаются, только если обёрнута ВСЯ реплика (её начало ещё не показано — см. push)
     if (final && !this.opened && OPEN_QUOTE.test(chunk) && CLOSE_QUOTE.test(chunk)) {
       const inner = chunk.replace(OPEN_QUOTE, '').replace(CLOSE_QUOTE, '')
@@ -118,6 +122,7 @@ export class SentenceGuard {
       }
     }
     this.opened = true
+    this.emphasis += marked.used
     this.released += chunk
     return chunk ? { kind: 'release', text: chunk } : { kind: 'hold' }
   }
