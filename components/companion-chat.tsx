@@ -50,6 +50,7 @@ import {
 import { scriptedReply } from '@/lib/scripted-companion'
 import { archiveMessages, searchArchive } from '@/lib/chat-archive'
 import { RECALL_NONE, rawRecall } from '@/lib/ai/memory/recall-text'
+import { afterSummary, peekSummary, summaryDue, syncSummary } from '@/lib/chat-summary'
 import { enforceExplicitMemory, hiddenFromModel, pendingUserTurns, purgeForgottenChips, REVIEW_EVERY_TURNS, syncMemory } from '@/lib/memory-sync'
 import { factKey } from '@/lib/ai/memory/fact-key'
 
@@ -320,7 +321,18 @@ export function CompanionChat({
         if (lastUser) sentUserIdsRef.current.add(lastUser.id)
         // забытое кот не видит: реплики о забытой теме старше просьбы не уходят модели (lib/forgotten.ts)
         const hidden = hiddenFromModel(all)
-        return { body: { ...body, id, messages: all.filter((m) => !hidden.has(m.id)).slice(-30), trigger, messageId } }
+        // старая часть разговора идёт конспектом, дословно — только реплики после него (lib/chat-summary.ts)
+        const summary = peekSummary()
+        return {
+          body: {
+            ...body,
+            id,
+            messages: afterSummary(all, summary).filter((m) => !hidden.has(m.id)).slice(-30),
+            summary: summary && summary.lines.length > 0 ? { lines: summary.lines, madeOn: summary.at.slice(0, 10) } : undefined,
+            trigger,
+            messageId,
+          },
+        }
       },
     }),
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
@@ -489,10 +501,20 @@ export function CompanionChat({
   }, [messages, idleForMemory, status])
   useEffect(() => {
     if (!idleForMemory || messages.length === 0) return
+    // конспект — после выжимки памяти (Hermes: перед сжатием память сбрасывается в хранилище): факты из реплик,
+    // которые сейчас уйдут в пересказ, сначала должны лечь в память дословно
+    const summarize = (keepalive = false) => {
+      const hidden = hiddenFromModel(messages)
+      return syncSummary(messages, { hidden: (m) => hidden.has(m.id), today: todayKey(), keepalive })
+    }
     const run = (keepalive = false) =>
-      void syncMemory(messages, { keepalive }).then((n) => {
-        if (n > 0) void buildMemoryContext().then((m) => (memoryRef.current = m))
-      })
+      void syncMemory(messages, { keepalive })
+        .then((n) => {
+          if (n > 0) void buildMemoryContext().then((m) => (memoryRef.current = m))
+        })
+        .then(() => summarize(keepalive))
+    // непересказанных реплик набралось на конспект: не ждём тишины, иначе старшие выйдут из переписки (30 реплик)
+    if (summaryDue(messages)) run()
     // долгий разговор без пауз: ревью каждые 10 ходов человека, не дожидаясь тишины
     if (pendingUserTurns(messages) >= REVIEW_EVERY_TURNS) run()
     const timer = window.setTimeout(() => run(), MEMORY_IDLE_MS)

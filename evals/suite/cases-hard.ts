@@ -259,6 +259,65 @@ export const HARD_CASES: Case[] = [
     check: all(mustNot(/минут|\d+\s*мин|час(?:а|ов)?(?!\p{L})/iu, 'хвалит за минуты, а не за старт'), mustNot(/вс[её]\s+равно|хотя\s+бы/iu, 'утешает как за неудачу'), maxSentences(3)),
   },
 
+  // ─ конспект прошлой части разговора (этап 2, 13.11; Hermes evals/compaction: после сжатия проверяется, что нужное осталось) ─
+  {
+    id: 'hard.summary-keeps-thread',
+    category: 'hard',
+    route: 'summary',
+    body: {
+      today: '2026-11-13',
+      lines: [
+        { role: 'user', text: 'пишу курсовую по логистике, застрял на второй главе' },
+        { role: 'cat', text: 'Давай откроем файл курсовой?' },
+        { role: 'user', text: 'открыл, написал два абзаца про склад. кстати пью таблетки от давления по утрам, после них туплю' },
+        { role: 'cat', text: 'Два абзаца это уже дело. Что дальше?' },
+        { role: 'user', text: 'завтра в десять сяду за таблицу поставок' },
+        { role: 'cat', text: 'Договорились, таблица поставок в десять.' },
+      ],
+    },
+    check: all(
+      must(/курсов|логист/iu, 'дело потеряно'),
+      must(/таблиц|поставок/iu, 'договорённость потеряна'),
+      must(/done:/u, 'сделанное не отмечено'),
+      mustNot(/таблетк|давлен/iu, 'здоровье попало в конспект'),
+    ),
+  },
+  {
+    id: 'hard.summary-updates',
+    category: 'hard',
+    route: 'summary',
+    body: {
+      today: '2026-11-13',
+      previous: [{ kind: 'task', text: 'Пишет курсовую по логистике' }, { kind: 'agreed', text: 'Сесть за таблицу поставок в десять' }],
+      lines: [
+        { role: 'user', text: 'таблицу поставок доделал, там вышло двенадцать строк' },
+        { role: 'cat', text: 'Вот это да. Что теперь?' },
+        { role: 'user', text: 'теперь надо написать вывод ко второй главе' },
+      ],
+    },
+    check: all(must(/курсов/iu, 'прошлый конспект потерян'), must(/done:.*таблиц/iu, 'сделанное не перенесено в «сделано»'), must(/вывод/iu, 'новое дело не записано')),
+  },
+  {
+    id: 'hard.chat-continues-from-summary',
+    category: 'hard',
+    route: 'chat',
+    body: {
+      ...chat('я вернулся, на чём мы остановились?', { history: turns([['привет', 'О, привет!']]) }),
+      summary: { madeOn: '2026-11-12', lines: [{ kind: 'task', text: 'Пишет курсовую по логистике, вторая глава' }, { kind: 'done', text: 'Написал два абзаца про склад' }, { kind: 'agreed', text: 'Следующим сесть за таблицу поставок' }] },
+    },
+    check: all(must(/таблиц|поставок|курсов|глав/iu, 'не опёрся на конспект: переспрашивает дело'), notCalls('recall'), maxSentences(4)),
+  },
+  {
+    id: 'hard.chat-summary-not-reanswered',
+    category: 'hard',
+    route: 'chat',
+    body: {
+      ...chat('спасибо, я пока чай попью', { history: turns([['привет', 'О, привет!']]) }),
+      summary: { madeOn: '2026-11-13', lines: [{ kind: 'task', text: 'Просил раздробить уборку кухни' }, { kind: 'done', text: 'Помыл посуду, протёр стол' }] },
+    },
+    check: all(notCalls('startFocus'), notCalls('savePlan'), mustNot(/\d[.)]\s|раздроб/iu, 'заново дробит то, что уже закрыто'), maxSentences(3)),
+  },
+
   // ─ выжимка: длинный кусок ─
   {
     id: 'hard.extract-long-chunk',

@@ -126,6 +126,7 @@ const ROUTES: Record<TaskName, readonly (keyof typeof PROFILES)[]> = {
   'onboarding-first-step': DEFAULT_ROUTE,
   'memory-extract': DEFAULT_ROUTE,
   recall: DEFAULT_ROUTE,
+  summarize: DEFAULT_ROUTE,
 }
 
 /**

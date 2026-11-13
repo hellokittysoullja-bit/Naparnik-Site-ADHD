@@ -4,7 +4,7 @@ import { streamTurn } from '../core/stream-turn'
 import type { TurnContext } from '../core/turn'
 import { asksToForget, asksToForgetAll, asksToRemember, forgetMatches, forgetsLast } from '../memory/facts'
 import { prefetchWithin, type MemoryProvider, type MemoryWrite } from '../memory/provider'
-import { memoryWords, renderMemory, renderSkills } from '../memory/render'
+import { memoryWords, renderMemory, renderSkills, renderSummary } from '../memory/render'
 import { factRejection, writeAllowed } from '../memory/write-guard'
 import { assemble } from '../prompt/assemble'
 import { KNOWLEDGE } from '../knowledge/catalog'
@@ -47,14 +47,18 @@ export async function chatTurn(input: {
   conversation: ModelMessage[]
   /** тексты человека в разговоре, последний — текущая реплика */
   userTexts: string[]
+  /** конспект прошлой части разговора с устройства (недоверенный; lib/chat-summary.ts) и дата, когда он составлен */
+  summary?: { lines: unknown; madeOn?: string }
   /** ответов кота подряд без реплики человека (клиент сам шлёт повтор после инструмента) */
   autoRounds?: number
   signal?: AbortSignal
 }): Promise<ReadableStream<TextStreamPart<ToolSet>>> {
   const snapshot = await prefetchWithin(input.memory, input.ctx)
+  const summary = renderSummary(input.summary?.lines, input.summary?.madeOn)
   const { instructions, messages } = assemble({
     taskSystem: input.mode === 'focus' ? FOCUS_CHAT_SYSTEM : CHAT_SYSTEM,
     memory: renderMemory(snapshot),
+    summary: summary.block,
     skills: renderSkills(snapshot, input.userTexts.at(-1) ?? ''),
     situation: situation(input.clientHour),
     // знания под реплику (каталог пуст до утверждения владельцем — тогда блока нет)
@@ -84,7 +88,7 @@ export async function chatTurn(input: {
     echoTexts: input.userTexts,
     // названия латиницей из памяти («пишу в Overleaf», сказано неделю назад) коту тоже можно повторять: без этого
     // ответ по памяти браковался как «чужой язык», и память делала кота хуже, а не лучше
-    echoExtra: memoryWords(snapshot),
+    echoExtra: [...memoryWords(snapshot), ...summary.lines.map((l) => l.text)],
     toolCheck: memoryToolCheck({ facts: snapshot?.facts?.length ?? 0, userTexts: input.userTexts, factTexts: snapshot?.facts?.map((f) => f.text) }),
     // «забыл/запомнил/сохранил» — только если это правда случилось: в этом ответе или в автокруге после инструмента
     claims: { unlocks: CLAIM_UNLOCKS, fromStart: actedSinceUser(input.conversation) },

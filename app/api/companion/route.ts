@@ -21,6 +21,8 @@ const BodySchema = z.object({
   // память проверяется отдельно (memory/schema.ts): одно странное поле не должно выключать ИИ целиком
   memory: z.unknown().optional(),
   clientHour: z.number().int().min(0).max(23).optional(),
+  // конспект прошлой части разговора (lib/chat-summary.ts): форма проверяется в агенте, странное поле даёт ход без него
+  summary: z.object({ lines: z.unknown(), madeOn: z.string().max(40).optional() }).optional().catch(undefined),
   // id разговора от useChat — связывает ходы одного разговора в журнале
   id: z.string().max(64).optional(),
 })
@@ -38,6 +40,7 @@ export const POST = handle(async (req) => {
     memory: new ClientSnapshotMemory(parsed.data.memory),
     mode: parsed.data.mode,
     clientHour: parsed.data.clientHour,
+    summary: parsed.data.summary,
     ...input,
     signal: req.signal, // человек закрыл вкладку — генерация останавливается
   })

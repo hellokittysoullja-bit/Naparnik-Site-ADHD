@@ -6,6 +6,7 @@ import { contentWords, stemHits } from './stems'
 import type { MemorySnapshot } from './schema'
 import { factRejection, INSTRUCTION_LIKE } from './write-guard'
 import { matchVariants } from '../guards/normalize'
+import { parseSummary, SUMMARY_LABEL, type SummaryLine } from './summary'
 
 /**
  * Память → блок данных для сообщения (не для системной инструкции):
@@ -175,4 +176,17 @@ export function renderMemory(m: MemorySnapshot | null): string {
     'твои навыки с этим человеком': skillIndex(m).length ? skillIndex(m) : undefined,
     'ты запомнил о человеке': legacy.length ? legacy : undefined,
   })
+}
+
+/**
+ * Конспект прошлой части разговора → блок данных (agents/summarize.ts). Конспект присылает устройство, поэтому
+ * каждая строка ещё раз проходит запреты памяти при чтении (parseSummary). Дата составления — в блоке: модель должна
+ * понимать, что «договорились на завтра» двухнедельной давности уже прошло.
+ */
+export function renderSummary(raw: unknown, madeOn?: string): { block?: string; lines: SummaryLine[] } {
+  const lines = parseSummary(raw)
+  if (lines.length === 0) return { lines }
+  const byKind: Record<string, string[]> = {}
+  for (const l of lines) (byKind[SUMMARY_LABEL[l.kind].toLowerCase()] ??= []).push(l.text)
+  return { lines, block: dataBlock('summary', { составлен: day(madeOn), ...byKind }) }
 }

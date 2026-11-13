@@ -6,7 +6,7 @@
 export type Channel = 'web' | 'telegram' | 'eval'
 
 /** Задачи обвязки. Опечатка в имени — ошибка компиляции, а не молчаливый маршрут по умолчанию (аудит 12.11) */
-export type TaskName = 'chat' | 'session-voice' | 'breakdown' | 'onboarding-first-step' | 'memory-extract' | 'recall' | 'test'
+export type TaskName = 'chat' | 'session-voice' | 'breakdown' | 'onboarding-first-step' | 'memory-extract' | 'recall' | 'summarize' | 'test'
 
 export type TurnContext = {
   /** уникален на ход: связывает все события журнала одного ответа */
