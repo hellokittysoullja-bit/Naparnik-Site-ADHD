@@ -76,7 +76,18 @@ export function liveDeps(site: string): Deps {
   }
 }
 
-/** Адрес сайта для ссылок: прод-домен, а на превью — адрес самого превью */
+/**
+ * Постоянный адрес сайта из окружения, не из запроса: NEXT_PUBLIC_SITE_URL, иначе прод-домен проекта, который Vercel
+ * сам кладёт в VERCEL_PROJECT_PRODUCTION_URL. null — вне Vercel и без переменной (локальный запуск).
+ */
+export function fixedSite(): string | null {
+  const own = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, '')
+  if (own) return own
+  const prod = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim()
+  return prod ? `https://${prod}` : null
+}
+
+/** Адрес сайта для ссылок в сообщениях бота: постоянный, а локально — адрес самого запроса */
 export function siteOf(req: Request) {
-  return process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin
+  return fixedSite() ?? new URL(req.url).origin
 }

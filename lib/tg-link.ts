@@ -58,15 +58,25 @@ async function post<T>(path: string, body: unknown): Promise<T | null> {
 }
 
 /** Спросить сервер, есть ли бот и связан ли этот браузер. force — не смотреть на давность прошлого ответа */
-export async function refreshTgState(force = false): Promise<TgState> {
+let inFlight: Promise<TgState> | null = null
+
+export function refreshTgState(force = false): Promise<TgState> {
   const s = read()
-  if (!force && s.state && s.at && Date.now() - s.at < FRESH_MS) return s.state
-  const r = await post<{ available?: boolean; linked?: boolean; active?: boolean }>('/api/tg/status', { token: s.token })
-  // сеть не ответила — оставляем прежнее знание: кот не должен перестать обещать из-за одного сбоя
-  if (!r) return s.state ?? OFF
-  const state: TgState = { available: r.available === true, linked: r.linked === true, active: r.active === true }
-  write({ ...read(), state, at: Date.now() })
-  return state
+  if (!force && s.state && s.at && Date.now() - s.at < FRESH_MS) return Promise.resolve(s.state)
+  // один запрос на всех, кто спросил одновременно (несколько карточек плана, возврат на вкладку)
+  inFlight ??= (async () => {
+    try {
+      const r = await post<{ available?: boolean; linked?: boolean; active?: boolean }>('/api/tg/status', { token: s.token })
+      // сеть не ответила — оставляем прежнее знание: кот не должен перестать обещать из-за одного сбоя
+      if (!r) return s.state ?? OFF
+      const state: TgState = { available: r.available === true, linked: r.linked === true, active: r.active === true }
+      write({ ...read(), state, at: Date.now() })
+      return state
+    } finally {
+      inFlight = null
+    }
+  })()
+  return inFlight
 }
 
 export type PlanForBot = { task?: string; firstStep?: string; startTime?: string }
@@ -80,11 +90,18 @@ export async function beginTgLink(plan: PlanForBot = {}): Promise<string | null>
   return r.url
 }
 
-/** Сайт сохранил план: если браузер связан с ботом, бот позовёт на первый шаг. Сбой молча игнорируется */
+/**
+ * Сайт сохранил план: если браузер связан с ботом, бот позовёт на первый шаг. Сбой сети молча игнорируется, а ответ
+ * сервера правит знание сайта: чат отвязали или напоминания выключены — строка «Напомню в Telegram» и обещание кота
+ * исчезают сразу, а не через пять минут.
+ */
 export async function pushPlanToTg(plan: PlanForBot): Promise<void> {
   const s = read()
   if (!s.token || !s.state?.linked) return
-  await post('/api/tg/plan', { token: s.token, plan: { ...plan, tz: tz() } })
+  const r = await post<{ ok?: boolean; linked?: boolean; active?: boolean }>('/api/tg/plan', { token: s.token, plan: { ...plan, tz: tz() } })
+  if (!r || typeof r.linked !== 'boolean') return
+  // план не принят ботом (ok: false) — бот остался при старом шаге: «напомню» про этот план было бы неправдой
+  write({ ...read(), state: { available: true, linked: r.linked, active: r.linked && r.ok === true && r.active === true }, at: r.ok ? Date.now() : 0 })
 }
 
 export async function unlinkTg(): Promise<void> {

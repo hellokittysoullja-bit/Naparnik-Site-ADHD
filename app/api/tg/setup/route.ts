@@ -2,7 +2,7 @@ import { rateLimit } from '@/lib/api-guard'
 import { getStore } from '@/lib/tg/store'
 import { ensureSchedule } from '@/lib/tg/qstash'
 import { botToken, tg, webhookSecret } from '@/lib/tg/telegram'
-import { siteOf } from '@/lib/tg/deps'
+import { fixedSite } from '@/lib/tg/deps'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,8 +19,10 @@ const COMMANDS = [
 
 /**
  * Подключение бота одним открытием ссылки: говорим Telegram, куда пересылать сообщения (вебхук на этот же сайт),
- * ставим меню команд и расписание напоминаний. Ключ не нужен: маршрут умеет только направить бота на наш же
- * адрес — чужой вызов ничего не меняет, а лимит не даёт им спамить.
+ * ставим меню команд и расписание напоминаний. Ключ не нужен, потому что чужой вызов ничего не меняет: адрес вебхука
+ * берётся из окружения (прод-домен проекта), а не из запроса, и маршрут работает только на боевом окружении. Открыть
+ * его на превью или на старом адресе сборки нельзя: иначе любой, кто знает такой адрес, увёл бы бота с боевого сайта.
+ * Очередь сообщений при повторном вызове не сбрасывается.
  */
 export async function GET(req: Request) {
   try {
@@ -32,14 +34,20 @@ export async function GET(req: Request) {
   if (!botToken()) {
     return text('Нет токена бота. В Vercel → Settings → Environment Variables добавь TELEGRAM_BOT_TOKEN и сделай Redeploy.')
   }
-  const site = siteOf(req)
+  const env = process.env.VERCEL_ENV
+  if (env && env !== 'production') {
+    return text('Это пробная сборка (превью). Бот подключается только с боевого сайта: открой ту же ссылку на основном адресе.')
+  }
+  const site = fixedSite() ?? (env ? null : new URL(req.url).origin)
+  if (!site) {
+    return text('Не знаю адрес сайта. В Vercel → Settings → Environment Variables добавь NEXT_PUBLIC_SITE_URL (например, https://adhd-naparnik.vercel.app) и сделай Redeploy.')
+  }
   const me = await tg<{ username: string }>('getMe', {})
   if (!me) return text('Telegram не принял токен. Проверь, что TELEGRAM_BOT_TOKEN скопирован целиком, и сделай Redeploy.')
   const hook = await tg('setWebhook', {
     url: `${site}/api/tg`,
     secret_token: webhookSecret(),
     allowed_updates: ['message', 'callback_query'],
-    drop_pending_updates: true,
   })
   await tg('setMyCommands', { commands: COMMANDS })
   lines.push(hook ? `✅ Бот @${me.username} подключён: отвечает на сообщения.` : '❌ Не удалось подключить вебхук — смотри логи Vercel.')

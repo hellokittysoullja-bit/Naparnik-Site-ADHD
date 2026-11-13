@@ -16,5 +16,6 @@ export const POST = handle(async (req) => {
   if (!parsed.success) return Response.json({ ok: false }, { status: 400 })
   const { store } = getStore()
   const r = await pushPlan(store, parsed.data.token, parsed.data.plan, (u) => reschedule({ store, now: () => Date.now() }, u))
-  return Response.json(r, { status: r.ok ? 200 : 404, headers: { 'Cache-Control': 'no-store' } })
+  // всегда 200: «не связан» и «план не принят» — ответы, по которым сайт правит своё знание, а не сбой сети
+  return Response.json(r, { headers: { 'Cache-Control': 'no-store' } })
 })

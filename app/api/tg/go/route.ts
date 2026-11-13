@@ -1,6 +1,6 @@
 import { onGo } from '@/lib/tg/bot'
 import { liveDeps, siteOf } from '@/lib/tg/deps'
-import { sign } from '@/lib/tg/telegram'
+import { sameSecret, sign } from '@/lib/tg/telegram'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   const chat = Number(url.searchParams.get('c'))
   const step = (url.searchParams.get('s') ?? '').trim()
   const deps = liveDeps(siteOf(req))
-  const signed = Number.isSafeInteger(chat) && url.searchParams.get('t') === sign(String(chat))
+  const signed = Number.isSafeInteger(chat) && sameSecret(url.searchParams.get('t'), sign(String(chat)))
   const target = signed
     ? await onGo(deps, chat, step).catch(() => `${deps.site}/app/session`)
     : `${deps.site}/app/session?${new URLSearchParams({ step: step.slice(0, 120) }).toString()}`

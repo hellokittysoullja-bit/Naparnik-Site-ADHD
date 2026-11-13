@@ -2,7 +2,10 @@ import type { Sphere } from '@/lib/onboarding'
 
 export type Tone = 'soft' | 'short' | 'humor'
 
-/** Всё, что бот помнит о человеке. Тексты сообщений не храним — только текущее дело и шаг, чтобы звать по делу. */
+/**
+ * Всё, что бот помнит о человеке: текущее дело и шаг, время напоминаний и служебные отметки. Реплики разговора — только
+ * последние и не дольше суток (history ниже): в Redis они лежат отдельным ключом со сроком жизни.
+ */
 export type TgUser = {
   id: number
   createdAt: number
@@ -32,6 +35,8 @@ export type TgUser = {
   plan?: { task: string; firstStep: string; startTime?: string }
   /** отпечаток устройства, с которым связан чат (lib/tg/link.ts): сайт присылает план по своему жетону */
   device?: string
+  /** привязка ждёт «Да, связать» в боте: чат уже знаком с ботом, молча переписывать его план и устройство нельзя */
+  pendingLink?: { payload: LinkPayload; at: number }
   /**
    * последние реплики разговора с котом: чтобы кот понимал «да, давай» и «а другой шаг?». Не память о человеке:
    * не больше HISTORY_MAX реплик и не старше HISTORY_TTL_MS, потом стираются при следующем сообщении
@@ -63,10 +68,22 @@ export interface Store {
   /** устройство → чат (null — отвязать) */
   bindDevice(device: string, chatId: number | null): Promise<void>
   chatOfDevice(device: string): Promise<number | null>
+  /** апдейт Telegram с этим номером уже приходил (повторная доставка): true — второй раз не обрабатывать */
+  seen(updateId: number): Promise<boolean>
 }
 
 const KEY = (id: number) => `tg:u:${id}`
+const HIST = (id: number) => `tg:h:${id}`
 const DUE = 'tg:due'
+/** запись без единого обращения живёт полгода и стирается сама: «пока вы пользуетесь ботом» */
+export const USER_TTL_S = 180 * 86_400
+
+/** реплики моложе суток; срок ключа — до конца суток самой старой из них: ни одна не переживёт 24 часа */
+function freshHistory(u: TgUser, now: number) {
+  const fresh = (u.history ?? []).filter((h) => now - h.at < HISTORY_TTL_MS).slice(-HISTORY_MAX)
+  const ttlS = fresh.length ? Math.max(1, Math.ceil((fresh[0].at + HISTORY_TTL_MS - now) / 1000)) : 0
+  return { fresh, ttlS }
+}
 
 /**
  * Upstash Redis через REST (без SDK): Vercel сам прописывает KV_REST_API_URL/KV_REST_API_TOKEN, когда владелец
@@ -90,16 +107,25 @@ export class RedisStore implements Store {
   }
 
   async getUser(id: number) {
-    const raw = await this.cmd<string>('GET', KEY(id))
-    return raw ? (JSON.parse(raw) as TgUser) : null
+    const [raw, hist] = (await this.cmd<(string | null)[]>('MGET', KEY(id), HIST(id))) ?? []
+    if (!raw) return null
+    const u = JSON.parse(raw) as TgUser
+    const history = hist ? (JSON.parse(hist) as NonNullable<TgUser['history']>).filter((h) => Date.now() - h.at < HISTORY_TTL_MS) : []
+    return history.length ? { ...u, history } : u
   }
   async saveUser(u: TgUser) {
-    await this.cmd('SET', KEY(u.id), JSON.stringify(u))
+    const rest: TgUser = { ...u, history: undefined }
+    const { fresh, ttlS } = freshHistory(u, Date.now())
+    await this.cmd('SET', KEY(u.id), JSON.stringify(rest), 'EX', USER_TTL_S)
+    if (fresh.length) await this.cmd('SET', HIST(u.id), JSON.stringify(fresh), 'EX', ttlS)
+    else await this.cmd('DEL', HIST(u.id))
+    if (u.device) await this.cmd('EXPIRE', `tg:dev:${u.device}`, USER_TTL_S)
   }
   async deleteUser(u: TgUser) {
-    await this.cmd('DEL', KEY(u.id))
+    await this.cmd('DEL', KEY(u.id), HIST(u.id))
     await this.cmd('ZREM', DUE, String(u.id))
-    if (u.device) await this.cmd('DEL', `tg:dev:${u.device}`)
+    // связь устройства стираем, только если она ведёт на этот чат: устройство могли привязать к другому чату
+    if (u.device && (await this.chatOfDevice(u.device)) === u.id) await this.cmd('DEL', `tg:dev:${u.device}`)
   }
   async schedule(id: number, at: number | null) {
     if (at === null) await this.cmd('ZREM', DUE, String(id))
@@ -121,11 +147,15 @@ export class RedisStore implements Store {
   }
   async bindDevice(device: string, chatId: number | null) {
     if (chatId === null) await this.cmd('DEL', `tg:dev:${device}`)
-    else await this.cmd('SET', `tg:dev:${device}`, String(chatId))
+    else await this.cmd('SET', `tg:dev:${device}`, String(chatId), 'EX', USER_TTL_S)
   }
   async chatOfDevice(device: string) {
     const raw = await this.cmd<string>('GET', `tg:dev:${device}`)
     return raw ? Number(raw) : null
+  }
+  async seen(updateId: number) {
+    // SET NX: null — ключ уже был, значит апдейт приходил
+    return (await this.cmd<string>('SET', `tg:upd:${updateId}`, '1', 'NX', 'EX', 3600)) === null
   }
 }
 
@@ -139,12 +169,13 @@ export class MemoryStore implements Store {
     return u ? structuredClone(u) : null
   }
   async saveUser(u: TgUser) {
-    this.users.set(u.id, structuredClone(u))
+    const { fresh } = freshHistory(u, this.now())
+    this.users.set(u.id, structuredClone({ ...u, history: fresh.length ? fresh : undefined }))
   }
   async deleteUser(u: TgUser) {
     this.users.delete(u.id)
     this.dueAt.delete(u.id)
-    if (u.device) this.devices.delete(u.device)
+    if (u.device && this.devices.get(u.device) === u.id) this.devices.delete(u.device)
   }
   async schedule(id: number, at: number | null) {
     if (at === null) this.dueAt.delete(id)
@@ -174,6 +205,12 @@ export class MemoryStore implements Store {
   }
   async chatOfDevice(device: string) {
     return this.devices.get(device) ?? null
+  }
+  updates = new Set<number>()
+  async seen(updateId: number) {
+    if (this.updates.has(updateId)) return true
+    this.updates.add(updateId)
+    return false
   }
 }
 

@@ -9,13 +9,15 @@ import { beginTgLink, peekTgState, refreshTgState, type PlanForBot, type TgState
  * ботом; эта кнопка и есть связь (одно касание, без аккаунта: lib/tg/link.ts). Правила экрана:
  *  - бота нет или сервер не ответил — ничего не рисуем: обещание без исполнения хуже отсутствия кнопки;
  *  - уже связан — вместо кнопки одна тихая строка, что напоминание придёт;
+ *  - только под последним планом (current): бот зовёт на один шаг, и кнопка под старой карточкой подменила бы его;
  *  - без toast: состояние читается на месте (CLAUDE.md §3).
  */
-export function TgRemind({ plan }: { plan: PlanForBot }) {
+export function TgRemind({ plan, current }: { plan: PlanForBot; current: boolean }) {
   const [state, setState] = useState<TgState | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
+    if (!current) return
     setState(peekTgState())
     void refreshTgState().then(setState)
     // человек сходил в Telegram и вернулся на вкладку: проверяем, связался ли
@@ -29,9 +31,9 @@ export function TgRemind({ plan }: { plan: PlanForBot }) {
       document.removeEventListener('visibilitychange', onBack)
       window.removeEventListener('naparnik:tg', onChange)
     }
-  }, [])
+  }, [current])
 
-  if (!state?.available) return null
+  if (!current || !state?.available) return null
   if (state.linked) {
     return (
       <span className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">

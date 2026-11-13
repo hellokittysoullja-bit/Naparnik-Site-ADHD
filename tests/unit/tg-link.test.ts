@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyPlan, handleUpdate, hourOf, recentHistory, reschedule, T, tick, type CatReply, type Deps } from '@/lib/tg/bot'
+import { applyPlan, handleUpdate, hourOf, recentHistory, reminderText, reschedule, T, tick, type CatReply, type Deps } from '@/lib/tg/bot'
 import { deviceOf, isToken, linkCode, startLink } from '@/lib/tg/link'
 import { beginLink, cleanPlan, linkStatus, pushPlan, unlink } from '@/lib/tg/site'
 import { HISTORY_MAX, LINK_TTL_S, MemoryStore, type TgUser } from '@/lib/tg/store'
@@ -30,9 +30,10 @@ function rig(start = T0, converse?: Deps['converse']) {
     converse,
     sign: (v) => `sig${v}`,
   }
-  const msg = (text: string) => handleUpdate({ message: { chat: { id: CHAT, type: 'private' }, text } }, deps)
+  const msg = (text: string, id = CHAT) => handleUpdate({ message: { chat: { id, type: 'private' }, text } }, deps)
+  const tap = (data: string, id = CHAT) => handleUpdate({ callback_query: { id: 'q', data, message: { chat: { id }, message_id: 1 } } }, deps)
   const texts = () => sent.filter((s) => s.method === 'sendMessage').map((s) => String(s.body.text))
-  return { store, sent, deps, msg, texts, setNow: (t: number) => (now = t), user: () => store.getUser(CHAT) as Promise<TgUser> }
+  return { store, sent, deps, msg, tap, texts, now: () => now, setNow: (t: number) => (now = t), user: () => store.getUser(CHAT) as Promise<TgUser> }
 }
 
 describe('голос бота (правила владельца 12.11)', () => {
@@ -117,11 +118,11 @@ describe('сайт передаёт боту новый план', () => {
     const r = rig()
     const { url, token } = await beginLink(r.store, 'b', { firstStep: 'Открыть файл', startTime: '10:00', tz: 180 })
     await r.msg(`/start ${new URL(url).searchParams.get('start')}`)
-    return { ...r, token, push: (plan: Parameters<typeof pushPlan>[2], t = token) => pushPlan(r.store, t, plan, (u) => reschedule(r.deps, u)) }
+    return { ...r, token, push: (plan: Parameters<typeof pushPlan>[2], t = token) => pushPlan(r.store, t, plan, (u) => reschedule(r.deps, u), r.now()) }
   }
   it('новый план меняет шаг и час напоминания', async () => {
     const r = await linked()
-    expect(await r.push({ task: 'Отчёт', firstStep: 'Открыть таблицу', startTime: '19:30', tz: 180 })).toEqual({ ok: true, hour: 19 })
+    expect(await r.push({ task: 'Отчёт', firstStep: 'Открыть таблицу', startTime: '19:30', tz: 180 })).toEqual({ ok: true, linked: true, hour: 19, active: true })
     const u = await r.user()
     expect(u.plan?.firstStep).toBe('Открыть таблицу')
     expect(u.hour).toBe(19)
@@ -129,14 +130,14 @@ describe('сайт передаёт боту новый план', () => {
   })
   it('время вне разрешённых часов или словами: шаг меняется, час остаётся прежним', async () => {
     const r = await linked()
-    expect(await r.push({ firstStep: 'Собрать сумку', startTime: '23:00' })).toEqual({ ok: true, hour: 10 })
-    expect(await r.push({ firstStep: 'Собрать сумку', startTime: 'вечером' })).toEqual({ ok: true, hour: 10 })
+    expect(await r.push({ firstStep: 'Собрать сумку', startTime: '23:00' })).toMatchObject({ ok: true, hour: 10 })
+    expect(await r.push({ firstStep: 'Собрать сумку', startTime: 'вечером' })).toMatchObject({ ok: true, hour: 10 })
     expect((await r.user()).hour).toBe(10)
   })
   it('чужой или пустой жетон ничего не меняет', async () => {
     const r = await linked()
-    expect(await r.push({ firstStep: 'Взлом' }, 'x'.repeat(43))).toEqual({ ok: false, hour: null })
-    expect(await pushPlan(r.store, undefined, { firstStep: 'Взлом' }, async () => {})).toEqual({ ok: false, hour: null })
+    expect(await r.push({ firstStep: 'Взлом' }, 'x'.repeat(43))).toMatchObject({ ok: false, linked: false })
+    expect(await pushPlan(r.store, undefined, { firstStep: 'Взлом' }, async () => {})).toMatchObject({ ok: false, linked: false })
     expect((await r.user()).plan?.firstStep).toBe('Открыть файл')
   })
   it('кризисный текст, ссылка и «указание коту» в бот не уходят; дело про врача уходит', () => {
@@ -149,14 +150,20 @@ describe('сайт передаёт боту новый план', () => {
     const r = await linked()
     expect(await unlink(r.store, r.token)).toBe(true)
     expect(await linkStatus(r.store, r.token)).toEqual({ linked: false })
-    expect(await r.push({ firstStep: 'После отвязки' })).toEqual({ ok: false, hour: null })
+    expect(await r.push({ firstStep: 'После отвязки' })).toMatchObject({ ok: false, linked: false })
     expect((await r.user()).hour).toBe(10)
   })
   it('чат привязали к другому устройству: старый жетон больше ничего не значит', async () => {
     const r = await linked()
     const second = await beginLink(r.store, 'b', { firstStep: 'С нового телефона' })
     await r.msg(`/start ${new URL(second.url).searchParams.get('start')}`)
+    // знакомый чат не связывается молча: сначала вопрос, старая связь пока цела
+    expect(r.texts().at(-1)).toMatch(/Связать этот чат с сайтом/)
+    expect((await linkStatus(r.store, r.token)).linked).toBe(true)
+    await r.tap('lk:yes')
     expect(await linkStatus(r.store, r.token)).toEqual({ linked: false })
+    // ключ старого устройства стёрт, а не оставлен висеть до /forget
+    expect(r.store.devices.size).toBe(1)
     expect((await linkStatus(r.store, second.token)).linked).toBe(true)
   })
 })
@@ -263,5 +270,206 @@ describe('время из плана', () => {
     const u = { id: 1, createdAt: 0, tz: 180, ignored: 0, lastActive: 0, variant: 0 } as TgUser
     expect(applyPlan(u, { task: 'Дело' })).toBeNull()
     expect(u.plan).toBeUndefined()
+  })
+})
+
+/**
+ * Находки независимой проверки 13.11 (до вливания): каждая воспроизведена на старом коде и здесь закреплена.
+ */
+describe('проверка 13.11: чужие и кривые входы', () => {
+  const DAY = 24 * HOUR
+  async function linked(startTime = '10:00') {
+    const r = rig()
+    const { url, token } = await beginLink(r.store, 'b', { firstStep: 'Открыть файл', startTime, tz: 180 })
+    await r.msg(`/start ${new URL(url).searchParams.get('start')}`)
+    return { ...r, token, push: (plan: Parameters<typeof pushPlan>[2]) => pushPlan(r.store, token, plan, (u) => reschedule(r.deps, u), r.now()) }
+  }
+
+  it('поддельная кнопка «tone:constructor» не ломает рассылку: манера не меняется, остальные получают напоминания', async () => {
+    const r = await linked()
+    await r.tap('tone:constructor')
+    await r.tap('sp:__proto__')
+    expect((await r.user()).tone).toBeUndefined()
+    // даже если битая запись уже лежит в базе — один человек не останавливает очередь
+    const broken = await r.user()
+    r.store.users.set(CHAT, { ...broken, tone: 'constructor' as never })
+    expect(reminderText(await r.user(), T0)).toContain('Открыть файл')
+    await r.store.saveUser({ id: 7, createdAt: T0, tz: 180, ignored: 0, lastActive: T0, variant: 0, hour: 10 })
+    await r.store.schedule(7, T0)
+    r.store.users.set(5, { id: 5 } as never) // запись без полей: reminderText падает
+    await r.store.schedule(5, T0 - 1)
+    r.setNow(T0 + HOUR)
+    const sent = await tick(r.deps)
+    expect(sent).toBeGreaterThanOrEqual(2)
+    expect(r.sent.some((s) => s.body.chat_id === 7)).toBe(true)
+  })
+
+  it('план со ссылкой или телефоном не проходит, под какой бы темой он ни шёл; храм и врач проходят', () => {
+    for (const bad of ['Записаться к врачу на evil-site.ru', 'оплатить 500 руб на evil.example', 'пароль введи на t.me/evilbot', 'позвони +7 999 123-45-67', 'Открыть\u200b файл']) {
+      expect(cleanPlan({ firstStep: bad }).firstStep, bad).toBeUndefined()
+    }
+    for (const ok of ['Сходить в храм', 'Записаться к врачу', 'Оплатить 500 рублей за интернет', 'Найти паспорт']) {
+      expect(cleanPlan({ firstStep: ok }).firstStep, ok).toBe(ok)
+    }
+  })
+
+  it('сообщения бота уходят без превью ссылок', async () => {
+    const r = await linked()
+    expect(r.sent.filter((s) => s.method === 'sendMessage').every((s) => (s.body.link_preview_options as { is_disabled?: boolean })?.is_disabled === true)).toBe(true)
+  })
+
+  it('чужая ссылка привязки не подменяет шаг знакомому чату без его «Да»; «Нет» оставляет всё как было', async () => {
+    const r = await linked()
+    const attacker = await beginLink(r.store, 'b', { firstStep: 'Чужой шаг', startTime: '12:00' })
+    await r.msg(`/start ${new URL(attacker.url).searchParams.get('start')}`)
+    expect((await r.user()).plan?.firstStep).toBe('Открыть файл')
+    expect((await linkStatus(r.store, attacker.token)).linked).toBe(false)
+    await r.tap('lk:no')
+    expect((await r.user()).plan?.firstStep).toBe('Открыть файл')
+    expect((await linkStatus(r.store, attacker.token)).linked).toBe(false)
+    expect((await linkStatus(r.store, r.token)).linked).toBe(true)
+    // «Да» по давно протухшему вопросу тоже ничего не связывает
+    const again = await beginLink(r.store, 'b', { firstStep: 'Чужой шаг' })
+    await r.msg(`/start ${new URL(again.url).searchParams.get('start')}`)
+    r.setNow(T0 + (LINK_TTL_S + 60) * 1000)
+    await r.tap('lk:yes')
+    expect((await linkStatus(r.store, again.token)).linked).toBe(false)
+  })
+
+  it('/unlink в боте отвязывает сайт', async () => {
+    const r = await linked()
+    await r.msg('/unlink')
+    expect(await linkStatus(r.store, r.token)).toEqual({ linked: false })
+    expect(r.texts().at(-1)).toBe(T.unlinked)
+  })
+
+  it('план с сайта не включает напоминания после «Стоп» и не снимает паузу', async () => {
+    const r = await linked()
+    await r.msg('/stop')
+    expect(await r.push({ firstStep: 'Новый шаг', startTime: '11:00' })).toMatchObject({ ok: true, active: false })
+    expect((await r.user()).stopped).toBe(true)
+    expect(r.store.dueAt.has(CHAT)).toBe(false)
+    await r.msg('/remind')
+    await r.tap('rm:9')
+    await r.msg('/pause')
+    const pausedUntil = (await r.user()).pausedUntil!
+    expect(await r.push({ firstStep: 'Ещё шаг', startTime: '12:00' })).toMatchObject({ ok: true, active: false })
+    expect((await r.user()).pausedUntil).toBe(pausedUntil)
+    expect(r.store.dueAt.get(CHAT)).toBeGreaterThanOrEqual(pausedUntil)
+    expect(await linkStatus(r.store, r.token, r.now())).toMatchObject({ active: false })
+  })
+
+  it('план с сайта возвращает ежедневный режим: «редко» (раз в 7 дней) не откладывает обещанное «завтра в 11»', async () => {
+    const r = await linked()
+    const u = await r.user()
+    await r.store.saveUser({ ...u, ignored: 8 })
+    await r.push({ firstStep: 'Шаг', startTime: '11:00' })
+    expect(r.store.dueAt.get(CHAT)).toBe(T0 + 2 * HOUR)
+  })
+
+  it('час из слов о времени: дата, минуты и вечер не путаются', () => {
+    const cases: [string, number | null][] = [
+      ['10 минут', null], ['через 15 минут', null], ['через 2 часа', null], ['на 10 минут', null], ['после обеда', null],
+      ['в 9 вечера', 21], ['в 10 вечера', null], ['в 7 вечера', 19], ['в 3 дня', 15], ['в 2 ночи', null],
+      ['15.11 в 10:00', 10], ['14 ноября в 18:00', 18], ['к 5 ноября', null], ['9:30', 9], ['09:00', 9], ['завтра в 10', 10],
+      ['10', 10], ['10.30', 10], ['в 10 часов', 10], ['22:00', null], ['8:30', null], ['в 11 утра', 11],
+    ]
+    for (const [text, want] of cases) expect(hourOf(text), text).toBe(want)
+  })
+
+  it('бот спросил час и не зацикливается: «в 10:00» принят, слова о другом идут коту', async () => {
+    const seen: string[] = []
+    const r = rig(T0, async (_u, text) => (seen.push(text), text === 'запиши' ? { text: '', plan: { task: 'Отчёт', firstStep: 'Открыть отчёт', startTime: 'после обеда' } } : { text: 'Мур.' }))
+    await r.msg('запиши')
+    expect((await r.user()).awaiting).toBe('hour')
+    await r.msg('давай потом решим')
+    expect(seen).toEqual(['запиши', 'давай потом решим'])
+    expect((await r.user()).awaiting ?? null).toBeNull()
+    await r.msg('запиши')
+    await r.msg('в 23')
+    expect(r.texts().at(-1)).toBe(T.badHour)
+    await r.msg('в 10:00')
+    expect((await r.user()).hour).toBe(10)
+  })
+
+  it('переписка не лежит дольше суток, даже если человек больше не пишет', async () => {
+    const r = rig(T0, async () => ({ text: 'Мур.' }))
+    await r.msg('у меня сегодня тяжёлый день')
+    await r.tap('rm:10')
+    expect((await r.user()).history?.length).toBe(2)
+    r.setNow(T0 + DAY + 2 * HOUR)
+    await tick(r.deps)
+    expect(r.store.users.get(CHAT)?.history).toBeUndefined()
+  })
+
+  it('/forget второго чата не рвёт связь первого, а своя связь стирается', async () => {
+    const r = await linked()
+    // устройство перепривязали к другому чату; у старого чата осталась бы ссылка на то же устройство
+    const again = await beginLink(r.store, 'b', {}, r.token)
+    await r.msg(`/start ${new URL(again.url).searchParams.get('start')}`, 99)
+    expect((await r.user()).device).toBeUndefined()
+    await r.msg('/forget')
+    expect(await r.store.chatOfDevice(deviceOf(r.token))).toBe(99)
+    await r.msg('/forget', 99)
+    expect(await r.store.chatOfDevice(deviceOf(r.token))).toBeNull()
+  })
+
+  it('повторная доставка того же апдейта не обрабатывается второй раз', async () => {
+    const r = rig()
+    const upd = { update_id: 77, message: { chat: { id: CHAT, type: 'private' }, text: 'курсовая' } }
+    await handleUpdate(upd, r.deps)
+    const n = r.sent.length
+    await handleUpdate(upd, r.deps)
+    expect(r.sent.length).toBe(n)
+  })
+
+  it('ответ кота, пришедший после /forget, запись не воскрешает', async () => {
+    const r: ReturnType<typeof rig> = rig(T0, async () => {
+      await r.msg('/forget')
+      return { text: 'Мур.' }
+    })
+    await r.msg('/start')
+    await r.msg('расскажи что-нибудь')
+    expect(await r.store.getUser(CHAT)).toBeNull()
+  })
+
+  it('«Другой шаг» при плане снимает план: кнопка и напоминание говорят об одном шаге', async () => {
+    const r = await linked()
+    expect(JSON.stringify(r.sent.at(-1)?.body.reply_markup ?? '')).not.toContain('Другой шаг')
+    await r.tap('nx')
+    const u = await r.user()
+    expect(u.plan).toBeUndefined()
+    expect(r.texts().at(-1)).toContain(u.steps![0])
+    expect(reminderText(u, T0)).toContain(u.steps![0])
+  })
+
+  it('/pause, потом свой час: пауза снята, как и обещано', async () => {
+    const r = await linked()
+    await r.msg('/pause')
+    await r.tap('rm:19')
+    expect(r.store.dueAt.get(CHAT)).toBe(T0 + 10 * HOUR)
+  })
+
+  it('план и кнопка старта в одной реплике: план остаётся', async () => {
+    const r = rig(T0, async () => ({ text: 'Ок.', plan: { task: 'Отчёт', firstStep: 'Открыть отчёт', startTime: '10:00' }, startFocus: { firstStep: 'Другое' } }))
+    await r.msg('запиши и начнём')
+    expect((await r.user()).plan?.firstStep).toBe('Открыть отчёт')
+  })
+
+  it('рассылка: сначала перенос, потом сообщение; «Стоп», нажатый во время отправки, не затирается', async () => {
+    const r = await linked()
+    r.setNow(T0 + HOUR)
+    const send = r.deps.send
+    r.deps.send = async (method, body) => {
+      if (method === 'sendMessage') {
+        expect(r.store.dueAt.get(CHAT)).toBeGreaterThan(r.now())
+        const u = await r.user()
+        await r.store.saveUser({ ...u, stopped: true })
+      }
+      return send(method, body)
+    }
+    expect(await tick(r.deps)).toBe(1)
+    expect((await r.user()).stopped).toBe(true)
+    expect(r.store.dueAt.has(CHAT)).toBe(false)
   })
 })

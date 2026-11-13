@@ -51,7 +51,7 @@ import { scriptedReply } from '@/lib/scripted-companion'
 import { archiveMessages, searchArchive } from '@/lib/chat-archive'
 import { RECALL_NONE, rawRecall } from '@/lib/ai/memory/recall-text'
 import { afterSummary, peekSummary, summaryDue, syncSummary } from '@/lib/chat-summary'
-import { peekTgState } from '@/lib/tg-link'
+import { peekTgState, refreshTgState } from '@/lib/tg-link'
 import { TgRemind } from '@/components/tg-remind'
 import { enforceExplicitMemory, hiddenFromModel, pendingUserTurns, purgeForgottenChips, REVIEW_EVERY_TURNS, syncMemory } from '@/lib/memory-sync'
 import { factKey } from '@/lib/ai/memory/fact-key'
@@ -307,6 +307,21 @@ export function CompanionChat({
   )
 
   const sentUserIdsRef = useRef(new Set<string>())
+  // Знание о боте (связан ли, включены ли напоминания) освежаем при открытии Дома и при возврате на вкладку: по нему
+  // кот решает, вправе ли обещать «напишу в Telegram», а человек мог за это время нажать в боте «Стоп» или /forget
+  useEffect(() => {
+    // только у тех, кто связал сайт с ботом: остальным лишний запрос на каждое открытие Дома не нужен
+    const check = () => {
+      if (peekTgState().linked) void refreshTgState()
+    }
+    check()
+    const onBack = () => {
+      if (document.visibilityState === 'visible') check()
+    }
+    document.addEventListener('visibilitychange', onBack)
+    return () => document.removeEventListener('visibilitychange', onBack)
+  }, [])
+
   const { messages, sendMessage, status, addToolOutput, setMessages, regenerate } = useChat({
     ...(boot && boot.chat.length > 0 ? { messages: boot.chat } : {}),
     transport: new DefaultChatTransport({
@@ -457,6 +472,12 @@ export function CompanionChat({
       }
     },
   })
+
+  // бот зовёт на один шаг — последнего плана: строка «Напомню в Telegram» и кнопка привязки живут только под ним
+  const lastPlanMessageId = useMemo(
+    () => messages.findLast((m) => m.parts.some((p) => p.type === 'tool-savePlan' && p.state === 'output-available'))?.id,
+    [messages],
+  )
 
   // переписка для обработчика инструмента (вспоминание не ищет то, что и так в разговоре); обновляется после рендера
   const messagesRef = useRef(messages)
@@ -1240,7 +1261,7 @@ export function CompanionChat({
                         Первый шаг: {plan.firstStep}
                         {plan.startTime ? ` — ${plan.startTime}` : ''}
                       </span>
-                      <TgRemind plan={plan} />
+                      <TgRemind plan={plan} current={message.id === lastPlanMessageId} />
                     </div>
                   )
                 }

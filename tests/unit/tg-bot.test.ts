@@ -13,6 +13,7 @@ function rig(start = T0) {
   const store = new MemoryStore()
   const sent: { method: string; body: Record<string, unknown> }[] = []
   let now = start
+  store.now = () => now
   const deps: Deps = {
     store,
     send: async (method, body) => {
@@ -74,11 +75,19 @@ describe('бот: первый разговор', () => {
     expect(r.store.dueAt.get(CHAT)).toBe(T0 + DAY)
   })
 
-  it('«14:30» после настройки — поправка часового пояса', async () => {
+  it('часовой пояс правит только /time: «11:30» после него — поправка', async () => {
     const r = rig()
     await r.tap('rm:9')
+    await r.msg('/time')
     await r.msg('11:30') // в 06:00 UTC у человека 11:30 → UTC+5:30
     expect((await r.store.getUser(CHAT))?.tz).toBe(330)
+  })
+  it('«18:30» в разговоре (ответ коту «во сколько начнёшь») пояс не трогает', async () => {
+    const r = rig()
+    await r.tap('rm:9')
+    await r.msg('18:30')
+    expect((await r.store.getUser(CHAT))?.tz).toBe(180)
+    expect(r.texts().join('\n')).not.toMatch(/UTC/)
   })
 })
 
@@ -211,10 +220,10 @@ describe('QStash: подпись', () => {
     process.env.QSTASH_CURRENT_SIGNING_KEY = key
     const now = Date.now()
     const exp = Math.floor(now / 1000) + 300
-    expect(verifyQStash(make('{}', { exp }), '{}', now)).toBe(true)
-    expect(verifyQStash(make('{}', { exp }, 'other'), '{}', now)).toBe(false)
-    expect(verifyQStash(make('{"x":1}', { exp }), '{}', now)).toBe(false)
-    expect(verifyQStash(make('{}', { exp: exp - 3600 }), '{}', now)).toBe(false)
-    expect(verifyQStash(null, '{}', now)).toBe(false)
+    expect(verifyQStash(make('{}', { exp }), '{}', { now })).toBe(true)
+    expect(verifyQStash(make('{}', { exp }, 'other'), '{}', { now })).toBe(false)
+    expect(verifyQStash(make('{"x":1}', { exp }), '{}', { now })).toBe(false)
+    expect(verifyQStash(make('{}', { exp: exp - 3600 }), '{}', { now })).toBe(false)
+    expect(verifyQStash(null, '{}', { now })).toBe(false)
   })
 })

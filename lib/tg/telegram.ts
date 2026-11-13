@@ -42,14 +42,18 @@ export function webhookSecret(): string | null {
 }
 
 export function sameSecret(got: string | null, want: string | null): boolean {
-  if (!got || !want || got.length !== want.length) return false
-  return timingSafeEqual(Buffer.from(got), Buffer.from(want))
+  if (!got || !want) return false
+  // длину сравниваем у байтов: строка той же длины с не-латиницей иначе роняла сравнение исключением
+  const a = Buffer.from(got)
+  const b = Buffer.from(want)
+  return a.length === b.length && timingSafeEqual(a, b)
 }
 
 /** Подпись ссылок «Сесть рядом» (чей клик — чтобы считать вернувшихся), подделать без токена нельзя */
 export function sign(value: string): string {
-  const token = botToken() ?? 'no-token'
-  return createHmac('sha256', token).update(value).digest('base64url').slice(0, 16)
+  const token = botToken()
+  // без токена подписи нет вовсе (пустая строка ничему не равна в sameSecret): общеизвестный ключ подделал бы любой
+  return token ? createHmac('sha256', token).update(value).digest('base64url').slice(0, 16) : ''
 }
 
 let username: string | null | undefined
