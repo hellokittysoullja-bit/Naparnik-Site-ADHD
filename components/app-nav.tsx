@@ -4,7 +4,8 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
-import { House, Timer, Sprout } from "lucide-react";
+import { Timer, Sprout } from "lucide-react";
+import { CatSilhouette } from "@/components/icons/cat-silhouette";
 import { getActiveSession, getUnseenWorldCount } from "@/lib/memory";
 import { SPRING_GESTURE } from "@/lib/motion";
 
@@ -14,7 +15,7 @@ import { SPRING_GESTURE } from "@/lib/motion";
  * Принцип: bottom nav = core app actions, не site navigation.
  */
 const tabs = [
-  { href: "/app", label: "Дом", icon: House, exact: true },
+  { href: "/app", label: "Дом", icon: CatSilhouette, exact: true },
   { href: "/app/session", label: "Фокус", icon: Timer, exact: false },
   { href: "/app/world", label: "Мир", icon: Sprout, exact: false },
 ];

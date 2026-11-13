@@ -1593,9 +1593,11 @@ body[data-focus-immersive] .session-main {
     transform: scale(0.96);
   }
 }
+/* слой языка пламени: HTML-элемент на всю площадь костра, качается от основания (низ огня — 88 % высоты рисунка) */
 .campfire-flame {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 88%;
   animation: campfire-lick 1.1s ease-in-out infinite;
 }
 .campfire-flame-b {
