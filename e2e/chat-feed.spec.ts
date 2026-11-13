@@ -21,7 +21,7 @@ test('лента чата не прокручивается вбок', async ({ 
     )
   })
   await page.setViewportSize({ width: 390, height: 664 })
-  await page.goto('/app')
+  await page.goto('/app/chat')
   await expect(page.getByText('Как побороть сдвг', { exact: true })).toBeVisible()
   const r = await page.evaluate(() => {
     const feed = [...document.querySelectorAll<HTMLElement>('div')].find(
@@ -42,7 +42,7 @@ test('лента чата не прокручивается вбок', async ({ 
 test('ИИ недоступен: «Даун» и «Как побороть сдвг» не превращаются в карточку «Начинаю»', async ({ page }) => {
   await seedStarts(page, 3)
   await page.route('**/api/companion', (route) => route.abort())
-  await page.goto('/app')
+  await page.goto('/app/chat')
   const box = page.getByRole('textbox').last()
   for (const text of ['Даун', 'Как побороть сдвг']) {
     await box.fill(text)
