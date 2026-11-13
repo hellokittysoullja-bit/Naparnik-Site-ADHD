@@ -924,12 +924,18 @@ export function FocusSession() {
           className="pointer-events-none fixed inset-x-0 bottom-0 h-[34vh] bg-gradient-to-t from-background/85 to-transparent"
         />
         <motion.div
-          className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 pt-8 pb-[32vh] [@media(max-height:700px)]:gap-3 [@media(max-height:700px)]:pb-[27vh] [@media(max-height:700px)]:pt-8"
+          className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center gap-3 px-4 pt-[clamp(1rem,6.5dvh,3.5rem)] pb-3 [@media(max-height:600px)]:gap-2"
           initial={reducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6 }}
         >
           <h1 className="sr-only">Идёт фокус-сессия</h1>
+          {/* Название дела — над кругом, как заголовок у референса владельца (Tiimo, 13.11): сначала «чем я занят»,
+              потом время. Кавычки — та же пунктуация, что на Доме. Перенос по любому месту, не больше двух строк:
+              вставленная ссылка иначе растягивала страницу и давала горизонтальный скролл */}
+          <p className="line-clamp-2 max-w-full text-center font-mono text-[13px] font-semibold uppercase tracking-widest text-foreground/85 [overflow-wrap:anywhere]">
+            «{task}»
+          </p>
           {/* Существо — центр сцены: дышит, радуется четвертям, встречает из отвлечения */}
           {/* #10 · Кольцо вместо линейного бара под существом: время сессии
               читается на самом объекте, за которым и так следит взгляд, а не
@@ -942,8 +948,9 @@ export function FocusSession() {
               полупрозрачного foreground, а дуга получила мягкое лаймовое
               свечение (тот же язык, что у очага/сияния), иначе на малом
               прогрессе она читается не как кольцо, а как случайный блик. */}
-          {/* mb-2: кольцо выходит на 16 px за кота снизу — без отступа на коротких экранах касалось пузыря */}
-          <div className="relative mb-2 flex items-center justify-center">
+          {/* Круг с котом — где круг у референса владельца (Tiimo, 13.11): на iPhone в Safari (390×664) кольцо 220 px,
+              центр на ~40 % высоты, цифры ниже. Отступы от названия и до цифр — в dvh, на низких экранах ужимаются */}
+          <div className="relative mt-[clamp(1.75rem,14dvh,7rem)] mb-[clamp(0.75rem,6.5dvh,4rem)] flex items-center justify-center [@media(max-height:600px)]:mt-[6dvh] [@media(max-height:600px)]:mb-2">
             <svg
               // явный размер: SVG — заменяемый элемент, Safari не растягивает его краевыми отступами (-inset-4)
               // и рисовал кольцо меньше кота (iPhone владельца, 11.11)
@@ -957,7 +964,7 @@ export function FocusSession() {
                 r="72"
                 fill="none"
                 stroke="color-mix(in oklab, var(--foreground) 16%, transparent)"
-                strokeWidth="5"
+                strokeWidth="6.5"
               />
               <circle
                 cx="78"
@@ -965,7 +972,7 @@ export function FocusSession() {
                 r="72"
                 fill="none"
                 stroke="var(--primary)"
-                strokeWidth="5"
+                strokeWidth="6.5"
                 strokeLinecap="round"
                 strokeDasharray={2 * Math.PI * 72}
                 style={{
@@ -973,7 +980,8 @@ export function FocusSession() {
                   transform: 'rotate(-90deg)',
                   transformOrigin: '78px 78px',
                   transition: reducedMotion ? 'none' : 'stroke-dashoffset 1s linear',
-                  filter: 'drop-shadow(0 0 5px color-mix(in oklab, var(--primary) 70%, transparent))',
+                  // свечение еле заметное (владелец, 13.11): мягкий ореол, не неон
+                  filter: 'drop-shadow(0 0 4px color-mix(in oklab, var(--primary) 38%, transparent))',
                 }}
               />
             </svg>
@@ -981,7 +989,7 @@ export function FocusSession() {
                 по квадрату, висело над ним. Замер на рендере (ringgap.mjs, 11.11): без сдвига зазор кольцо→силуэт сверху
                 46,5 px, снизу 10,5, слева 13,5, справа 12,5. Подъём на 18 px уравнивает верх и низ; берём 16 — середина
                 «дыхания» (y 0 → −4). Только пиксели: проценты translate считаются от высоты обёртки, а она выше 130 */}
-            <div className="-translate-y-4">
+            <div className="-translate-y-[12%]">
             <motion.div
               animate={
                 reducedMotion
@@ -996,34 +1004,16 @@ export function FocusSession() {
                 // «работаем вместе», та же метафора присутствия (кукла из эталона, блокнота
                 // у неё нет: прежний кот с блокнотом был старой моделью и удалён)
                 label="Напарник работает рядом"
-                size={130}
+                size={188}
+                // кольцо = кот + 32 px: на телефоне ~220 px, как круг у референса; на низких экранах ужимается
+                className="size-[clamp(112px,calc(33dvh-32px),188px)] [@media(max-height:650px)]:size-[clamp(100px,calc(30dvh-32px),188px)] [@media(max-height:600px)]:size-[clamp(96px,calc(26dvh-32px),188px)]"
               />
             </motion.div>
             </div>
           </div>
-          <p className="glass max-w-72 text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed">
-            <EmphasisText
-              text={
-                backFromDrift
-                  ? 'Ты отходил — это нормально. Мы всё ещё *в деле*.'
-                  : cheering
-                    ? '*Четверть пути* позади. Идём.'
-                    : voice
-              }
-            />
-          </p>
           <div className="flex flex-col items-center gap-2">
-            {/* Название дела — контекст «чем я занят», не утилитарная кнопка:
-                чуть плотнее и светлее ряда переключателей ниже, плюс кавычки
-                — та же пунктуация, что и в карточке Дома («Следующий шаг:
-                «X»»), а не голый капс без каких-либо знаков препинания. */}
-            {/* перенос по любому месту и не больше трёх строк: вставленная ссылка или длинное слово иначе
-                растягивали страницу до 469 px на экране 390 и давали горизонтальный скролл */}
-            <p className="line-clamp-3 max-w-full text-center font-mono text-xs font-semibold uppercase tracking-widest text-foreground/80 [overflow-wrap:anywhere]">
-              «{task}»
-            </p>
             {hideDigits ? (
-              <p className="font-sans text-lg text-muted-foreground">
+              <p className="flex h-12 items-center font-sans text-lg text-muted-foreground">
                 <EmphasisText text="время идёт — я *слежу*" />
               </p>
             ) : (
@@ -1031,7 +1021,7 @@ export function FocusSession() {
               // polite означал объявление КАЖДОЙ секунды скринридером
               <div
                 role="timer"
-                className="text-7xl font-bold tabular-nums tracking-tight"
+                className="text-5xl font-bold tabular-nums tracking-tight"
               >
                 {mm}:{ss}
               </div>
@@ -1060,6 +1050,17 @@ export function FocusSession() {
               </button>
             </div>
           </div>
+          <p className="glass max-w-72 text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed">
+            <EmphasisText
+              text={
+                backFromDrift
+                  ? 'Ты отходил — это нормально. Мы всё ещё *в деле*.'
+                  : cheering
+                    ? '*Четверть пути* позади. Идём.'
+                    : voice
+              }
+            />
+          </p>
           <div className="flex flex-col items-center gap-2 pt-1">
             {/* Выход из сессии — секондари-действие, но не строка того же
                 веса, что переключатели выше: glass-пилюля даёт ему
