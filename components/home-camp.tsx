@@ -117,7 +117,10 @@ export function HomeCamp() {
           <div className="relative mb-2">
             {/* холм начинается от лап кота: макушка svg (y≈6 из 500) — у нижней кромки куклы */}
             <Knoll className="pointer-events-none absolute left-1/2 top-[86%] w-[440%] max-w-[900px] -translate-x-1/2" />
-            <Campfire className="absolute bottom-[4%] left-[-40%] z-[1] h-[46%] w-[40%]" />
+            {/* Костёр стоит на склоне: всё в долях ширины кота W (холм — 4,4 W), центр костра в 0,66 W левее центра кота →
+                x = 280 из 800 у холма, земля там на 1,055 W от верха кота; низ поленьев (95 % рисунка) утоплен на 0,015 W.
+                Было bottom 4 % — поленья висели на ~0,1 W (≈ 20 px) над склоном. Тест: e2e/home-camp.spec.ts */}
+            <Campfire className="absolute bottom-[-9.2%] left-[-36%] z-[1] h-[46%] w-[40%]" />
             <MascotDoll
               expression="calm"
               size={190}

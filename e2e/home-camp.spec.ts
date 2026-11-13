@@ -182,3 +182,92 @@ test('длинный шаг на маленьком экране: кот не п
   expect(m.chatBottom).toBeLessThanOrEqual(m.navTop)
   expect(m.sh).toBeLessThanOrEqual(640)
 })
+
+// ---------- 13.11, владелец: «костёр где-то там летает», «горит циклично, без багов» ----------
+
+test('костёр стоит на склоне холма, а не висит над ним', async ({ page }) => {
+  for (const [w, h] of [[390, 844], [360, 640], [1280, 720]]) {
+    await page.setViewportSize({ width: w, height: h })
+    await page.goto('/app')
+    await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
+    const m = await page.evaluate(() => {
+      const knoll = document.querySelector('svg[viewBox="0 0 800 500"]') as SVGSVGElement
+      const hill = knoll.querySelector('path') as SVGPathElement
+      const fire = document.querySelector('.campfire-flame')!.parentElement!
+      const logs = [...fire.querySelectorAll('rect')].map((r) => r.getBoundingClientRect())
+      const bottom = Math.max(...logs.map((r) => r.bottom))
+      const x = (Math.min(...logs.map((r) => r.left)) + Math.max(...logs.map((r) => r.right))) / 2
+      const inv = knoll.getScreenCTM()!.inverse()
+      const inside = (y: number) => {
+        const p = new DOMPoint(x, y).matrixTransform(inv)
+        return hill.isPointInFill(p)
+      }
+      // чуть ниже поленьев — уже земля; заметно выше — ещё небо (поленья не утоплены в холм)
+      return { under: inside(bottom + 3), above: inside(bottom - 12) }
+    })
+    expect(m, `${w}×${h}`).toEqual({ under: true, above: false })
+  }
+})
+
+test('пламя качается без рывков: каждый язык — плавный маятник, стык циклов незаметен', async ({ page }) => {
+  await page.goto('/app')
+  await expect(page.locator('.campfire-flame').first()).toBeVisible()
+  const res = await page.evaluate(
+    () =>
+      new Promise<{ range: number; maxStep: number }[]>((done) => {
+        const els = [...document.querySelectorAll<HTMLElement>('.campfire-flame')]
+        const series: number[][] = els.map(() => [])
+        const t0 = performance.now()
+        const tick = () => {
+          els.forEach((e, i) => series[i].push(new DOMMatrix(getComputedStyle(e).transform).c))
+          if (performance.now() - t0 < 2500) requestAnimationFrame(tick)
+          else
+            done(
+              series.map((s) => ({
+                range: Math.max(...s) - Math.min(...s),
+                maxStep: Math.max(...s.slice(1).map((v, i) => Math.abs(v - s[i]))),
+              })),
+            )
+        }
+        requestAnimationFrame(tick)
+      }),
+  )
+  expect(res).toHaveLength(3)
+  for (const s of res) {
+    // за 2,5 с язык прошёл весь размах (несколько циклов) и ни разу не прыгнул больше чем на четверть размаха за кадр
+    expect(s.range).toBeGreaterThan(0.08)
+    expect(s.maxStep).toBeLessThan(s.range / 4)
+  }
+})
+
+// ---------- 13.11, владелец: «везде, где кот, нужна тень; кот не должен летать» ----------
+
+test('у кота есть тень под лапами на каждом экране, и пока кукла не ожила (постер)', async ({ page }) => {
+  for (const url of ['/?intro=1', '/app', '/app/chat', '/app/session', '/app/start', '/sdvg-test', '/nope-404']) {
+    await page.goto(url)
+    const cat = page.locator('.cat-doll').first()
+    await expect(cat, url).toBeVisible()
+    const m = await cat.evaluate((el) => {
+      const r = el.getBoundingClientRect()
+      const core = el.querySelector('.cat-shadow-core')
+      if (!core) return null
+      const s = core.getBoundingClientRect()
+      return {
+        // пятно — под лапами: в нижних 6 % кота, по центру тела (левее середины — справа хвост)
+        top: (s.top - r.top) / r.height,
+        bottom: (s.bottom - r.top) / r.height,
+        cx: (s.left + s.width / 2 - r.left) / r.width,
+        // тень — первым слоем, под постером и холстом куклы
+        first: el.firstElementChild?.classList.contains('cat-shadow') ?? false,
+        visible: getComputedStyle(core).backgroundImage.includes('radial-gradient'),
+      }
+    })
+    expect(m, url).not.toBeNull()
+    expect(m!.first, url).toBe(true)
+    expect(m!.visible, url).toBe(true)
+    expect(m!.top, url).toBeGreaterThan(0.93)
+    expect(m!.bottom, url).toBeLessThan(1)
+    expect(m!.cx, url).toBeGreaterThan(0.38)
+    expect(m!.cx, url).toBeLessThan(0.46)
+  }
+})
