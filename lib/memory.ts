@@ -885,7 +885,7 @@ export function peekMemoryContext(): MemoryContext {
 }
 
 /** Ответы знакомства (lib/onboarding.ts хранит их сам) — только ключи; сервер проверит их по списку вариантов */
-function peekProfile(): MemoryContext['profile'] {
+export function peekProfile(): MemoryContext['profile'] {
   if (read<boolean>(KEYS.profileForgotten, false, (v): v is boolean => typeof v === 'boolean')) return null
   // читаем сами, без read(): чужой ключ при неожиданной форме нельзя стирать — им владеет знакомство
   let raw: unknown = null
