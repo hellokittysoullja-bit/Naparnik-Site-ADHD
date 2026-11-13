@@ -163,6 +163,9 @@ export function FocusSession() {
   }, [])
   const autoStart =
     searchParams.get('auto') === '1' && Boolean(prefilledStep) && autoPass === prefilledStep
+  // Дом («Разломать на шаг») открывает Фокус с делом и пометкой break=1: дробление запускается само. Старт — только
+  // руками человека, поэтому чужая ссылка с break=1 ничего не начинает, а лишь показывает шаги
+  const breakOnOpen = !autoStart && searchParams.get('break') === '1' && Boolean(prefilledStep)
   const initialMinutes =
     durations.includes(prefilledDuration) ||
     (autoStart && prefilledDuration === FIRST_MINUTES)
@@ -424,6 +427,14 @@ export function FocusSession() {
           const q = keep.toString()
           window.history.replaceState(null, '', q ? `/app/session?${q}` : '/app/session')
           void start()
+        } else if (breakOnOpen) {
+          // «Разломать на шаг» с Дома: дело уже в поле — дробим сразу, человек выбирает шаг и жмёт старт сам.
+          // Пометку убираем из адреса: перезагрузка не должна дробить второй раз
+          const keep = new URLSearchParams(window.location.search)
+          keep.delete('break')
+          const q = keep.toString()
+          window.history.replaceState(null, '', q ? `/app/session?${q}` : '/app/session')
+          void breakDown()
         }
         return
       }

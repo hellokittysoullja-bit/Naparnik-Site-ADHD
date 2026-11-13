@@ -311,6 +311,7 @@ export function AppBackdrop() {
   return (
     <div
       aria-hidden="true"
+      data-app-backdrop=""
       className="pointer-events-none fixed inset-0 overflow-hidden"
     >
       {/* НЕБО. Четыре слоя стоят всегда, видимость решает opacity: градиенты

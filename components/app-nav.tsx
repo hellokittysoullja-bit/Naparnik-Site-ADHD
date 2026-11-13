@@ -69,8 +69,9 @@ export function AppNav() {
     >
       <div className="mx-auto flex max-w-md items-center justify-around py-2">
         {tabs.map((tab) => {
+          // чат переехал с Дома на /app/chat и открывается с Дома — Дом остаётся подсвеченным
           const active = tab.exact
-            ? pathname === tab.href
+            ? pathname === tab.href || (tab.href === "/app" && pathname === "/app/chat")
             : pathname.startsWith(tab.href);
           const Icon = tab.icon;
           const showBadge = tab.href === "/app/world" && worldUnseen && !active;
