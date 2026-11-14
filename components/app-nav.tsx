@@ -23,17 +23,31 @@ type PillComponent = () => React.JSX.Element;
 
 export function AppNav() {
   const pathname = usePathname();
-  // Пружинная пилюля (motion/react, ~42 КБ) грузится отдельно, сразу после монтирования меню: до этого на её месте
+  // Пружинная пилюля (motion/react, ~42 КБ) грузится отдельно, после загрузки страницы (или по первому касанию): до этого на её месте
   // такая же неподвижная пилюля. Дом, кроме неё, библиотеку анимаций не использует — без этого она ехала в первом
   // пакете кода Дома и разбиралась до того, как экран оживал (14.11, оптимизация скорости).
   const [Pill, setPill] = useState<PillComponent | null>(null);
   useEffect(() => {
     let alive = true;
-    void import("@/components/nav-pill").then((m) => {
-      if (alive) setPill(() => m.NavPill);
-    });
+    let started = false;
+    const load = () => {
+      if (started) return;
+      started = true;
+      void import("@/components/nav-pill").then((m) => {
+        if (alive) setPill(() => m.NavPill);
+      });
+    };
+    // после загрузки страницы и в простое — не спорит за сеть с котом первого экрана; касание меню — сразу
+    const idle = () => (typeof window.requestIdleCallback === "function" ? window.requestIdleCallback(load, { timeout: 2000 }) : setTimeout(load, 200));
+    if (document.readyState === "complete") idle();
+    else window.addEventListener("load", idle, { once: true });
+    window.addEventListener("pointerdown", load, { once: true, capture: true });
+    window.addEventListener("keydown", load, { once: true, capture: true });
     return () => {
       alive = false;
+      window.removeEventListener("load", idle);
+      window.removeEventListener("pointerdown", load, { capture: true });
+      window.removeEventListener("keydown", load, { capture: true });
     };
   }, []);
   const [worldUnseen, setWorldUnseen] = useState(false);
