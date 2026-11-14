@@ -32,10 +32,10 @@ export function preloadCatPoster(main = false) {
  * этого простаивала по картинкам (14.11). Низкий приоритет — не спорят со стилями, шрифтами и постером.
  * Только Дом: замер 3G, CPU ×4 — кот оживает на ~1 с раньше, код не позже. На лендинге код (кнопка «Давай») оживал на
  * 0,35 с позже, в знакомстве главный текст появлялся на 0,6 с позже — там не вызывать.
- * Адреса те же, что у загрузчика (components/mascot-doll.tsx, lib/rig/renderer.ts): rig.json — fetch() с режимом cors,
- * поэтому crossOrigin "anonymous"; слои — new Image() без crossOrigin, поэтому без него. Иначе файл скачался бы дважды.
+ * Адреса и способ те же, что у загрузчика (components/mascot-doll.tsx, lib/rig/renderer.ts): и rig.json, и слои
+ * качаются fetch() (режим cors), поэтому as "fetch" и crossOrigin "anonymous". Иначе файл скачался бы дважды.
  */
 export function preloadDoll() {
   preload(asset("/mascot/doll/rig.json"), { as: "fetch", crossOrigin: "anonymous", fetchPriority: "low" });
-  for (const l of DOLL_LAYERS) preload(asset(`/mascot/doll/${l}`), { as: "image", fetchPriority: "low" });
+  for (const l of DOLL_LAYERS) preload(asset(`/mascot/doll/${l}`), { as: "fetch", crossOrigin: "anonymous", fetchPriority: "low" });
 }

@@ -199,15 +199,21 @@ test('пламя качается без рывков: каждый язык —
       new Promise<{ range: number; maxStep: number }[]>((done) => {
         const els = [...document.querySelectorAll<HTMLElement>('.campfire-flame')]
         const series: number[][] = els.map(() => [])
+        const times: number[] = []
         const t0 = performance.now()
         const tick = () => {
+          times.push(performance.now())
           els.forEach((e, i) => series[i].push(new DOMMatrix(getComputedStyle(e).transform).c))
           if (performance.now() - t0 < 2500) requestAnimationFrame(tick)
           else
             done(
               series.map((s) => ({
                 range: Math.max(...s) - Math.min(...s),
-                maxStep: Math.max(...s.slice(1).map((v, i) => Math.abs(v - s[i]))),
+                // шаг приведён к кадру 60 Гц: пламя — CSS-анимация видеокарты, а замер идёт из главного потока. Пауза
+                // главного потока (подгрузка кода, нагрузка соседних тестов) давала между замерами 3–4 кадра, и честный
+                // плавный ход за это время читался как «рывок» — тест падал и на старой сборке (14.11). Настоящий рывок
+                // на стыке циклов — большой сдвиг за один кадр, он так и остаётся большим
+                maxStep: Math.max(...s.slice(1).map((v, i) => Math.abs(v - s[i]) / Math.max(1, (times[i + 1] - times[i]) / (1000 / 60)))),
               })),
             )
         }

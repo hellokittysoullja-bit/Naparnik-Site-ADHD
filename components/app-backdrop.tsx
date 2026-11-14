@@ -618,20 +618,23 @@ export function AppBackdrop() {
           обязано проигрывать тексту. Оно атмосфера, а не объект поверх
           контента — на полной плотности почти чёрный силуэт читался
           «дыркой» рядом со временем реплики. */}
-      <svg
-        className="absolute bottom-[214px] left-[5%] h-auto w-[clamp(2.2rem,6vw,2.9rem)] opacity-50"
-        viewBox="0 0 40 44"
-      >
-        {/* Ореол от очага: край силуэта, обращённый к огню, ловит тепло */}
-        <ellipse
-          cx="26"
-          cy="30"
-          rx="13"
-          ry="16"
-          fill="oklch(0.72 0.17 55 / 0.07)"
-          style={{ filter: "blur(3px)" }}
-        />
-        <g className="creature-breathe">
+      {/* Три слоя одного рисунка (ореол, дышащий корпус, хвост) в одной обёртке: дышит отдельный <svg>, а не <g> внутри
+          общего — анимацию узла внутри SVG браузер считает и перерисовывает на процессоре каждый кадр (на Мире и в
+          Фокусе ~16 % процессора в покое при CPU ×6), а целый <svg> видеокарта двигает сама. opacity-50 — на обёртке, как
+          было на общем <svg>: слои складываются в одну картинку и только потом становятся полупрозрачными (14.11). */}
+      <div className="absolute bottom-[214px] left-[5%] w-[clamp(2.2rem,6vw,2.9rem)] opacity-50">
+        <svg className="block h-auto w-full" viewBox="0 0 40 44" aria-hidden="true">
+          {/* Ореол от очага: край силуэта, обращённый к огню, ловит тепло */}
+          <ellipse
+            cx="26"
+            cy="30"
+            rx="13"
+            ry="16"
+            fill="oklch(0.72 0.17 55 / 0.07)"
+            style={{ filter: "blur(3px)" }}
+          />
+        </svg>
+        <svg className="creature-breathe absolute inset-0 h-full w-full" viewBox="0 0 40 44" aria-hidden="true">
           {/* Корпус сидящей фигуры — каплевидный, чуть наклонён к огню */}
           <path
             d="M20 43 C 9 43 7 33 9.5 25 C 11.5 18.5 15 16 20 16 C 25 16 28.5 18.5 30.5 25 C 33 33 31 43 20 43 Z"
@@ -651,16 +654,18 @@ export function AppBackdrop() {
             d="M20 3.8 A 7.2 7.2 0 0 1 27.2 11 A 7.2 7.2 0 0 1 25.4 15.6 C 26.6 13.2 26.4 8 23.4 5.4 Z"
             fill="oklch(0.72 0.17 55 / 0.26)"
           />
-        </g>
-        {/* Хвост обёрнут вокруг — не дышит вместе с корпусом, он лежит */}
-        <path
-          d="M11 41.5 C 4.5 41 2.5 36.5 5.5 33.5"
-          stroke="oklch(0.145 0.015 145)"
-          strokeWidth="3.2"
-          strokeLinecap="round"
-          fill="none"
-        />
-      </svg>
+        </svg>
+        <svg className="absolute inset-0 h-full w-full" viewBox="0 0 40 44" aria-hidden="true">
+          {/* Хвост обёрнут вокруг — не дышит вместе с корпусом, он лежит */}
+          <path
+            d="M11 41.5 C 4.5 41 2.5 36.5 5.5 33.5"
+            stroke="oklch(0.145 0.015 145)"
+            strokeWidth="3.2"
+            strokeLinecap="round"
+            fill="none"
+          />
+        </svg>
+      </div>
     </div>
   );
 }

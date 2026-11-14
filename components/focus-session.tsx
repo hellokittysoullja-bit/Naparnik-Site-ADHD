@@ -950,7 +950,12 @@ export function FocusSession() {
               прогрессе она читается не как кольцо, а как случайный блик. */}
           {/* Круг с котом — где круг у референса владельца (Tiimo, 13.11): на iPhone в Safari (390×664) кольцо 220 px,
               центр на ~40 % высоты, цифры ниже. Отступы от названия и до цифр — в dvh, на низких экранах ужимаются */}
-          <div className="relative mt-[clamp(1.75rem,14dvh,7rem)] mb-[clamp(0.75rem,6.5dvh,4rem)] flex items-center justify-center [@media(max-height:600px)]:mt-[6dvh] [@media(max-height:600px)]:mb-2">
+          <div className="focus-ring-wrap relative mt-[clamp(1.75rem,14dvh,7rem)] mb-[clamp(0.75rem,6.5dvh,4rem)] flex items-center justify-center [@media(max-height:600px)]:mt-[6dvh] [@media(max-height:600px)]:mb-2">
+            {/* Трек и дуга — два отдельных <svg> одного размера: свечение дуги — фильтр на её собственном <svg>, а не на
+                <circle> внутри. Фильтр на узле SVG браузер пересчитывает в главном потоке вместе с дугой на каждом кадре
+                её плавного хода (вся сессия: ~60 перерисовок в секунду, растр втрое дороже, замер focusrun.mjs, 14.11),
+                а фильтр на целом элементе со своим слоем применяет видеокарта. Размытие 4 единицы рисунка (viewBox 156)
+                = 4/156 ширины кольца; ширина кольца = кот + 2rem (--focus-cat, app/globals.css) */}
             <svg
               // явный размер: SVG — заменяемый элемент, Safari не растягивает его краевыми отступами (-inset-4)
               // и рисовал кольцо меньше кота (iPhone владельца, 11.11)
@@ -966,6 +971,12 @@ export function FocusSession() {
                 stroke="color-mix(in oklab, var(--foreground) 16%, transparent)"
                 strokeWidth="6.5"
               />
+            </svg>
+            <svg
+              className="focus-ring-arc pointer-events-none absolute -left-4 -top-4 size-[calc(100%+2rem)]"
+              viewBox="0 0 156 156"
+              aria-hidden="true"
+            >
               <circle
                 cx="78"
                 cy="78"
@@ -980,8 +991,6 @@ export function FocusSession() {
                   transform: 'rotate(-90deg)',
                   transformOrigin: '78px 78px',
                   transition: reducedMotion ? 'none' : 'stroke-dashoffset 1s linear',
-                  // свечение еле заметное (владелец, 13.11): мягкий ореол, не неон
-                  filter: 'drop-shadow(0 0 4px color-mix(in oklab, var(--primary) 38%, transparent))',
                 }}
               />
             </svg>
@@ -1006,7 +1015,7 @@ export function FocusSession() {
                 label="Напарник работает рядом"
                 size={188}
                 // кольцо = кот + 32 px: на телефоне ~220 px, как круг у референса; на низких экранах ужимается
-                className="size-[clamp(112px,calc(33dvh-32px),188px)] [@media(max-height:650px)]:size-[clamp(100px,calc(30dvh-32px),188px)] [@media(max-height:600px)]:size-[clamp(96px,calc(26dvh-32px),188px)]"
+                className="size-[var(--focus-cat)]"
               />
             </motion.div>
             </div>
