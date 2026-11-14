@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Landing } from "@/components/landing/landing";
 import { ENTRY_VARIANTS } from "@/content/entry-variants";
 import "../../hero-fonts.css";
+import "../../hero-poster.css";
 
 /**
  * Лендинг с заголовком под ролик. Человек сюда не ходит напрямую: rewrite из next.config.ts подставляет эту страницу по `/?src=<ключ>`,

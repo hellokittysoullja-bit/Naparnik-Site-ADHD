@@ -1,5 +1,6 @@
 import { preload } from "react-dom";
 import { asset } from "@/lib/asset-versions";
+import { DOLL_LAYERS } from "@/lib/rig/doll-layers";
 
 /**
  * Предзагрузка своих шрифтов (public/fonts, app/fonts.css) из серверного компонента: ссылки попадают в <head> при SSR.
@@ -23,4 +24,18 @@ export function preloadCatPoster(main = false) {
   // main — кот главный элемент первого экрана (Дом): постер раньше остальных картинок, иначе на 3G он шёл после
   // фона и приходил к 2,9 с (13.11)
   preload(asset("/mascot/poster/neutral.webp"), main ? { as: "image", fetchPriority: "high" } : { as: "image" });
+}
+
+/**
+ * Кукла кота (public/mascot/doll: rig.json и слои) — в <head> страницы, где кот на первом экране. Без этого загрузка
+ * начиналась только из кода куклы, после разбора всего JS: на 3G слои шли с ~3 с и кот оживал к ~5 с, хотя сеть до
+ * этого простаивала по картинкам (14.11). Низкий приоритет — не спорят со стилями, шрифтами и постером.
+ * Только Дом: замер 3G, CPU ×4 — кот оживает на ~1 с раньше, код не позже. На лендинге код (кнопка «Давай») оживал на
+ * 0,35 с позже, в знакомстве главный текст появлялся на 0,6 с позже — там не вызывать.
+ * Адреса те же, что у загрузчика (components/mascot-doll.tsx, lib/rig/renderer.ts): rig.json — fetch() с режимом cors,
+ * поэтому crossOrigin "anonymous"; слои — new Image() без crossOrigin, поэтому без него. Иначе файл скачался бы дважды.
+ */
+export function preloadDoll() {
+  preload(asset("/mascot/doll/rig.json"), { as: "fetch", crossOrigin: "anonymous", fetchPriority: "low" });
+  for (const l of DOLL_LAYERS) preload(asset(`/mascot/doll/${l}`), { as: "image", fetchPriority: "low" });
 }

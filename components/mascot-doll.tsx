@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useReducedMotion } from "motion/react";
+import { useReducedMotion } from "@/lib/reduced-motion";
 import { DollAnimator, drawDollFx, setDollFxColor, type DollAction, type DollExpression } from "@/lib/rig/doll";
 import { loadRigImages, preloadRigImages, RigRenderer } from "@/lib/rig/renderer";
 import { DOLL_LAYERS } from "@/lib/rig/doll-layers";
@@ -25,10 +25,9 @@ type Props = {
   label?: string;
   className?: string;
   interactive?: boolean;
-  /** герой первого экрана: чёткий постер прямо в HTML (data-URI из components/mascot-poster-inline) — кот виден с первой
-   *  отрисовки. Передаётся строкой, а не флагом: иначе 37 КБ постера ехали в общем коде кота на каждую страницу
-   *  (Дом, Фокус, Мир, знакомство), где он не нужен (аудит архитектуры 11.11, −20 КБ br) */
-  inlinePoster?: string;
+  /** герой первого экрана: чёткий постер с первой отрисовки. Сама картинка — data-URI в app/hero-poster.css, который
+   *  подключают только лендинг и тест: в общем коде кота её нет (аудит 11.11), и в JS-пакете страницы тоже (14.11) */
+  inlinePoster?: boolean;
 };
 
 const BASE = "/mascot/doll/";
@@ -283,8 +282,8 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
           {/* герой: чёткий кот прямо в HTML (480 px, ~37 КБ) — виден с первой отрисовки; поверх, когда
               долетит, — постер 900 px для экранов с DPR 3; остальные коты страницы — только внешний постер */}
           {inlinePoster ? (
-            <img src={inlinePoster} alt="" draggable={false} aria-hidden
-              style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
+            <span className="cat-poster-inline" aria-hidden
+              style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, pointerEvents: "none" }} />
           ) : null}
           {/* у героя внешний постер идёт обычным приоритетом картинки в кадре: первый кадр уже дал инлайн, а шрифты
               первого экрана вшиты в CSS (app/hero-fonts.css), уступать полосу ему больше некому */}

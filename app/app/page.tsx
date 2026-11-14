@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { HomeCamp } from "@/components/home-camp";
-import { preloadCatPoster, preloadFonts } from "@/lib/font-preload";
+import { preloadCatPoster, preloadDoll, preloadFonts } from "@/lib/font-preload";
 
 export const metadata: Metadata = {
   title: "Дом — Напарник",
@@ -10,5 +10,6 @@ export const metadata: Metadata = {
 export default function AppHomePage() {
   preloadFonts("manrope-700-cyr"); // шаг и строка над кнопкой набраны жирным
   preloadCatPoster(true); // кот — самый крупный элемент Дома
+  preloadDoll(); // и сразу оживает: слои качаются вместе с кодом, а не после него
   return <HomeCamp />;
 }

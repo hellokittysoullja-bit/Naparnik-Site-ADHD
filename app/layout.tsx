@@ -1,20 +1,12 @@
 import { SiteAnalytics } from "@/components/analytics";
 import { VisitBeacon } from "@/components/visit-beacon";
 import type { Metadata, Viewport } from "next";
-import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-// Manrope и Caveat — свои (public/fonts, app/fonts.css, генератор design/fonts/build.py): статические начертания
-// по весам и алфавитам плюс вшитые в CSS подмножества под символы первого экрана — текст героя рисуется
-// своим шрифтом с первой отрисовки на любой сети. Здесь из next/font остался только моноширинный.
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin", "cyrillic"],
-  variable: "--font-jetbrains-mono",
-  // моноширинный нужен ниже первого экрана (как это работает, тарифы): без preload — два файла на
-  // 149 КБ не стоят на критическом пути первой отрисовки, подгружаются, когда дошло до текста
-  preload: false,
-});
-
+// Все шрифты — свои (public/fonts, app/fonts.css, генератор design/fonts/build.py): Manrope и Caveat — статические
+// начертания по весам и алфавитам плюс вшитые в CSS подмножества под символы первого экрана; JetBrains Mono — файлы
+// Google Fonts (до 14.11 шёл через next/font) с цифрами и знаками в отдельном маленьком файле. Без preload: нужен ниже
+// первого экрана лендинга, на /app подгружается, когда дошло до текста.
 
 export const metadata: Metadata = {
   // адрес сайта для абсолютных ссылок превью (og:image); прежний ai-rc-one — старый домен
@@ -66,7 +58,7 @@ export default function RootLayout({
       // при переходах между страницами — data-атрибут снимает конфликт, сам
       // scroll-behavior по-прежнему приходит из CSS и уважает reduced-motion.
       data-scroll-behavior="smooth"
-      className={`bg-background ${jetbrainsMono.variable}`}
+      className="bg-background"
     >
       <body className="antialiased font-sans">
         {children}
