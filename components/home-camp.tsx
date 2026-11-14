@@ -107,30 +107,17 @@ export function HomeCamp() {
           )}
         </div>
 
-        {/* сцена: кот по центру на холме, костёр слева от него */}
-        <div className="relative flex min-h-0 flex-1 items-end justify-center">
-          {/* луна, как на лендинге: справа вверху, отдельно от видео */}
-          <Moon className="pointer-events-none absolute right-[3%] top-0 w-[clamp(84px,26vw,112px)]" />
-          <div className="relative">
-            {/* холм поднят над лапами (макушка svg, y≈6 из 500, на 0,15 W выше лап): кот сидит в холме, не на кромке */}
-            <Knoll className="pointer-events-none absolute left-1/2 top-[82%] w-[440%] max-w-[900px] -translate-x-1/2" />
-            {/* Костёр — как в первом макете, согласованном владельцем (скриншот 13.11): близко к коту, на макушке холма.
-                Всё в долях ширины кота W (холм — 4,4 W): центр костра на 0,52 W левее центра кота, низ поленьев
-                (95 % рисунка) на 0,03 W ниже лап и на ~0,025 W в земле. Холм поднят (top 82 %, 13.11 владелец: «холм симметрично выше»): макушка на 0,15 W выше лап, кот и костёр сидят в холме, а не на кромке. Тест: e2e/home-camp.spec.ts */}
-            <Campfire className="absolute bottom-[-2.5%] left-[-22%] z-[1] h-[46%] w-[40%]" />
-            <MascotDoll
-              expression="calm"
-              size={190}
-              label="Напарник"
-              className="size-[clamp(96px,calc(100dvh-480px-env(safe-area-inset-bottom)),196px)] [@media(max-height:620px)]:size-[clamp(90px,calc(100dvh-440px-env(safe-area-inset-bottom)),196px)]"
-            />
-          </div>
-        </div>
-
+        {/* Блок дела стоит в HTML РАНЬШЕ сцены, а на экране — под ней (order-last; mt-auto держит его внизу, даже пока
+            сцены ещё нет). HTML приходит порциями, и на слабом телефоне браузер рисовал кадр, когда кот уже разобран, а
+            блок под ним ещё нет: кот на миг вставал внизу экрана и прыгал вверх на 350 px (e2e «холодная загрузка», 14.11).
+            Теперь недостающей частью может быть только сцена, а блок с самого первого кадра на своём месте. z-[1] — блок
+            поверх кота и холма явно (Safari рисует флекс-элементы в порядке кода, а не order, CLAUDE.md §5.5); костёр — z-[2],
+            поверх затемнения блока, как и было. При равных z Chrome учитывает order, а Safari — порядок кода, и ореол
+            костра лёг бы в них по-разному; разные z снимают вопрос (замер zchk.mjs: кадр совпадает со старым) */}
         {/* «Что сейчас висит?» и действия. Блок одной высоты у всех: подпись, поле, три сферы, место под строку над
             кнопкой (две строки, есть всегда), кнопки. Кот сидит прямо над блоком, лишнюю высоту экрана забирает небо;
             размер кота — от свободной высоты (96–196 px). */}
-        <section aria-label="Дело на сейчас" className="relative px-4 pt-5 text-center [@media(max-height:620px)]:pt-3">
+        <section aria-label="Дело на сейчас" className="relative z-[1] order-last mt-auto px-4 pt-5 text-center [@media(max-height:620px)]:pt-3">
           {/* Затемнение земли начинается над подписью и доходит до полной темноты за ~100 px; isolate — слой затемнения
               над холмом, но под текстом и кнопками. Колонка не шире 448 px, как у Фокуса; затемнение — на всю ширину */}
           <div className="relative isolate mx-auto flex w-full max-w-md flex-col before:pointer-events-none before:absolute before:-inset-x-[50vw] before:-top-5 before:bottom-0 before:-z-10 before:bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.8)_52px,rgb(3_11_9)_100px)] before:content-['']">
@@ -201,6 +188,26 @@ export function HomeCamp() {
           </Link>
           </div>
         </section>
+        {/* сцена: кот по центру на холме, костёр слева от него */}
+        <div className="relative flex min-h-0 flex-1 items-end justify-center">
+          {/* луна, как на лендинге: справа вверху, отдельно от видео */}
+          <Moon className="pointer-events-none absolute right-[3%] top-0 w-[clamp(84px,26vw,112px)]" />
+          <div className="relative">
+            {/* холм поднят над лапами (макушка svg, y≈6 из 500, на 0,15 W выше лап): кот сидит в холме, не на кромке */}
+            <Knoll className="pointer-events-none absolute left-1/2 top-[82%] w-[440%] max-w-[900px] -translate-x-1/2" />
+            {/* Костёр — как в первом макете, согласованном владельцем (скриншот 13.11): близко к коту, на макушке холма.
+                Всё в долях ширины кота W (холм — 4,4 W): центр костра на 0,52 W левее центра кота, низ поленьев
+                (95 % рисунка) на 0,03 W ниже лап и на ~0,025 W в земле. Холм поднят (top 82 %, 13.11 владелец: «холм симметрично выше»): макушка на 0,15 W выше лап, кот и костёр сидят в холме, а не на кромке. Тест: e2e/home-camp.spec.ts */}
+            <Campfire className="absolute bottom-[-2.5%] left-[-22%] z-[2] h-[46%] w-[40%]" />
+            <MascotDoll
+              expression="calm"
+              size={190}
+              label="Напарник"
+              className="size-[clamp(96px,calc(100dvh-480px-env(safe-area-inset-bottom)),196px)] [@media(max-height:620px)]:size-[clamp(90px,calc(100dvh-440px-env(safe-area-inset-bottom)),196px)]"
+            />
+          </div>
+        </div>
+
       </div>
     </main>
   );

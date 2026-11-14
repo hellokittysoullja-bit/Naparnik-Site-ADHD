@@ -399,3 +399,30 @@ test('пустое поле: «Разломать на шаг» дробит д�
   await expect(page.getByText('Найти файл')).toBeVisible()
   expect(asked.length).toBeGreaterThan(5)
 })
+
+// 14.11: HTML приходит порциями, и на слабом телефоне браузер рисовал кадр, когда кот уже разобран, а блок дела под ним
+// ещё нет — кот на миг вставал внизу экрана и прыгал вверх на ~350 px (ловилось «холодной загрузкой» раз в ~20 прогонов).
+// Теперь блок дела в коде раньше сцены, а на экране — под котом: недостающей частью может быть только сцена.
+test('Дом: блок дела в HTML раньше кота, а на экране под ним; костёр поверх затемнения блока', async ({ page, request }) => {
+  const html = await (await request.get('/app')).text()
+  const section = html.indexOf('aria-label="Дело на сейчас"')
+  const cat = html.indexOf('cat-doll')
+  expect(section).toBeGreaterThan(0)
+  expect(cat).toBeGreaterThan(section)
+  await page.goto('/app')
+  await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
+  const m = await page.evaluate(() => {
+    const s = document.querySelector('section[aria-label="Дело на сейчас"]')!
+    const c = document.querySelector('.cat-doll')!
+    const fire = document.querySelector('.campfire-flame')!.parentElement!
+    return {
+      catAbove: c.getBoundingClientRect().bottom <= s.getBoundingClientRect().top + 30,
+      // явные z: блок над холмом и котом, костёр над блоком — порядок не зависит от того, как браузер учитывает order
+      sectionZ: Number(getComputedStyle(s).zIndex),
+      fireZ: Number(getComputedStyle(fire).zIndex),
+    }
+  })
+  expect(m.catAbove).toBe(true)
+  expect(m.sectionZ).toBeGreaterThan(0)
+  expect(m.fireZ).toBeGreaterThan(m.sectionZ)
+})
