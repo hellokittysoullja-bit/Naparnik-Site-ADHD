@@ -19,7 +19,6 @@ import { SPRING_SNAPPY } from "@/lib/motion";
 import { playPurr } from "@/lib/reward-sound";
 import { withAttribution } from "@/lib/visitor";
 import { DEFAULT_HEADLINE, type EntryHeadline } from "@/content/entry-variants";
-import { MASCOT_POSTER_INLINE } from "@/components/mascot-poster-inline";
 
 /**
  * Первый экран: одна плотная композиция вместо двух зон, разбросанных по
@@ -518,7 +517,7 @@ export function Hero({ headline = DEFAULT_HEADLINE }: { headline?: EntryHeadline
                 size={249}
                 label=""
                 className="size-[clamp(141px,33dvh,262px)] lg:size-[clamp(260px,40dvh,340px)] lg:origin-bottom lg:scale-[1.15]"
-                inlinePoster={MASCOT_POSTER_INLINE}
+                inlinePoster
               />
             </button>
             {/* Под котом холм: кот сидит на земле, а не висит перед дальними горами. Он заходит под

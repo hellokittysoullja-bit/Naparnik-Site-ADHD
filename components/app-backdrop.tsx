@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { useReducedMotion } from "motion/react";
+import { useReducedMotion } from "@/lib/reduced-motion";
 import { getFinds, getStarts, markHome } from "@/lib/memory";
 import { LANDMARK_COUNT } from "@/lib/island-elements";
 import { landmarkAnchors, landmarkNodes } from "@/lib/island-sprites";

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { SdvgTest } from '@/components/sdvg/sdvg-test'
+import '../hero-poster.css'
 
 export const metadata: Metadata = {
   title: 'Тест на СДВГ для взрослых онлайн — ASRS v1.1 (ВОЗ) и тип прокрастинации | Напарник',

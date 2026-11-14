@@ -8,6 +8,11 @@
    генерирует design/fonts/build.py */
 @import "./fonts.css";
 
+/* моноширинный (до 14.11 переменную ставил next/font классом на <html>; её читают знакомство и тесты) */
+:root {
+  --font-jetbrains-mono: "JetBrains Mono", "JetBrains Mono Fallback";
+}
+
 @theme inline {
   --font-sans: "Manrope", "Manrope Fallback", system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), monospace;

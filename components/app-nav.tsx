@@ -3,11 +3,10 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion } from "motion/react";
 import { Timer, Sprout } from "lucide-react";
 import { CatSilhouette } from "@/components/icons/cat-silhouette";
 import { getActiveSession, getUnseenWorldCount } from "@/lib/memory";
-import { SPRING_GESTURE } from "@/lib/motion";
+import { NAV_PILL_CLASS, NAV_PILL_STYLE } from "@/components/nav-pill-style";
 
 /**
  * Нижний nav — только навигация ВНУТРИ приложения.
@@ -20,8 +19,23 @@ const tabs = [
   { href: "/app/world", label: "Мир", icon: Sprout, exact: false },
 ];
 
+type PillComponent = () => React.JSX.Element;
+
 export function AppNav() {
   const pathname = usePathname();
+  // Пружинная пилюля (motion/react, ~42 КБ) грузится отдельно, сразу после монтирования меню: до этого на её месте
+  // такая же неподвижная пилюля. Дом, кроме неё, библиотеку анимаций не использует — без этого она ехала в первом
+  // пакете кода Дома и разбиралась до того, как экран оживал (14.11, оптимизация скорости).
+  const [Pill, setPill] = useState<PillComponent | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void import("@/components/nav-pill").then((m) => {
+      if (alive) setPill(() => m.NavPill);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [worldUnseen, setWorldUnseen] = useState(false);
 
   // К-Д · Активная сессия видна с любого экрана: бейдж оставшихся минут
@@ -94,16 +108,11 @@ export function AppNav() {
                   ОТВЕЧАЕТ на навигацию телом, а не сменой цвета текста.
                   Активное место подсвечено светом очага — единый свет сцены. */}
               {active && (
-                <motion.span
-                  layoutId="nav-pill"
-                  transition={SPRING_GESTURE}
-                  className="absolute inset-0 rounded-2xl bg-primary/10"
-                  style={{
-                    boxShadow:
-                      "inset 0 1px 0 oklch(1 0 0 / 0.08), 0 0 16px -4px oklch(0.86 0.22 130 / 0.25)",
-                  }}
-                  aria-hidden="true"
-                />
+                Pill ? (
+                  <Pill />
+                ) : (
+                  <span className={NAV_PILL_CLASS} style={NAV_PILL_STYLE} aria-hidden="true" />
+                )
               )}
               <span className="relative">
                 <Icon
