@@ -1154,9 +1154,11 @@ body[data-focus-immersive] nav[aria-label="Основная навигация"]
    #19 · Дыхание существа у костра. Двигается только грудная клетка, 7s.
    Диегетично (живое дышит), медленно, и вне поля чтения — внизу сцены.
    ───────────────────────────────────────────────────────────────── */
+/* Дышит целый <svg> корпуса (components/app-backdrop.tsx), а не <g> внутри: так анимацию ведёт видеокарта.
+   Сдвиг был -0.6 единицы рисунка (viewBox 40×44) — в долях высоты слоя это -0.6/44 = -1.3636 % */
 @keyframes creature-breathe {
   0%, 100% { transform: scaleY(1)     translateY(0); }
-  50%      { transform: scaleY(1.045) translateY(-0.6px); }
+  50%      { transform: scaleY(1.045) translateY(-1.3636%); }
 }
 .creature-breathe {
   animation: creature-breathe 7s ease-in-out infinite;
@@ -1765,4 +1767,30 @@ body[data-focus-immersive] {
    продолжают тикать, это копейки. Метку «свой» (markHome) фон ставит по-прежнему */
 body[data-home-camp] [data-app-backdrop] {
   display: none;
+}
+
+/* Нижнее меню на Доме — без размытия (14.11): под ним низ ночной сцены-видео, почти ровная темнота; без backdrop-filter
+   кадр совпадает с размытым (не больше 1–3 из 255, замер navblur.mjs на 390×844, 360×640, 1280×800). А размытие видео
+   под меню пересчитывалось на каждом его кадре — на старом телефоне это лишняя работа видеокарты всё время, пока открыт
+   Дом. На Мире и в Фокусе под меню общий фон со светом — там размытие видно (до 30 из 255), не трогаем. */
+body[data-home-camp] .glass-nav {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Кольцо Фокуса (components/focus-session.tsx): размер кота одной переменной — им же считается свечение дуги.
+   Кот 112–188 px от высоты экрана, на низких экранах меньше; кольцо = кот + 2rem. До 14.11 у кота было ещё правило
+   «≤ 600 px → 26dvh», но его перебивало правило ≤ 650 px (порядок вариантов Tailwind) — на деле работало только оно;
+   переносим то, что работало, чтобы кадр не изменился (замер catsize.mjs на 553–844 px) */
+.focus-ring-wrap {
+  --focus-cat: clamp(112px, calc(33dvh - 32px), 188px);
+}
+@media (max-height: 650px) {
+  .focus-ring-wrap { --focus-cat: clamp(100px, calc(30dvh - 32px), 188px); }
+}
+/* свечение дуги — «еле заметное» (владелец, 13.11): 4 единицы рисунка из 156 и лайм 38 %. Фильтр на целом <svg> со
+   своим слоем (will-change) — его применяет видеокарта, а не главный поток на каждом кадре хода дуги (14.11) */
+.focus-ring-arc {
+  filter: drop-shadow(0 0 calc((var(--focus-cat) + 2rem) * 4 / 156) color-mix(in oklab, var(--primary) 38%, transparent));
+  will-change: transform;
 }

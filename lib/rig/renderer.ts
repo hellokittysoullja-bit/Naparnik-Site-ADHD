@@ -78,27 +78,47 @@ function gridOf(verts: number[], cols: number, rows: number) {
  * Декодированные слои рига — один раз на страницу, общие для всех экземпляров (у каждого свой контекст). Кэш по
  * адресу слоя: загрузку можно начать раньше, чем пришёл rig.json (preloadRigImages), и loadRigImages подхватит её.
  */
-const texCache = new Map<string, Promise<HTMLImageElement>>();
-function loadTexture(url: string): Promise<HTMLImageElement> {
+type Tex = HTMLImageElement | ImageBitmap;
+const texW = (t: Tex) => (t instanceof HTMLImageElement ? t.naturalWidth : t.width);
+const texH = (t: Tex) => (t instanceof HTMLImageElement ? t.naturalHeight : t.height);
+const texCache = new Map<string, Promise<Tex>>();
+/**
+ * Слой — готовой к видеокарте картинкой (ImageBitmap из файла): её раскодирует фоновый поток, и загрузка в видеокарту
+ * берёт готовые пиксели. С <img> texImage2D раскодировал слой заново прямо в главном потоке (тело кота ~40 мс при
+ * CPU ×4 в одной задаче — кадр без отклика на старом телефоне), и createImageBitmap(<img>) в Chrome тоже декодирует в
+ * главном потоке — поэтому из файла (blob), 14.11. Альфа сразу умножена (premultiply) — как делал
+ * UNPACK_PREMULTIPLY_ALPHA_WEBGL для <img> (на ImageBitmap этот флаг не действует). Запрос — fetch(), как у rig.json:
+ * предзагрузка Дома (lib/font-preload.ts, preloadDoll) объявлена так же (as fetch, crossorigin), иначе файл качался
+ * бы дважды. Нет API или ошибка — <img>, как раньше.
+ */
+function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise<HTMLImageElement>((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = () => rej(new Error("texture " + url));
+    im.src = url;
+  });
+}
+function loadTexture(url: string): Promise<Tex> {
   let p = texCache.get(url);
   if (!p) {
-    p = new Promise<HTMLImageElement>((res, rej) => {
-      const im = new Image();
-      im.onload = () => res(im);
-      im.onerror = () => rej(new Error("texture " + url));
-      im.src = url;
-    });
+    p = typeof createImageBitmap === "function" && typeof fetch === "function"
+      ? fetch(url)
+          .then((r) => (r.ok ? r.blob() : Promise.reject(new Error("texture " + url))))
+          .then((b) => createImageBitmap(b, { premultiplyAlpha: "premultiply", colorSpaceConversion: "default" }) as Promise<Tex>)
+          .catch(() => loadImage(url))
+      : loadImage(url);
     p.catch(() => texCache.delete(url));
     texCache.set(url, p);
   }
   return p;
 }
-export function loadRigImages(rig: RigData, baseUrl: string): Promise<HTMLImageElement[]> {
+export function loadRigImages(rig: RigData, baseUrl: string): Promise<Tex[]> {
   return Promise.all(rig.parts.map((part) => loadTexture(asset(baseUrl + part.tex))));
 }
 /** Начать загрузку слоёв по известным именам, не дожидаясь rig.json (он 350 КБ; слои ждали его целиком). */
 export function preloadRigImages(texNames: readonly string[], baseUrl: string): void {
-  if (typeof Image === "undefined") return;
+  if (typeof window === "undefined") return;
   for (const tex of texNames) void loadTexture(asset(baseUrl + tex)).catch(() => {});
 }
 
@@ -109,13 +129,13 @@ export function preloadRigImages(texNames: readonly string[], baseUrl: string): 
  * Уменьшение — пополам за шаг (одним шагом в 16 раз браузер даёт рябь).
  */
 const scaledCache = new Map<string, TexImageSource>();
-function scaledImage(img: HTMLImageElement, key: string, factor: number): TexImageSource {
+function scaledImage(img: Tex, key: string, factor: number): TexImageSource {
   if (factor >= 1 || typeof document === "undefined") return img;
   const k = key + "@" + factor;
   const hit = scaledCache.get(k);
   if (hit) return hit;
-  const tw = Math.max(1, Math.ceil(img.naturalWidth * factor)), th = Math.max(1, Math.ceil(img.naturalHeight * factor));
-  let src: HTMLImageElement | HTMLCanvasElement = img, w = img.naturalWidth, h = img.naturalHeight;
+  const tw = Math.max(1, Math.ceil(texW(img) * factor)), th = Math.max(1, Math.ceil(texH(img) * factor));
+  let src: Tex | HTMLCanvasElement = img, w = texW(img), h = texH(img);
   while (w > tw || h > th) {
     w = Math.max(tw, Math.ceil(w / 2)); h = Math.max(th, Math.ceil(h / 2));
     const c = document.createElement("canvas");
@@ -191,7 +211,7 @@ export class RigRenderer {
     gl.getExtension("WEBGL_lose_context")?.loseContext();
   }
 
-  private upload(rig: RigData, images: HTMLImageElement[], targetPx: number) {
+  private upload(rig: RigData, images: Tex[], targetPx: number) {
     const gl = this.gl;
     gl.disableVertexAttribArray(4);
     gl.vertexAttrib2f(4, 0, 0);
@@ -227,7 +247,7 @@ export class RigRenderer {
       // пикселей текстуры на единицу рисунка у слоя и сколько нужно холсту — отсюда степень уменьшения
       const img = images[i];
       const boxW = Math.max(1, p0.box[2] - p0.box[0]);
-      const need = targetPx > 0 ? ((targetPx / rig.view[2]) * 1.5) / (img.naturalWidth / boxW) : 1;
+      const need = targetPx > 0 ? ((targetPx / rig.view[2]) * 1.5) / (texW(img) / boxW) : 1;
       const factor = need >= 1 ? 1 : 2 ** Math.ceil(Math.log2(need));
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, scaledImage(img, p0.tex, factor));
       gl.generateMipmap(gl.TEXTURE_2D);
