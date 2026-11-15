@@ -115,7 +115,7 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
           <Link
             href={sessionHref(next.text)}
             aria-label={`Начать шаг: ${next.text}`}
-            className="press grid size-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-[0_3px_0_oklch(0.5_0.14_130)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="btn-press grid size-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <Play className="size-[18px] translate-x-[1px] fill-current" aria-hidden="true" />
           </Link>
@@ -262,7 +262,7 @@ export function DealsScreen() {
           <button
             type="submit"
             disabled={!found.length}
-            className="press inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-full bg-primary px-4 text-[14.5px] font-bold text-primary-foreground disabled:opacity-45"
+            className="btn-press inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-[14px] bg-primary px-4 text-[14.5px] font-bold text-primary-foreground disabled:opacity-45"
           >
             <Plus className="size-4" strokeWidth={3} aria-hidden="true" />
             {found.length > 1 ? `Разложить на ${found.length} ${found.length < 5 ? "дела" : "дел"}` : "Положить в Дела"}

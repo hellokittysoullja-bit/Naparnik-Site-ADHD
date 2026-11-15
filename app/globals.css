@@ -2012,3 +2012,38 @@ body[data-home-camp] .glass-nav {
 .deals-orb:active { transform: translateY(3px); box-shadow: 0 0 0 #b5a175, 0 6px 14px -8px rgb(0 0 0 / 0.6); }
 .deals-orb[data-active] { box-shadow: 0 3px 0 #b5a175, 0 0 0 3px var(--background), 0 0 0 5px var(--primary); }
 @media (prefers-reduced-motion: reduce) { .deals-orb, .deals-orb:active { transition: none; transform: none; } }
+
+/* Нажимная кнопка одним элементом — тот же стандарт, что .btn-chunky (губа из primary, проседание на 4 px за 45 мс,
+   отпускание за 110 мс). Для <Button> по умолчанию и для мелких зелёных кнопок, у которых нет обёртки .btn-face.
+   ::after продлевает зону касания вверх на высоту губы: кнопка уходит вниз, палец с её верхнего края не соскальзывает */
+.btn-press {
+  --lip: oklch(0.66 0.19 131);
+  --lip: oklch(from var(--primary) calc(l - 0.2) calc(c * 0.92) h);
+  position: relative;
+  box-shadow: 0 4px 0 var(--lip);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  transition:
+    transform 110ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 110ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 150ms ease,
+    opacity 150ms ease;
+}
+.btn-press::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0 0 0;
+}
+.btn-press:active:not(:disabled):not([aria-disabled="true"]) {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 var(--lip);
+  transition-duration: 45ms;
+}
+@media (hover: hover) {
+  .btn-press:hover:not(:disabled) { filter: brightness(1.06); }
+}
+.btn-press:disabled { box-shadow: 0 4px 0 oklch(0.28 0.01 130); }
+@media (prefers-reduced-motion: reduce) {
+  .btn-press, .btn-press:active:not(:disabled) { transition: none; transform: none; }
+}

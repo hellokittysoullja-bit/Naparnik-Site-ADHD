@@ -1233,7 +1233,7 @@ export function FocusSession() {
               size="lg"
               onClick={() => void start()}
               disabled={!task.trim() || breaking}
-              className="w-full font-semibold"
+              className="h-14 w-full text-[17px]"
             >
               Начали. Я рядом
             </Button>
@@ -1433,7 +1433,7 @@ export function FocusSession() {
                   placeholder="Что пришло в голову?"
                   className="h-11 min-w-0 flex-1 rounded-xl bg-white/5 px-3 text-base outline-none ring-1 ring-white/15 focus:ring-primary/60"
                 />
-                <button type="submit" disabled={!thought.trim()} className="press h-11 shrink-0 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+                <button type="submit" disabled={!thought.trim()} className="btn-press h-11 shrink-0 rounded-xl bg-primary px-3.5 text-sm font-bold text-primary-foreground disabled:opacity-50">
                   В Дела
                 </button>
               </form>
@@ -1471,8 +1471,10 @@ export function FocusSession() {
     const bm = String(Math.floor(breakLeft / 60)).padStart(2, '0')
     const bs = String(breakLeft % 60).padStart(2, '0')
     return (
-      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-5 px-4 py-8">
+      // кот и время — по центру свободного места, кнопки прижаты к низу над меню: в зоне большого пальца (Hoober)
+      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center gap-5 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-8">
         <h1 className="sr-only">Перерыв</h1>
+        <div className="flex flex-1 flex-col items-center justify-center gap-5">
         <MascotSvg expression="sleepy" label="Напарник отдыхает" size={160} />
         <div className="text-center">
           <p className="text-4xl font-bold tabular-nums">{breakLeft > 0 ? `${bm}:${bs}` : 'Отдохнули'}</p>
@@ -1480,10 +1482,11 @@ export function FocusSession() {
             {breakLeft > 0 ? 'Встань, попей воды, посмотри в окно. Я подремлю.' : 'Продолжим? Можно и не продолжать.'}
           </p>
         </div>
+        </div>
         <div className="flex w-full flex-col gap-2">
           <Button
             size="lg"
-            className="h-auto py-3 font-semibold whitespace-normal"
+            className="h-auto min-h-14 py-3 text-[17px] whitespace-normal"
             onClick={() => {
               setGrownElement(null)
               if (nextUp.step) void start(nextUp.step)
