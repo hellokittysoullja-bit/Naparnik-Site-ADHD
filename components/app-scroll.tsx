@@ -118,6 +118,32 @@ export function AppScroll({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // Память — одна на все вкладки (localStorage), а экраны узнают об изменениях по событию naparnik:memory, которое шлёт
+  // только своя вкладка. Две вкладки расходились: в одной отметил шаг — в другой он висел несделанным до перезагрузки.
+  // Браузер сам сообщает другим вкладкам о записи (событие storage) — передаём его экранам тем же сигналом. Так же
+  // при возврате кнопкой «Назад» из кэша браузера (bfcache): страница показывается замороженной, какой её оставили, —
+  // просим экраны перечитать память. Сервис-воркер (работа без сети) ставим на всех экранах /app, а не только на Доме
+  useEffect(() => {
+    const ping = () => window.dispatchEvent(new CustomEvent('naparnik:memory'))
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key.startsWith('naparnik:')) ping()
+    }
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) ping()
+    }
+    window.addEventListener('storage', onStorage)
+    window.addEventListener('pageshow', onShow)
+    if ('serviceWorker' in navigator) {
+      const reg = () => void navigator.serviceWorker.register('/sw.js').catch(() => {})
+      if (document.readyState === 'complete') reg()
+      else window.addEventListener('load', reg, { once: true })
+    }
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener('pageshow', onShow)
+    }
+  }, [])
+
   // клавиатура iPhone сдвигает видимую часть документа; после неё возвращаем на место — документ не прокручивается
   useEffect(() => {
     const back = () =>
