@@ -1794,3 +1794,256 @@ body[data-home-camp] .glass-nav {
   filter: drop-shadow(0 0 calc((var(--focus-cat) + 2rem) * 4 / 156) color-mix(in oklab, var(--primary) 38%, transparent));
   will-change: transform;
 }
+
+/* Пилюля «Фокус · ещё N мин» (прототип этапа 2): приезжает сверху пружиной один раз — ответ на событие «ушёл из
+   сессии», дальше стоит неподвижно (без пульсации, CLAUDE.md §3) */
+@keyframes nav-pill-in { from { transform: translate(-50%, -140%); opacity: 0 } to { transform: translate(-50%, 0); opacity: 1 } }
+.nav-session-pill { animation: nav-pill-in 380ms cubic-bezier(0.05, 0.7, 0.1, 1) both; }
+@media (prefers-reduced-motion: reduce) { .nav-session-pill { animation: none; } }
+
+/* ==========================================================================
+   «Лучшее из восьми» (ветка claude/best-of-eight). Всё движение — transform/opacity (CLAUDE.md §5.5 «Плавность»).
+   ========================================================================== */
+
+/* Нижний лист: плотная тёмная панель без размытия (под ним затемнённый экран — размывать нечего) */
+.sheet-panel {
+  background: linear-gradient(180deg, oklch(0.235 0.016 130) 0%, oklch(0.185 0.014 130) 100%);
+  border-top: 1px solid oklch(1 0 0 / 0.14);
+  box-shadow: 0 -18px 50px -18px oklch(0 0 0 / 0.7);
+}
+
+/* Ползунок размера шагов: три деления, заполнение до бегунка */
+.fineness-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.fineness-range::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--primary) calc(var(--i) * 50%), oklch(1 0 0 / 0.12) calc(var(--i) * 50%));
+}
+.fineness-range::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--primary) calc(var(--i) * 50%), oklch(1 0 0 / 0.12) calc(var(--i) * 50%));
+}
+.fineness-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 28px;
+  height: 28px;
+  margin-top: -10px;
+  border-radius: 50%;
+  background: oklch(0.97 0.005 100);
+  border: 3px solid var(--primary);
+  box-shadow: 0 2px 0 oklch(0.4 0.1 130), 0 6px 14px -4px oklch(0 0 0 / 0.6);
+}
+.fineness-range::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: oklch(0.97 0.005 100);
+  border: 3px solid var(--primary);
+}
+.fineness-range:focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; border-radius: 12px; }
+
+/* Переключатель просьбы */
+.switch {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: oklch(1 0 0 / 0.14);
+  transition: background-color 160ms ease;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: oklch(0.97 0.005 100);
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.switch-on { background: var(--primary); }
+.switch-on::after { transform: translateX(18px); background: oklch(0.2 0.03 130); }
+
+/* Праздник на отметку шага (Numo: «it now lifts, crosses out and sends a burst… up over your list»). Строка
+   приподнимается и садится, черта проводится слева направо, семь искр-четырёхлучек (тот же знак, что звёздочки в
+   глазах кота) взлетают веером и гаснут. Один раз на событие «сделал», ~0,9 с. */
+@keyframes step-lift {
+  0% { transform: translateY(0) scale(1); }
+  35% { transform: translateY(-5px) scale(1.025); }
+  100% { transform: translateY(0) scale(1); }
+}
+@keyframes step-strike { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes step-check-pop {
+  0% { transform: scale(0.4); }
+  60% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+@keyframes spark-fly {
+  0% { transform: translate(0, 0) scale(0.2) rotate(0deg); opacity: 0; }
+  18% { opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(var(--s)) rotate(var(--r)); opacity: 0; }
+}
+.step-row[data-burst] { animation: step-lift 420ms cubic-bezier(0.22, 1, 0.36, 1); }
+.step-row[data-burst] .step-check { animation: step-check-pop 380ms cubic-bezier(0.22, 1.4, 0.36, 1); }
+.step-strike { position: relative; }
+.step-strike::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 52%;
+  height: 2px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--reward) 80%, transparent);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+.step-row[data-done] .step-strike::after { transform: scaleX(1); }
+.step-row[data-burst] .step-strike::after { animation: step-strike 320ms 80ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.sparks { position: absolute; left: 22px; top: 50%; width: 0; height: 0; pointer-events: none; }
+.spark {
+  position: absolute;
+  left: -7px;
+  top: -7px;
+  width: 14px;
+  height: 14px;
+  opacity: 0;
+  background: var(--c, var(--reward));
+  clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+  animation: spark-fly 760ms cubic-bezier(0.16, 0.8, 0.3, 1) var(--d, 0ms) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .step-row[data-burst], .step-row[data-burst] .step-check, .step-row[data-burst] .step-strike::after { animation: none; }
+  .spark { display: none; }
+}
+
+/* Карточки после сессии (Shimmer: «Session summaries & insight cards» — три цветные карточки внахлёст под наклоном).
+   Каждая падает на своё место с поворотом, по очереди через 90 мс. Цвет — плотная заливка своего оттенка, текст тёмный:
+   контраст ≥ 7:1 на всех трёх. */
+@keyframes win-card-in {
+  from { transform: translateY(26px) rotate(calc(var(--tilt) * 3)) scale(0.92); opacity: 0; }
+  to { transform: translateY(0) rotate(var(--tilt)) scale(1); opacity: 1; }
+}
+.win-card {
+  transform: rotate(var(--tilt));
+  background: linear-gradient(160deg, oklch(0.9 0.11 var(--hue)) 0%, oklch(0.8 0.13 var(--hue)) 100%);
+  color: oklch(0.22 0.05 var(--hue));
+  box-shadow: 0 3px 0 oklch(0.55 0.11 var(--hue)), 0 14px 24px -14px oklch(0 0 0 / 0.75);
+  animation: win-card-in 460ms cubic-bezier(0.2, 1.1, 0.3, 1) var(--d, 0ms) both;
+}
+@media (prefers-reduced-motion: reduce) { .win-card { animation: none; } }
+
+/* Плашка звука на экране фокуса: три столбика «играет» (как эквалайзер у плашки «Lo-fi beats» в Tiimo) — движутся
+   только пока звук действительно идёт */
+@keyframes eq-bar { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
+.eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
+.eq i { width: 2.5px; height: 12px; border-radius: 2px; background: currentColor; transform: scaleY(0.35); transform-origin: bottom; }
+.eq[data-on] i { animation: eq-bar 900ms ease-in-out infinite; }
+.eq[data-on] i:nth-child(2) { animation-duration: 700ms; animation-delay: -200ms; }
+.eq[data-on] i:nth-child(3) { animation-duration: 1100ms; animation-delay: -450ms; }
+@media (prefers-reduced-motion: reduce) { .eq[data-on] i { animation: none; transform: scaleY(0.7); } }
+
+/* Искра на конце тающей дуги (Tiimo: звёздочка на головке дуги таймера). Обёртка поворачивается вместе со временем —
+   transform на HTML-элементе, видеокарта */
+.focus-ring-head { position: absolute; left: -1rem; top: -1rem; width: calc(100% + 2rem); height: calc(100% + 2rem); pointer-events: none; }
+.focus-ring-head span {
+  position: absolute;
+  left: 50%;
+  top: calc(6 / 156 * 100%);
+  width: 15px;
+  height: 15px;
+  margin: -7.5px 0 0 -7.5px;
+  background: oklch(0.98 0.03 110);
+  clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+}
+
+/* Затемнение мира на время сессии (Focus Friend: комната гаснет в серый, остаются персонаж и цифры) */
+@keyframes focus-dim-in { from { opacity: 0; } to { opacity: 1; } }
+.focus-dim { animation: focus-dim-in 1100ms ease-out both; }
+@media (prefers-reduced-motion: reduce) { .focus-dim { animation: none; } }
+
+/* Карточка дела в ленте дня: плотная, без размытия (карточек много, размытие каждой — дорого на слабом телефоне) */
+.deal-card {
+  background: linear-gradient(160deg, oklch(0.26 0.016 130 / 0.94) 0%, oklch(0.215 0.014 130 / 0.94) 100%);
+  border: 1px solid oklch(1 0 0 / 0.1);
+  border-top-color: oklch(1 0 0 / 0.17);
+  box-shadow: 0 2px 0 oklch(0 0 0 / 0.25);
+}
+.deal-card-now { border-color: color-mix(in oklab, var(--reward) 38%, transparent); }
+
+/* Каталог «боль → приём»: своё ночное небо градиентом (без видео — страница читается, а не смотрится) */
+.pains-sky {
+  background:
+    radial-gradient(120% 70% at 85% -10%, oklch(0.3 0.07 200 / 0.55) 0%, transparent 60%),
+    radial-gradient(90% 60% at 0% 0%, oklch(0.26 0.07 285 / 0.5) 0%, transparent 65%),
+    linear-gradient(180deg, oklch(0.165 0.02 250) 0%, var(--background) 70%);
+}
+.phone-frame {
+  padding: 8px;
+  border-radius: 34px;
+  background: linear-gradient(160deg, oklch(0.34 0.015 250) 0%, oklch(0.2 0.012 250) 100%);
+  box-shadow: 0 0 0 1px oklch(1 0 0 / 0.14), 0 30px 60px -30px oklch(0 0 0 / 0.9), 0 0 80px -30px oklch(0.8 0.15 var(--hue, 130) / 0.5);
+}
+.doubt {
+  background: linear-gradient(160deg, oklch(0.27 0.03 88 / 0.5) 0%, oklch(0.2 0.014 130 / 0.6) 60%);
+  border: 1px solid oklch(0.85 0.15 88 / 0.22);
+}
+
+/* Круглая кнопка «Дела» справа от меню (как отдельный круг у Tiimo). Бумага записок Дома, губа снизу как у записок;
+   на своём экране — лаймовое кольцо вместо подсветки вкладки */
+.deals-orb {
+  background: linear-gradient(#f4ecd6, #e9ddbf);
+  color: #3b2f1c;
+  box-shadow: 0 3px 0 #b5a175, 0 10px 22px -10px rgb(0 0 0 / 0.6);
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 110ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 110ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.deals-orb:active { transform: translateY(3px); box-shadow: 0 0 0 #b5a175, 0 6px 14px -8px rgb(0 0 0 / 0.6); }
+.deals-orb[data-active] { box-shadow: 0 3px 0 #b5a175, 0 0 0 3px var(--background), 0 0 0 5px var(--primary); }
+@media (prefers-reduced-motion: reduce) { .deals-orb, .deals-orb:active { transition: none; transform: none; } }
+
+/* Нажимная кнопка одним элементом — тот же стандарт, что .btn-chunky (губа из primary, проседание на 4 px за 45 мс,
+   отпускание за 110 мс). Для <Button> по умолчанию и для мелких зелёных кнопок, у которых нет обёртки .btn-face.
+   ::after продлевает зону касания вверх на высоту губы: кнопка уходит вниз, палец с её верхнего края не соскальзывает */
+.btn-press {
+  --lip: oklch(0.66 0.19 131);
+  --lip: oklch(from var(--primary) calc(l - 0.2) calc(c * 0.92) h);
+  position: relative;
+  box-shadow: 0 4px 0 var(--lip);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  transition:
+    transform 110ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 110ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 150ms ease,
+    opacity 150ms ease;
+}
+.btn-press::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0 0 0;
+}
+.btn-press:active:not(:disabled):not([aria-disabled="true"]) {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 var(--lip);
+  transition-duration: 45ms;
+}
+@media (hover: hover) {
+  .btn-press:hover:not(:disabled) { filter: brightness(1.06); }
+}
+.btn-press:disabled { box-shadow: 0 4px 0 oklch(0.28 0.01 130); }
+@media (prefers-reduced-motion: reduce) {
+  .btn-press, .btn-press:active:not(:disabled) { transition: none; transform: none; }
+}

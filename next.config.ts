@@ -112,6 +112,7 @@ const nextConfig: NextConfig = {
       immutable('/fonts/:path*'),
       immutable('/mascot/:path*'),
       immutable('/scene/:path*'),
+      immutable('/pomogaet/:path*'),
       {
         source: '/:path*',
         headers: [

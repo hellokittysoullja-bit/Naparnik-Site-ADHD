@@ -8,7 +8,10 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
+        // Общий стандарт главной зелёной кнопки — нажимная, как «Разломать на шаг» (.btn-chunky): губа снизу, при
+        // нажатии кнопка проседает на её высоту. Один элемент без обёртки (app/globals.css, .btn-press), чтобы все
+        // старые <Button> стали такими без переделки разметки и без сдвига вёрстки (губа — тень, места не занимает)
+        default: "btn-press rounded-[14px] bg-primary font-bold text-primary-foreground",
         outline: "glass glass-interactive text-foreground",
         secondary: "glass glass-interactive text-foreground",
         ghost:

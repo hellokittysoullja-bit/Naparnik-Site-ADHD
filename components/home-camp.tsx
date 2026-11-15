@@ -3,7 +3,8 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PawPrint, Sprout } from "lucide-react";
+import { PawPrint, Sprout, Zap } from "lucide-react";
+import { splitDump, upsertDeal } from "@/lib/deals";
 import { NightScene } from "@/components/landing/night-scene";
 import { Knoll, Moon } from "@/components/hero-scene";
 import { MascotDoll } from "@/components/mascot-doll";
@@ -82,8 +83,14 @@ export function HomeCamp() {
   // до чтения памяти строки нет, но её место занято (h-11 ниже): появится на своём месте, ничего не сдвинув
   const hint = data ? homeHint(profile) : null;
   // пустое поле — дробится дело из ответов знакомства (сфера + помеха), чтобы кнопка никогда не вела в никуда
-  const target = text.trim() || homeFallbackTask(sphere, profile);
+  // Этап 2 (research/24 A №5): можно вывалить несколько дел через запятую — кот берёт первое сейчас, остальные кладёт в «Дела»
+  const dump = splitDump(text);
+  const many = dump.length > 1;
+  const target = (many ? dump[0] : text.trim()) || homeFallbackTask(sphere, profile);
   const href = target ? breakHref(target) : "/app/session";
+  const keepRest = () => {
+    if (many) for (const d of dump.slice(1)) upsertDeal(d);
+  };
 
   return (
     <main className="relative h-dvh overflow-hidden">
@@ -126,6 +133,7 @@ export function HomeCamp() {
             className="mt-3"
             onSubmit={(e) => {
               e.preventDefault();
+              keepRest();
               router.push(href);
             }}
           >
@@ -162,11 +170,18 @@ export function HomeCamp() {
           {/* строка над кнопкой по двум ответам знакомства (25 вариантов, без ответов — общая); место под две строки
               занято всегда, поэтому строка любой длины не сдвигает ни кота, ни кнопки */}
           <div className="mt-2.5 flex h-11 items-center justify-center">
-            {hint && <p className="mx-auto line-clamp-2 max-w-[34ch] text-balance text-[16px] font-bold leading-[22px] text-[oklch(0.93_0.04_90)]">{hint}</p>}
+            {many ? (
+              <p className="mx-auto line-clamp-2 max-w-[34ch] text-balance text-[15px] font-bold leading-[21px] text-[oklch(0.93_0.04_90)]">
+                Возьму «{dump[0].slice(0, 24)}» сейчас, остальное ({dump.length - 1}) положу в Дела
+              </p>
+            ) : (
+              hint && <p className="mx-auto line-clamp-2 max-w-[34ch] text-balance text-[16px] font-bold leading-[22px] text-[oklch(0.93_0.04_90)]">{hint}</p>
+            )}
           </div>
 
           <Link
             href={href}
+            onClick={keepRest}
             // iOS Safari включает :active только при наличии touch-слушателя
             onTouchStart={() => {}}
             className="btn-chunky mt-3 block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -176,16 +191,31 @@ export function HomeCamp() {
             </span>
           </Link>
 
-          <Link
-            href="/app/chat"
-            onTouchStart={() => {}}
-            className="btn-paper mt-5 [@media(max-height:620px)]:mt-3 block w-full select-none rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
-            <span className="btn-paper-face flex h-[52px] items-center justify-center rounded-[14px] px-12 text-[18px] font-bold">
-              <PawPrint className="absolute left-[18px] top-1/2 size-6 -translate-y-1/2 fill-[#6b4e2a] text-[#6b4e2a] opacity-70" aria-hidden="true" />
-              Поговорить с котом
-            </span>
-          </Link>
+          {/* Этап 2 (research/24 A №9): рядом с «Поговорить с котом» — «Не могу начать»: кот спросит, что происходит, и
+              подберёт первый шаг под это (Procrastination Wizard у Amazing Marvin). Две записки в один ряд — блок той же высоты */}
+          <div className="mt-5 grid grid-cols-2 gap-2 [@media(max-height:620px)]:mt-3">
+            <Link
+              href="/app/chat"
+              aria-label="Поговорить с котом"
+              onTouchStart={() => {}}
+              className="btn-paper block w-full select-none rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              <span className="btn-paper-face flex h-[52px] items-center justify-center gap-1.5 rounded-[14px] px-2 text-[15px] font-bold">
+                <PawPrint className="size-5 shrink-0 fill-[#6b4e2a] text-[#6b4e2a] opacity-70" aria-hidden="true" />
+                Поговорить
+              </span>
+            </Link>
+            <Link
+              href={`/app/stuck${text.trim() ? `?task=${encodeURIComponent(target)}` : ""}`}
+              onTouchStart={() => {}}
+              className="btn-paper block w-full select-none rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              <span className="btn-paper-face flex h-[52px] items-center justify-center gap-1.5 rounded-[14px] px-2 text-[15px] font-bold">
+                <Zap className="size-5 shrink-0 fill-[#6b4e2a] text-[#6b4e2a] opacity-70" aria-hidden="true" />
+                Не могу начать
+              </span>
+            </Link>
+          </div>
           </div>
         </section>
         {/* сцена: кот по центру на холме, костёр слева от него */}

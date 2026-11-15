@@ -3,12 +3,32 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Button } from '@/components/ui/button'
 import { MascotDoll as MascotSvg } from '@/components/mascot-doll'
 import { EmphasisText } from '@/components/emphasis-text'
 import { RevealIsland, type RevealNewItem } from '@/components/reveal-island'
-import { ChevronRight, Sparkles } from 'lucide-react'
+import { BatteryFull, BatteryLow, BatteryMedium, Eye, EyeOff, LayoutList, NotebookPen, Pause, Play, SlidersHorizontal, Sparkles } from 'lucide-react'
+import dynamic from 'next/dynamic'
+import { SoundChip, type SoundChoice } from '@/components/sound-chip'
+import type { Fineness } from '@/components/breakdown-prefs'
+import type { Template } from '@/lib/templates'
+
+// Листы, карточки итога и напоминание нужны не всем и не сразу: грузятся отдельно, когда до них дошло дело.
+// Иначе первый пакет кода Фокуса вырастал на 16 КБ и выходил за предел (e2e/bundle-budget.spec.ts)
+const TemplatesSheet = dynamic(() => import('@/components/templates-sheet').then((m) => m.TemplatesSheet), { ssr: false })
+const BreakdownPrefs = dynamic(() => import('@/components/breakdown-prefs').then((m) => m.BreakdownPrefs), { ssr: false })
+const WinCards = dynamic(() => import('@/components/win-cards').then((m) => m.WinCards), { ssr: false })
+const TgRemind = dynamic(() => import('@/components/tg-remind').then((m) => m.TgRemind), { ssr: false })
+const FINENESS_KEY = 'naparnik:fineness'
+function readFineness(): Fineness {
+  try {
+    const v = window.localStorage.getItem(FINENESS_KEY)
+    return v === 'coarse' || v === 'fine' ? v : 'normal'
+  } catch {
+    return 'normal'
+  }
+}
 import {
   addFind,
   clearActiveSession,
@@ -41,14 +61,29 @@ import {
   type Rarity,
 } from '@/lib/island-elements'
 import { playStartSigh } from '@/lib/reward-sound'
-import { startCampfire, stopCampfire } from '@/lib/ambient'
+import { startAmbient, stopAmbient } from '@/lib/ambient'
 import { hapticDone, hapticStart, hapticThreshold } from '@/lib/haptics'
 import { trimLabel } from '@/lib/utils'
 import { FIRST_MINUTES } from '@/lib/onboarding'
 import { trackEvent } from '@/lib/events'
 import { withAttribution } from '@/lib/visitor'
+import { addCard, addThought, markStepDone, nextAfter, updateCard, upsertDeal } from '@/lib/deals'
 
-const durations = [15, 25, 45]
+// 5 минут — «просто начать» (этап 1, research/24 C: слепота ко времени, порог старта); оценка шага сама выбирает длительность
+const durations = [5, 15, 25, 45]
+const pickDuration = (m: number) => (m <= 5 ? 5 : m <= 15 ? 15 : m <= 25 ? 25 : 45)
+type BStep = { text: string; minutes?: number; wait?: boolean }
+/** «Сколько сил сейчас?» — вопрос перед дроблением (Tiimo Co-Planner: «First, how's your energy right now? Then, we'll
+ *  choose our first simple task»; research/25-deep-teardowns/img/tiimo-appstore-5.jpg). От ответа зависит размер шага */
+type Energy = 'low' | 'mid' | 'high'
+const ENERGY: { key: Energy; label: string; hint: string; icon: typeof BatteryLow; hue: number }[] = [
+  { key: 'low', label: 'Почти нет', hint: 'шаг на минуту, можно лёжа', icon: BatteryLow, hue: 25 },
+  { key: 'mid', label: 'Средне', hint: 'обычный маленький шаг', icon: BatteryMedium, hue: 88 },
+  { key: 'high', label: 'Много', hint: 'шаг покрупнее, минут на пять', icon: BatteryFull, hue: 150 },
+]
+const SOUND_KEY = 'naparnik:sound'
+const HOW_WAS_KEY = 'naparnik:howWas'
+const endClock = (ms: number) => new Date(ms).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 
 // Русская плюрализация «N ненайденных находок»: без неё тизер на малых
 // остатках («ещё 2 ненайденных находок») читается машинным — ровно в момент,
@@ -118,7 +153,7 @@ async function fetchVoice(moment: Moment, task: string): Promise<string> {
   }
 }
 
-type Phase = 'setup' | 'starting' | 'running' | 'done'
+type Phase = 'setup' | 'starting' | 'running' | 'done' | 'break'
 
 const AUTO_START_KEY = 'naparnik:autoStart'
 /** Первый шаг — «крошечный и конкретный»: 120 знаков хватает с запасом, а экран сессии не уезжает вбок */
@@ -207,42 +242,152 @@ export function FocusSession() {
   // «Раздроби мне задачу»: человек пишет большое пугающее дело —
   // AI возвращает 3 крошечных шага. Task initiation — главный
   // bottleneck СДВГ; выбор готового микрошага снимает стену.
-  const [brokenSteps, setBrokenSteps] = useState<string[] | null>(null)
+  const [brokenSteps, setBrokenSteps] = useState<BStep[] | null>(null)
+  // дело целиком («Курсовая по логистике»): шаги дробления лежат в «Делах» под этим названием
+  const [dealTitle, setDealTitle] = useState<string | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+  // «Не то» без потери: убранный шаг можно вернуть одной кнопкой (research/24 C)
+  const [dropped, setDropped] = useState<{ step: BStep; index: number } | null>(null)
+  const [finerError, setFinerError] = useState(false)
+  // оценка выбранного шага в минутах (если модель её дала) — сама ставит длительность
+  const [estimate, setEstimate] = useState<number | null>(null)
   const [breaking, setBreaking] = useState(false)
+  const [energy, setEnergy] = useState<Energy | null>(null)
+  const [energyAsk, setEnergyAsk] = useState(false)
+  const [fineness, setFineness] = useState<Fineness>('normal')
+  useEffect(() => setFineness(readFineness()), [])
+  const [templatesOpen, setTemplatesOpenRaw] = useState(false)
+  const [prefsOpen, setPrefsOpenRaw] = useState(false)
+  const [sheetsUsed, setSheetsUsed] = useState({ templates: false, prefs: false })
+  const setTemplatesOpen = (v: boolean) => {
+    if (v) setSheetsUsed((u) => ({ ...u, templates: true }))
+    setTemplatesOpenRaw(v)
+  }
+  const setPrefsOpen = (v: boolean) => {
+    if (v) setSheetsUsed((u) => ({ ...u, prefs: true }))
+    setPrefsOpenRaw(v)
+  }
   // Раньше сетевая ошибка просто отпускала кнопку без следа — человек не
   // понимал, сработало дробление или нет, и был вынужден жать вслепую ещё
   // раз. Теперь ошибка видима и даёт явный повтор (WCAG Status Messages).
   const [breakError, setBreakError] = useState(false)
   // кризисный текст в поле дела: обвязка вернула проверенный бережный ответ с телефонами помощи вместо шагов
   const [careReply, setCareReply] = useState<string | null>(null)
-  async function breakDown() {
-    if (!task.trim() || breaking) return
+  function applyEstimate(m?: number) {
+    setEstimate(m ?? null)
+    if (m) {
+      setMinutes(pickDuration(m))
+      setDurationTouched(true)
+    }
+  }
+  function selectStep(st: BStep) {
+    if (st.text !== task) hapticThreshold()
+    setTask(st.text)
+    applyEstimate(st.minutes)
+    setEditing(false)
+  }
+  /** Дробление: первый раз — всего дела; «Ещё мельче» — выбранного шага, его подшаги встают на его место */
+  function applyTemplate(t: Template) {
+    const list: BStep[] = t.steps.map((x) => ({ text: x.text, minutes: x.minutes, wait: x.wait }))
+    setTemplatesOpen(false)
+    setEnergyAsk(false)
+    setBreakError(false)
+    setCareReply(null)
+    setDropped(null)
+    setDealTitle(t.title)
+    setBrokenSteps(list)
+    setShowAll(false)
+    selectStep(list[0])
+    upsertDeal(t.title, list)
+  }
+  /** Первое дробление дела: готовое дело — шаги сразу; иначе сначала один вопрос про силы (один раз за визит) */
+  async function requestBreak() {
+    // список готовых дел подгружается только здесь (он не нужен, пока человек ничего не дробит)
+    const tpl = await import('@/lib/templates').then((m) => m.findTemplate(task)).catch(() => null)
+    if (tpl) applyTemplate(tpl)
+    else if (energy) void breakDown()
+    else setEnergyAsk(true)
+  }
+  function chooseEnergy(e: Energy) {
+    hapticThreshold()
+    setEnergy(e)
+    setEnergyAsk(false)
+    void breakDown(false, e)
+  }
+  async function breakDown(finer = false, e: Energy | null = energy) {
+    const target = task.trim()
+    if (!target || breaking) return
     setBreaking(true)
     setBreakError(false)
+    setFinerError(false)
+    setDropped(null)
     try {
       const res = await fetch('/api/breakdown', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: task.trim(), memory: memoryForTask() }),
+        body: JSON.stringify({ task: target, memory: memoryForTask(), energy: e ?? undefined, fineness: finer ? 'fine' : fineness === 'normal' ? undefined : fineness }),
       })
       if (res.ok) {
-        const data = (await res.json()) as { steps: string[] | null; reply?: string; source?: string }
+        const data = (await res.json()) as { steps: string[] | null; minutes?: (number | null)[]; reply?: string; source?: string }
         if (data.reply) setCareReply(data.reply)
-        else if (data.steps) {
-          setBrokenSteps(data.steps)
+        else if (data.steps && data.steps.length) {
+          const fresh: BStep[] = data.steps.map((t, i) => ({ text: t, minutes: data.minutes?.[i] ?? undefined }))
+          const title = finer && dealTitle ? dealTitle : target
+          let list = fresh
+          if (finer && brokenSteps) {
+            const i = brokenSteps.findIndex((b) => b.text === target)
+            list = [...brokenSteps.slice(0, Math.max(0, i)), ...fresh, ...brokenSteps.slice(i + 1)]
+          }
+          setDealTitle(title)
+          setBrokenSteps(list)
+          setShowAll(false)
+          selectStep(fresh[0])
+          // сил почти нет, а оценки шага модель не дала — ставим 5 минут сами: «просто начать»
+          if (e === 'low' && !fresh[0].minutes && !durationTouched) setMinutes(5)
+          // все шаги дела — в «Дела»: следующий будет ждать там и на финале
+          upsertDeal(title, list)
           // шаги сделаны с навыками, подходящими к делу: отмечаем их «применён», старт в ближайшие полчаса зачтётся им
           // (тот же учёт, что в чате; lib/memory.ts markSkillsShown)
-          if (data.source === 'model') markSkillsShown(task.trim())
+          if (data.source === 'model') markSkillsShown(target)
         }
         else setBreakError(true)
       } else {
-        setBreakError(true)
+        if (finer) setFinerError(true)
+        else setBreakError(true)
       }
     } catch {
-      setBreakError(true)
+      if (finer) setFinerError(true)
+      else setBreakError(true)
     } finally {
       setBreaking(false)
     }
+  }
+  function dropStep() {
+    if (!brokenSteps || !dealTitle) return
+    const i = Math.max(0, brokenSteps.findIndex((b) => b.text === task))
+    const list = brokenSteps.filter((_, k) => k !== i)
+    if (!list.length) return
+    setDropped({ step: brokenSteps[i], index: i })
+    setBrokenSteps(list)
+    upsertDeal(dealTitle, list)
+    selectStep(list[Math.min(i, list.length - 1)])
+  }
+  function undoDrop() {
+    if (!dropped || !brokenSteps || !dealTitle) return
+    const list = [...brokenSteps.slice(0, dropped.index), dropped.step, ...brokenSteps.slice(dropped.index)]
+    setBrokenSteps(list)
+    upsertDeal(dealTitle, list)
+    selectStep(dropped.step)
+    setDropped(null)
+  }
+  function renameStep(text: string) {
+    if (!brokenSteps || !dealTitle) return
+    const i = Math.max(0, brokenSteps.findIndex((b) => b.text === task))
+    const list = brokenSteps.map((b, k) => (k === i ? { text } : b))
+    setBrokenSteps(list)
+    setTask(text)
+    setEstimate(null)
   }
   const [minutes, setMinutes] = useState(initialMinutes)
   // #7 · Default Effect: пока человек сам не тронул длительность, чип 25
@@ -272,10 +417,6 @@ export function FocusSession() {
 
   // Ритуал завершения: план на завтра на пике дофамина.
   // Форма свёрнута: пик отдан находке, план — по желанию (не обязанность).
-  const [tomorrowTask, setTomorrowTask] = useState('')
-  const [tomorrowStep, setTomorrowStep] = useState('')
-  const [planSaved, setPlanSaved] = useState(false)
-  const [planFormOpen, setPlanFormOpen] = useState(false)
 
   // «Ещё разок» на пике (one-more-time hook): следующая цель острова и
   // следующий микрошаг из очереди дробления видны прямо на финальном экране —
@@ -289,19 +430,6 @@ export function FocusSession() {
     tease: string | null
   }>({ step: null, queueTask: null, tease: null })
 
-  // Раскрытие формы добавляет ~140px под сгиб (2 поля + кнопка + CTA
-  // «Ещё одна сессия» ниже) — без автоскролла кнопка сохранения формы
-  // и следующая за ней CTA утыкаются в fixed-нав без подсказки, что
-  // нужно проскроллить. Скроллим к концу документа, а не scrollIntoView
-  // на саму форму: элемент оказывается «уже в зоне видимости» по расчёту
-  // браузера ещё до появления кнопок под ним, и scrollIntoView тогда
-  // молча не скроллит вовсе — эмпирически проверено, не только в теории.
-  useEffect(() => {
-    if (planFormOpen) {
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
-    }
-  }, [planFormOpen])
-
   // Защита состояния потока: пока идёт сессия, нижний таб-бар (Дом/Мир)
   // — это всегда видимая рампа выхода ровно в тот момент, когда мы держим
   // человека в фокусе. Flow требует убрать конкурирующие affordance'ы
@@ -311,18 +439,20 @@ export function FocusSession() {
   // возвращается — уйти на выросший остров как раз желанно.
   // Нав живёт в layout, фаза — здесь, поэтому связь через data-атрибут body.
   // useLayoutEffect: атрибут должен стоять до первой отрисовки — иначе при входе прямо в старт меню мелькает
+  // Последовательное раскрытие: сначала находка одна на экране
+  // (пик без конкурентов), потом появляются план и кнопки
+  const [restRevealed, setRestRevealed] = useState(false)
   useLayoutEffect(() => {
-    const immersive = phase === 'starting' || phase === 'running'
+    // Меню возвращается не в момент финала, а когда находка отыграла: главная кнопка «Сделал» стоит внизу экрана,
+    // и второй тап по ней попадал бы во вкладку меню, выросшую на её месте, мимо пика награды (e2e «двойной тап»)
+    const immersive = phase === 'starting' || phase === 'running' || (phase === 'done' && !restRevealed)
     if (immersive) document.body.dataset.focusImmersive = 'true'
     else delete document.body.dataset.focusImmersive
     return () => {
       delete document.body.dataset.focusImmersive
     }
-  }, [phase])
+  }, [phase, restRevealed])
 
-  // Последовательное раскрытие: сначала находка одна на экране
-  // (пик без конкурентов), потом появляются план и кнопки
-  const [restRevealed, setRestRevealed] = useState(false)
 
   // Обратный отсчёт для СДВГ — давление дедлайна. Цифры можно спрятать:
   // остаются существо и полоска. Выбор запоминается.
@@ -336,28 +466,32 @@ export function FocusSession() {
   }, [])
   // Эмбиент костра: опт-ин, паттерн Calm — тихий фон снижает
   // perceived effort. Играет только пока идёт сессия.
-  const [ambientOn, setAmbientOn] = useState(false)
+  // Звук на выбор: костёр, дождь, ровный шум или тишина (components/sound-chip.tsx). Прежний переключатель
+  // «зажечь костёр» переезжает как есть: у кого костёр был включён, тот его и услышит
+  const [sound, setSound] = useState<SoundChoice>('off')
   useEffect(() => {
     try {
-      setAmbientOn(localStorage.getItem(AMBIENT_KEY) === '1')
+      const v = localStorage.getItem(SOUND_KEY)
+      if (v === 'fire' || v === 'rain' || v === 'noise') setSound(v)
+      else if (v !== 'off' && localStorage.getItem(AMBIENT_KEY) === '1') setSound('fire')
     } catch {
       /* приватный режим */
     }
   }, [])
   useEffect(() => {
-    if (phase === 'running' && ambientOn) startCampfire()
-    else stopCampfire()
-    return () => stopCampfire()
-  }, [phase, ambientOn])
-  function toggleAmbient() {
-    setAmbientOn((v) => {
-      try {
-        localStorage.setItem(AMBIENT_KEY, v ? '0' : '1')
-      } catch {
-        /* приватный режим */
-      }
-      return !v
-    })
+    if (phase === 'running' && sound !== 'off') startAmbient(sound)
+    else stopAmbient()
+    return () => stopAmbient()
+  }, [phase, sound])
+  function chooseSound(v: SoundChoice) {
+    stopAmbient()
+    setSound(v)
+    try {
+      localStorage.setItem(SOUND_KEY, v)
+      localStorage.setItem(AMBIENT_KEY, v === 'off' ? '0' : '1')
+    } catch {
+      /* приватный режим */
+    }
   }
 
   function toggleDigits() {
@@ -394,12 +528,29 @@ export function FocusSession() {
   // это норма, а не провал. Вернулся — встречаем без упрёка.
   const hiddenAtRef = useRef<number | null>(null)
   const [backFromDrift, setBackFromDrift] = useState(false)
+  // Пауза — одна за сессию, без вопросов (research/24 C); время на паузе не идёт и не считается
+  const pausedAtRef = useRef<number | null>(null)
+  const [paused, setPaused] = useState(false)
+  const [pauseUsed, setPauseUsed] = useState(false)
+  // «Отвлёкся»: мысль уходит в записку («Дела → Мысли на потом»), таймер идёт дальше
+  const [thoughtOpen, setThoughtOpen] = useState(false)
+  const [thought, setThought] = useState('')
+  const [thoughtSaved, setThoughtSaved] = useState(false)
+  // финал: «Как было?» по желанию и три пути
+  const [howWas, setHowWas] = useState<string | null>(null)
+  const [worked, setWorked] = useState(0)
+  const cardIdRef = useRef<string | null>(null)
+  const [dayDone, setDayDone] = useState(false)
+  const [nextTime, setNextTime] = useState<string | null>(null)
+  const [breakEnd, setBreakEnd] = useState(0)
+  const [breakLeft, setBreakLeft] = useState(0)
 
   // Честный таймер: остаток вычисляется от абсолютного времени старта,
   // а не тиками — фоновая вкладка и троттлинг браузера не искажают часы.
   useEffect(() => {
     if (phase !== 'running') return
     const update = () => {
+      if (pausedAtRef.current) return
       const elapsed = (Date.now() - startedAtRef.current) / 1000
       setSecondsLeft(Math.max(0, Math.ceil(totalRef.current - elapsed)))
     }
@@ -450,7 +601,7 @@ export function FocusSession() {
           keep.delete('break')
           const q = keep.toString()
           window.history.replaceState(null, '', q ? `/app/session?${q}` : '/app/session')
-          void breakDown()
+          void requestBreak()
         }
         return
       }
@@ -494,16 +645,42 @@ export function FocusSession() {
   // Живое присутствие: на каждой четверти пути котик коротко радуется
   const lastQuarterRef = useRef(0)
   const [cheering, setCheering] = useState(false)
+  const cheerTimerRef = useRef<number | null>(null)
   useEffect(() => {
-    if (phase !== 'running' || totalRef.current === 0) return
-    const q = Math.floor((1 - secondsLeft / totalRef.current) * 4)
+    if (phase !== 'running' || totalRef.current === 0 || pausedAtRef.current) return
+    // Четверть считается от настоящих часов, а не от остатка на экране: «+5» меняет общую длину сразу, а остаток —
+    // следующим кадром, и между ними выходило «прошла четверть» на десятой секунде (гонка, поймана на съёмке 15.11)
+    const q = Math.floor(((Date.now() - startedAtRef.current) / 1000 / totalRef.current) * 4)
     if (q > lastQuarterRef.current && q < 4) {
       lastQuarterRef.current = q
       setCheering(true)
-      const t = window.setTimeout(() => setCheering(false), 2600)
-      return () => window.clearTimeout(t)
+      // таймер живёт в ref: раньше его снимала уборка эффекта на следующем же тике секунды, и радость с репликой
+      // «Четверть пути позади» оставались до конца сессии (было и в main)
+      if (cheerTimerRef.current) window.clearTimeout(cheerTimerRef.current)
+      cheerTimerRef.current = window.setTimeout(() => setCheering(false), 2600)
     }
   }, [secondsLeft, phase])
+  useEffect(
+    () => () => {
+      if (cheerTimerRef.current) window.clearTimeout(cheerTimerRef.current)
+    },
+    [],
+  )
+
+  // реплика кота во время сессии видна 8 секунд после каждого события, потом гаснет
+  const [lineShown, setLineShown] = useState(true)
+  useEffect(() => {
+    if (phase !== 'running') return
+    setLineShown(true)
+    const t = window.setTimeout(() => setLineShown(false), 8000)
+    return () => window.clearTimeout(t)
+  }, [phase, voice, cheering, backFromDrift, thoughtSaved, paused])
+
+  // «закончишь к 19:40»: считается от часов в эффекте (чтение времени при рендере — нечистая функция)
+  const [endLabel, setEndLabel] = useState('')
+  useEffect(() => {
+    if (phase === 'running') setEndLabel(endClock(Date.now() + secondsLeft * 1000))
+  }, [phase, secondsLeft])
 
   // Реплики по ходу сессии
   useEffect(() => {
@@ -515,8 +692,10 @@ export function FocusSession() {
 
   // двойной тап по «Закончить раньше»: второй вызов писал бы минуты и награду повторно
   const finishingRef = useRef(false)
-  async function start() {
-    if (!task.trim()) return
+  async function start(label: string = task) {
+    if (!label.trim()) return
+    if (label !== task) setTask(label)
+    const task_ = label
     hapticStart()
     playStartSigh()
     totalRef.current = minutes * 60
@@ -524,6 +703,18 @@ export function FocusSession() {
     firedMomentsRef.current = new Set()
     lastQuarterRef.current = 0
     finishingRef.current = false
+    pausedAtRef.current = null
+    setPaused(false)
+    setPauseUsed(false)
+    setThoughtOpen(false)
+    setThoughtSaved(false)
+    setHowWas(null)
+    setDayDone(false)
+    setNextTime(null)
+    // остальные шаги дела — в старую очередь тоже (финал и Дом прошлых версий читают её)
+    // ключ — то, что дробили (дело или шаг очереди), а не выбранный подшаг: иначе подшаги не вставали на место
+    // раздробленного шага и остальные шаги дела пропадали (e2e «дробление следующего шага не стирает очередь»)
+    if (brokenSteps) void spliceQueue(dealTitle ?? task_, brokenSteps.map((b) => b.text).filter((t) => t !== task_))
     setVoice(fallbackVoice.start)
     // Хореография: интерфейс растворяется, существо садится рядом,
     // таймер проявляется. При reduced-motion — сразу к делу.
@@ -531,18 +722,18 @@ export function FocusSession() {
     startedAtRef.current = Date.now()
 
     // Старт записывается в момент старта: инициация — и есть валюта
-    const entry = await recordStart({ label: task, fromPlan, planned: minutes })
+    const entry = await recordStart({ label: task_, fromPlan, planned: minutes })
     trackEvent('session_started')
     startIdRef.current = entry.id
 
     // Если шаг взят из очереди дробления — он исполнен, очередь короче
-    await consumeQueueStep(task)
+    await consumeQueueStep(task_)
 
     // Сессия переживает закрытие вкладки
     await saveActiveSession({
       startedAt: startedAtRef.current,
       minutes,
-      task,
+      task: task_,
       startId: entry.id,
     })
 
@@ -554,16 +745,19 @@ export function FocusSession() {
     // от ИИ, начатый из чата, не закрывал план
     // старт с Дома по плану (plan=1) закрывает план любой даты: вчерашний («ПРОДОЛЖИМ») и завтрашний, начатый раньше —
     // иначе Дом показывал бы его снова (проверка 13.11); шаг мог быть и раздроблен — тогда он уже не равен firstStep
-    if (plan && (fromPlan || plan.firstStep.trim().slice(0, STEP_MAX) === task.trim())) {
+    if (plan && (fromPlan || plan.firstStep.trim().slice(0, STEP_MAX) === task_.trim())) {
       await clearPlan()
     }
 
-    speak('start', task)
+    speak('start', task_)
   }
 
-  async function finish(early: boolean) {
+  async function finish(early: boolean, claimedDone = false) {
     if (finishingRef.current) return
     finishingRef.current = true
+    pausedAtRef.current = null
+    setPaused(false)
+    markStepDone(task)
     await clearActiveSession()
     // Не больше длительности сессии: вкладка могла быть закрыта надолго
     const workedMin = Math.min(
@@ -610,14 +804,11 @@ export function FocusSession() {
       })
     }
     hapticDone()
-    setEndedEarly(early)
+    // «Сделал» раньше времени — победа, а не «бросил»: шанс редкой находки честно зависит от отработанного, слова — нет
+    setEndedEarly(early && !claimedDone)
     setFirstEver(n === 1)
     setDoneVoice(null)
-    setPlanSaved(false)
-    setPlanFormOpen(false)
     setRestRevealed(false)
-    setTomorrowTask('')
-    setTomorrowStep('')
 
     // «Ещё разок»: следующая цель видна в момент пика, не после него.
     // Тизер честный: ориентиры детерминированы — называем; пул случаен —
@@ -646,44 +837,271 @@ export function FocusSession() {
               ? `на острове ещё ${unfound} ${pluralFinds(unfound)}`
               : 'остров собран полностью — теперь он густеет'
     }
+    // следующий шаг того же дела — из «Дел» (там вся цепочка), иначе из старой очереди
+    const fromDeal = nextAfter(task)
+    const nextStep = fromDeal?.step.text ?? queue?.steps[0] ?? null
     setNextUp({
-      step: queue?.steps[0] ?? null,
-      queueTask: queue?.task ?? null,
+      step: nextStep,
+      queueTask: fromDeal?.deal.title ?? queue?.task ?? null,
       tease,
     })
+    // карточка итога ложится в копилку «Дел» (три строки: получилось, дальше, понял — последнюю человек выберет сам)
+    setWorked(Math.round(workedMin))
+    cardIdRef.current = addCard({ win: task, next: nextStep ?? undefined, minutes: Math.round(workedMin) }).id
 
     setPhase('done')
     trackEvent('session_completed')
-    fetchVoice(early ? 'early-exit' : 'done', task).then(setDoneVoice)
+    fetchVoice(early && !claimedDone ? 'early-exit' : 'done', task).then(setDoneVoice)
   }
 
-  async function saveTomorrowPlan() {
-    if (!tomorrowTask.trim() || !tomorrowStep.trim()) return
-    await savePlan({ task: tomorrowTask.trim(), firstStep: tomorrowStep.trim() })
-    setPlanSaved(true)
+  function togglePause() {
+    if (paused) {
+      const away = Date.now() - (pausedAtRef.current ?? Date.now())
+      startedAtRef.current += away
+      pausedAtRef.current = null
+      setPaused(false)
+      void saveActiveSession({ startedAt: startedAtRef.current, minutes: totalRef.current / 60, task, startId: startIdRef.current ?? '' })
+    } else if (!pauseUsed) {
+      pausedAtRef.current = Date.now()
+      setPaused(true)
+      setPauseUsed(true)
+    }
   }
+  function plusFive() {
+    totalRef.current += 5 * 60
+    setMinutes((m) => m + 5)
+    setSecondsLeft((v) => v + 5 * 60)
+    void saveActiveSession({ startedAt: startedAtRef.current, minutes: totalRef.current / 60, task, startId: startIdRef.current ?? '' })
+  }
+  function saveThought() {
+    addThought(thought)
+    setThought('')
+    setThoughtOpen(false)
+    setThoughtSaved(true)
+    window.setTimeout(() => setThoughtSaved(false), 5000)
+  }
+  function answerHowWas(v: string) {
+    setHowWas(v)
+    if (cardIdRef.current) updateCard(cardIdRef.current, { insight: v })
+    try {
+      const prev = JSON.parse(localStorage.getItem(HOW_WAS_KEY) ?? '[]') as unknown[]
+      localStorage.setItem(HOW_WAS_KEY, JSON.stringify([...prev.slice(-49), { v, at: Date.now(), task }]))
+    } catch {
+      /* приватный режим */
+    }
+  }
+  // перерыв 5 минут: кот спит, время идёт, потом «Продолжим?»
+  useEffect(() => {
+    if (phase !== 'break') return
+    const tick = () => setBreakLeft(Math.max(0, Math.ceil((breakEnd - Date.now()) / 1000)))
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [phase, breakEnd])
 
   const mm = String(Math.floor(secondsLeft / 60)).padStart(2, '0')
   const ss = String(secondsLeft % 60).padStart(2, '0')
   const progress = totalRef.current > 0 ? 1 - secondsLeft / totalRef.current : 0
 
   if (phase === 'setup') {
+    const sel = brokenSteps ? Math.max(0, brokenSteps.findIndex((b) => b.text === task)) : -1
+    const others = brokenSteps ? brokenSteps.filter((_, i) => i !== sel) : []
+    const line = energyAsk
+      ? 'Сколько сил *сейчас*? Под это подберу шаг.'
+      : finerError
+      ? 'Не вышло разломать мельче, сеть подвела. *Попробуем ещё раз?*'
+      : dropped
+      ? `Убрал «${trimLabel(dropped.step.text, 28)}».`
+      : brokenSteps
+      ? 'Начнём *с этого*. Остальное я положил в Дела.'
+      : breaking
+        ? 'Секунду, *разламываю*…'
+        : buildSetupLine(prefilledStep, priorSessions, companionName)
     return (
-      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-4 py-6">
+      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-4 py-5">
         <h1 className="sr-only">Фокус-сессия: выбери первый шаг</h1>
         {/* Сцена: существо в центре внимания, а не в углу формы */}
-        <div className="flex flex-1 flex-col items-center justify-center gap-4">
-          <MascotSvg expression="calm" label={companionName ?? 'Напарник'} size={150} />
-          <p className="glass max-w-72 text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed">
-            <EmphasisText text={buildSetupLine(prefilledStep, priorSessions, companionName)} />
-          </p>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3">
+          <MascotSvg expression="calm" action={breaking ? 'think' : 'idle'} label={companionName ?? 'Напарник'} size={brokenSteps ? 120 : 150} />
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.p
+              key={line}
+              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+              transition={{ duration: reducedMotion ? 0.1 : 0.22, ease: [0.05, 0.7, 0.1, 1] }}
+              className="glass max-w-80 text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed"
+            >
+              <EmphasisText text={line} />
+              {dropped && (
+                <button type="button" onClick={undoDrop} className="press ml-2 inline-flex min-h-11 items-center px-1 font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  Вернуть
+                </button>
+              )}
+            </motion.p>
+          </AnimatePresence>
         </div>
-        {/* Управление внизу — в зоне большого пальца */}
+        {/* листы появляются в разметке (и в сети) только после первого открытия */}
+        {sheetsUsed.templates && <TemplatesSheet open={templatesOpen} onClose={() => setTemplatesOpen(false)} onPick={applyTemplate} />}
+        {sheetsUsed.prefs && <BreakdownPrefs open={prefsOpen} onClose={() => setPrefsOpen(false)} fineness={fineness} onFineness={setFineness} />}
+        {energyAsk ? (
+          // Один вопрос перед дроблением (Tiimo: сначала силы, потом первый простой шаг). Три крупных ответа в зоне
+          // большого пальца; ответ сразу запускает дробление, отдельной кнопки «дальше» нет
+          <div className="flex flex-col gap-2.5 pb-2" role="group" aria-label="Сколько сил сейчас">
+            <p className="truncate font-mono text-[10.5px] font-semibold uppercase tracking-[0.2em] text-primary/90">
+              дело · {trimLabel(task, 36)}
+            </p>
+            {ENERGY.map((o, i) => (
+              <motion.button
+                key={o.key}
+                type="button"
+                onClick={() => chooseEnergy(o.key)}
+                onTouchStart={() => {}}
+                initial={reducedMotion ? false : { opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.24, delay: reducedMotion ? 0 : 0.05 * i, ease: [0.05, 0.7, 0.1, 1] }}
+                className="option-card flex min-h-[64px] w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left"
+              >
+                <span
+                  aria-hidden="true"
+                  className="grid size-10 shrink-0 place-items-center rounded-[12px]"
+                  style={{ background: `oklch(0.74 0.12 ${o.hue} / 0.18)`, color: `oklch(0.88 0.13 ${o.hue})` }}
+                >
+                  <o.icon className="size-5" strokeWidth={2.2} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[16px] font-semibold">{o.label}</span>
+                  <span className="block text-[13px] text-muted-foreground">{o.hint}</span>
+                </span>
+              </motion.button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setEnergyAsk(false)
+                void breakDown(false, null)
+              }}
+              className="press min-h-11 self-center px-3 text-[14px] font-medium text-muted-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Не знаю, просто разломай
+            </button>
+          </div>
+        ) : (
         <div className="flex flex-col gap-4">
+          {brokenSteps ? (
+            // Этап 1 (research/24 C): один шаг крупно и уже выбран, ещё два — мельче, остальные свёрнуты. Полный список
+            // с суммой минут делает дело «длиннее» (Kruger & Evans 2004); близкая подцель сильнее далёкой (Bandura & Schunk)
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <p className="min-w-0 flex-1 truncate font-mono text-[10.5px] font-semibold uppercase tracking-[0.2em] text-primary/90">
+                  первый шаг · {trimLabel(dealTitle ?? '', 30)}
+                </p>
+                {/* размер шагов и просьбы — настройка, а не действие: значок в строке подписи, а не четвёртая кнопка-слово */}
+                <button
+                  type="button"
+                  onClick={() => setPrefsOpen(true)}
+                  aria-label="Как дробить: размер шагов и просьбы"
+                  className="press -my-2 grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <SlidersHorizontal className="size-[18px]" aria-hidden="true" />
+                </button>
+              </div>
+              <div className="glass rounded-2xl border border-primary/40 px-4 pb-3 pt-3.5">
+                {editing ? (
+                  <input
+                    autoFocus
+                    value={task}
+                    maxLength={STEP_MAX}
+                    onChange={(e) => renameStep(e.target.value)}
+                    onBlur={() => setEditing(false)}
+                    onKeyDown={(e) => e.key === 'Enter' && setEditing(false)}
+                    aria-label="Шаг своими словами"
+                    className="h-11 w-full rounded-xl bg-white/5 px-3 text-base font-semibold outline-none ring-1 ring-primary/50"
+                  />
+                ) : (
+                  // смена шага — причина и следствие видны: старый уходит вверх за 140 мс, новый приходит за 220 мс
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.p
+                      key={breaking ? '…' : task}
+                      initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={reducedMotion ? { opacity: 0, transition: { duration: 0.1 } } : { opacity: 0, y: -6, transition: { duration: 0.14 } }}
+                      transition={{ duration: reducedMotion ? 0.1 : 0.22, ease: [0.05, 0.7, 0.1, 1] }}
+                      className="text-pretty text-[1.15rem] font-bold leading-snug"
+                    >
+                      {breaking ? 'Разламываю…' : task}
+                    </motion.p>
+                  </AnimatePresence>
+                )}
+                {!editing && (estimate || brokenSteps[sel]?.wait) && (
+                  <p className="mt-1 font-mono text-[10.5px] uppercase tracking-widest text-primary/80">
+                    {brokenSteps[sel]?.wait && <span className="text-reward">пока ждёшь · </span>}
+                    {estimate ? `≈ ${estimate} мин · уже поставил ниже` : ''}
+                  </p>
+                )}
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    disabled={breaking}
+                    onClick={() => void breakDown(true)}
+                    className="press inline-flex min-h-11 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring gap-1.5 rounded-full bg-primary/15 px-3 text-[13px] font-semibold text-primary disabled:opacity-60"
+                  >
+                    <Sparkles className="size-3.5" aria-hidden="true" />
+                    {breaking ? 'Дроблю…' : 'Ещё мельче'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    className="press inline-flex min-h-11 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full border border-white/10 px-3 text-[13px] font-medium text-foreground/85"
+                  >
+                    Своими словами
+                  </button>
+                  {others.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={dropStep}
+                      className="press inline-flex min-h-11 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full border border-white/10 px-3 text-[13px] font-medium text-muted-foreground"
+                    >
+                      Не то
+                    </button>
+                  )}
+                </div>
+              </div>
+              {/* развёрнутый список длинного дела прокручивается сам: кнопка старта не должна уезжать под меню */}
+              <div className={showAll ? 'flex max-h-[9.5rem] flex-col gap-2 overflow-y-auto overscroll-contain pr-1' : 'contents'}>
+              {(showAll ? others : others.slice(0, 2)).map((st, i) => (
+                <motion.button
+                  key={st.text}
+                  type="button"
+                  onClick={() => selectStep(st)}
+                  initial={reducedMotion ? false : { opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.22, delay: reducedMotion ? 0 : 0.04 * i, ease: [0.05, 0.7, 0.1, 1] }}
+                  className="press flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-left text-[13.5px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
+                  <span className="line-clamp-1">{st.text}</span>
+                  {st.wait && <span className="shrink-0 font-mono text-[9.5px] uppercase tracking-widest text-reward/90">пока ждёшь</span>}
+                </motion.button>
+              ))}
+              </div>
+              {others.length > 2 && !showAll && (
+                <button
+                  type="button"
+                  onClick={() => setShowAll(true)}
+                  className="min-h-11 self-start px-3 font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  ещё {others.length - 2} — ждут в Делах
+                </button>
+              )}
+            </div>
+          ) : (
           <label className="flex flex-col gap-2">
             <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
               Первый шаг
             </span>
+            {/* готовые шаги — только когда дела ещё нет: с делом с Дома второй список шагов был лишним выбором */}
+            {!prefilledStep && (
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Готовые шаги">
               {stepChips.map((chip) => (
                 <button
@@ -694,9 +1112,6 @@ export function FocusSession() {
                     setTask(chip)
                   }}
                   aria-pressed={task === chip}
-                  // min-h-11: пилюля визуально компактна (py-1.5), но тач-цель
-                  // должна быть не меньше 44px (WCAG 2.5.8) — замерено рендером,
-                  // раньше цель была ~32px.
                   className={`inline-flex min-h-11 items-center rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                     task === chip
                       ? 'border-primary bg-primary text-primary-foreground'
@@ -707,6 +1122,7 @@ export function FocusSession() {
                 </button>
               ))}
             </div>
+            )}
             <input
               value={task}
               maxLength={STEP_MAX}
@@ -714,57 +1130,42 @@ export function FocusSession() {
                 setTask(e.target.value)
                 setBrokenSteps(null)
               }}
-              // Enter замыкает петлю «ввёл шаг → начал» без поиска кнопки.
-              // isComposing/229 — защита от CJK IME (Enter подтверждает
-              // набор, а не отправляет)
               onKeyDown={(e) => {
-                if (
-                  e.key === 'Enter' &&
-                  !e.nativeEvent.isComposing &&
-                  e.keyCode !== 229 &&
-                  task.trim()
-                ) {
-                  start()
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229 && task.trim()) {
+                  void start()
                 }
               }}
-              // autoFocus только когда реально нужно печатать. Если шаг уже
-              // пришёл из Дома (prefilledStep) — buildSetupLine сама говорит
-              // «просто жми», а не «напиши»: фокусировать пустое действие
-              // некуда, а клавиатура на весь экран закрыла бы кнопку «Начали»,
-              // ради которой человек сюда и пришёл. Это тот самый экран,
-              // куда заходят ЗА одним конкретным действием (в отличие от
-              // формы имени на Доме — туда заходят по десятку разных причин,
-              // и красть фокус там означало бы поднимать клавиатуру раньше,
-              // чем человек вообще решил, чем будет заниматься).
-              // Известное ограничение: iOS Safari часто не поднимает
-              // экранную клавиатуру по autoFocus без жеста пользователя —
-              // курсор и фокус всё равно достаются полю, лавиатура — не
-              // всегда; на десктопе и Android работает полностью.
               autoFocus={!prefilledStep}
               enterKeyHint="go"
               placeholder="Открыть файл презентации"
-              // text-base, не text-sm: 14px триггерит авто-zoom всей страницы
-              // в iOS Safari при фокусе на поле — тот же фикс, что уже стоит
-              // в companion-chat.tsx.
               className="glass h-12 rounded-xl px-4 text-base"
             />
           </label>
+          )}
 
-          {/* Дробление своей задачи: написал большое — получил 3 крошечных */}
-          {/* Дробилка — ядро продукта для СДВГ, а была ссылкой 11px с
-              тап-зоной ~20px (нарушение Фиттса ровно на ключевой фиче).
-              Теперь — полноценная кнопка 44px с иконкой: видима на
-              периферии, попадаема большим пальцем. */}
-          {task.trim().length >= 8 && !stepChips.includes(task) && !brokenSteps && (
-            <button
-              type="button"
-              onClick={breakDown}
-              disabled={breaking}
-              className="glass glass-interactive press inline-flex min-h-11 items-center gap-2 self-start rounded-full px-4 py-2 text-sm font-semibold text-foreground disabled:opacity-60"
-            >
-              <Sparkles className="size-4 shrink-0 text-primary" aria-hidden="true" />
-              {breaking ? 'Дроблю…' : 'Звучит крупно? Раздробить'}
-            </button>
+          {!brokenSteps && (
+            <div className="flex flex-wrap gap-2">
+              {task.trim().length >= 8 && !stepChips.includes(task) && (
+                <button
+                  type="button"
+                  onClick={() => void requestBreak()}
+                  disabled={breaking}
+                  className="glass glass-interactive press inline-flex min-h-11 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-foreground disabled:opacity-60"
+                >
+                  <Sparkles className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                  {breaking ? 'Дроблю…' : 'Раздробить'}
+                </button>
+              )}
+              {/* готовые разбивки бытовых дел: шаги без ожидания ИИ (lib/templates.ts) */}
+              <button
+                type="button"
+                onClick={() => setTemplatesOpen(true)}
+                className="glass glass-interactive press inline-flex min-h-11 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-foreground"
+              >
+                <LayoutList className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                Готовые дела
+              </button>
+            </div>
           )}
           {careReply && (
             <p role="status" className="glass rounded-2xl px-4 py-3 text-[0.95rem] leading-relaxed text-foreground">
@@ -779,37 +1180,11 @@ export function FocusSession() {
               Не вышло раздробить — сеть подвела.
               <button
                 type="button"
-                onClick={breakDown}
+                onClick={() => void requestBreak()}
                 className="press inline-flex min-h-11 items-center font-semibold text-primary underline-offset-4 hover:underline"
               >
                 Ещё раз
               </button>
-            </div>
-          )}
-          {brokenSteps && (
-            <div className="glass flex flex-col gap-2 rounded-2xl p-3">
-              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                выбери первый — остальное потом
-              </p>
-              <div className="flex flex-col gap-1.5" role="group" aria-label="Микрошаги">
-                {brokenSteps.map((step) => (
-                  <button
-                    key={step}
-                    type="button"
-                    onClick={() => {
-                      // Остальные шаги не выбрасываются: очередь помнит их
-                      // и сама предложит следующий после этой сессии
-                      // (на финале и на Доме). Продукт помнит сказанное.
-                      void spliceQueue(task, brokenSteps.filter((s) => s !== step))
-                      setTask(step)
-                      setBrokenSteps(null)
-                    }}
-                    className="glass glass-interactive press min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium"
-                  >
-                    {step}
-                  </button>
-                ))}
-              </div>
             </div>
           )}
           <div className="flex flex-col gap-2">
@@ -827,7 +1202,7 @@ export function FocusSession() {
                       setDurationTouched(true)
                     }}
                     aria-pressed={minutes === d}
-                    className={`w-full rounded-xl border px-3 py-3 text-sm font-semibold transition-colors ${
+                    className={`w-full rounded-xl border px-2 py-3 text-sm font-semibold transition-colors ${
                       minutes === d
                         ? 'border-primary bg-primary text-primary-foreground'
                         : 'glass text-muted-foreground transition-[filter] duration-150 hover:text-foreground hover:brightness-125'
@@ -835,8 +1210,6 @@ export function FocusSession() {
                   >
                     {d} мин
                   </button>
-                  {/* #7 · Default Effect: 25 мин помечен как рекомендованный,
-                      пока выбор ещё не стал осознанным действием человека */}
                   {!durationTouched && d === 25 && (
                     <span className="font-mono text-[9px] uppercase tracking-widest text-primary/70">
                       рекомендуем
@@ -845,23 +1218,22 @@ export function FocusSession() {
                 </div>
               ))}
             </div>
-            {/* #8 · Confirmation bias: короткая честная строка под уже
-                сделанным выбором — снимает микро-сомнение «а не мало/много
-                ли я взял», не задавая нового решения */}
             <p className="text-center text-xs leading-relaxed text-muted-foreground">
-              {minutes === 15
-                ? '15 — короткий разгон, если просто нужно сдвинуться с места'
-                : minutes === 25
-                  ? '25 — классический фокус-блок, не выматывает'
-                  : '45 — для дела, в которое стоит погрузиться'}
+              {minutes === 5
+                ? '5 — просто начать. Часто этого хватает, чтобы поехало'
+                : minutes === 15
+                  ? '15 — короткий разгон, если просто нужно сдвинуться с места'
+                  : minutes === 25
+                    ? '25 — классический фокус-блок, не выматывает'
+                    : '45 — для дела, в которое стоит погрузиться'}
             </p>
           </div>
           <motion.div whileTap={reducedMotion ? undefined : { scale: 0.96 }}>
             <Button
               size="lg"
-              onClick={start}
-              disabled={!task.trim()}
-              className="w-full font-semibold"
+              onClick={() => void start()}
+              disabled={!task.trim() || breaking}
+              className="h-14 w-full text-[17px]"
             >
               Начали. Я рядом
             </Button>
@@ -870,6 +1242,7 @@ export function FocusSession() {
             старт засчитывается сразу — даже если выйдешь раньше
           </p>
         </div>
+        )}
       </div>
     )
   }
@@ -908,75 +1281,58 @@ export function FocusSession() {
   }
 
   if (phase === 'running') {
+    const C = 2 * Math.PI * 72
+    const line = thoughtSaved
+      ? 'Положил в Дела. *Возвращаемся*.'
+      : paused
+        ? 'Пауза. Я *подожду*.'
+        : backFromDrift
+          ? 'Я тут. *Продолжаем?*'
+          : cheering
+            ? '*Четверть пути* позади. Идём.'
+            : voice
     return (
       <>
-        {/* Подложка-скрим под подвал экрана: горизонт в фоне (AppBackdrop)
-            общий на все три экрана и сам по себе ничего не гасит под собой —
-            карточки Дома отделяются от него своим glass-фоном, а здесь
-            сноска висела голым текстом прямо на силуэтах ростка/ёлки/фонаря.
-            Скрим только у Фокуса, потому что только тут текст ничем не
-            подложен. */}
-        {/* key: иначе React переиспользовал корневой <div> экрана «starting» под этот скрим — узел переезжал
-            из 390×780 в нижние 34vh, и каждая смена фазы давала сдвиг вёрстки 0,66 */}
-        <div
-          key="running-scrim"
-          aria-hidden="true"
-          className="pointer-events-none fixed inset-x-0 bottom-0 h-[34vh] bg-gradient-to-t from-background/85 to-transparent"
-        />
+        {/* Мир гаснет на время сессии — как у Focus Friend: комната уходит в серый, на экране остаются персонаж, цифры и
+            одна кнопка (research/25-deep-teardowns/img/focusfriend-appstore-strip.jpg, последний кадр). Затемнение на весь
+            экран, а не на нижнюю треть: гряда с ориентирами, очаг и существо у костра не тянут взгляд. Контраст текста
+            от этого только выше (фон темнее коридора 0,152–0,172 не становится: 0,135 поверх сцены даёт ~0,14–0,15). */}
+        {/* key: иначе React переиспользовал корневой <div> экрана «starting» под это затемнение и давал сдвиг вёрстки */}
+        <div key="running-scrim" aria-hidden="true" className="focus-dim pointer-events-none fixed inset-0 bg-[oklch(0.135_0.012_130/0.8)]" />
         <motion.div
-          className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center gap-3 px-4 pt-[clamp(1rem,6.5dvh,3.5rem)] pb-3 [@media(max-height:600px)]:gap-2"
+          className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
           initial={reducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6 }}
         >
           <h1 className="sr-only">Идёт фокус-сессия</h1>
-          {/* Название дела — над кругом, как заголовок у референса владельца (Tiimo, 13.11): сначала «чем я занят»,
-              потом время. Кавычки — та же пунктуация, что на Доме. Перенос по любому месту, не больше двух строк:
-              вставленная ссылка иначе растягивала страницу и давала горизонтальный скролл */}
-          <p className="line-clamp-2 max-w-full text-center font-mono text-[13px] font-semibold uppercase tracking-widest text-foreground/85 [overflow-wrap:anywhere]">
+          {/* Верхний ряд — как у таймера Tiimo: слева плашка звука, справа круглая кнопка вида (у нас — спрятать цифры) */}
+          <div className="flex w-full items-center justify-between">
+            <SoundChip value={sound} onChange={chooseSound} />
+            <button
+              type="button"
+              onClick={toggleDigits}
+              aria-pressed={hideDigits}
+              aria-label={hideDigits ? 'Показать цифры' : 'Спрятать цифры'}
+              className="press grid size-11 place-items-center rounded-full border border-white/10 text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {hideDigits ? <EyeOff className="size-[18px]" aria-hidden="true" /> : <Eye className="size-[18px]" aria-hidden="true" />}
+            </button>
+          </div>
+          {/* Название дела — над кругом (Tiimo: «Laundry» над таймером; Focus Friend: строка над персонажем). Не больше
+              двух строк, перенос по любому месту: вставленная ссылка иначе растягивала страницу */}
+          <p className="mt-[clamp(0.25rem,2.5dvh,1.5rem)] line-clamp-2 max-w-full text-center font-mono text-[13px] font-semibold uppercase tracking-widest text-foreground/85 [overflow-wrap:anywhere]">
             «{task}»
           </p>
-          {/* Существо — центр сцены: дышит, радуется четвертям, встречает из отвлечения */}
-          {/* #10 · Кольцо вместо линейного бара под существом: время сессии
-              читается на самом объекте, за которым и так следит взгляд, а не
-              в отдельной полоске ниже — тот же вес внимания, один якорь
-              вместо двух. -inset-4: кольцо на 16px шире мяскота (130px), не
-              задевая его контур. rotate(-90deg): прогресс стартует с 12
-              часов — там же, где начинается любой аналоговый таймер.
-              Трек и дуга: на живой ночной сцене var(--secondary) почти не
-              отличим от фона (замерено на реальном скрине) — трек поднят до
-              полупрозрачного foreground, а дуга получила мягкое лаймовое
-              свечение (тот же язык, что у очага/сияния), иначе на малом
-              прогрессе она читается не как кольцо, а как случайный блик. */}
-          {/* Круг с котом — где круг у референса владельца (Tiimo, 13.11): на iPhone в Safari (390×664) кольцо 220 px,
-              центр на ~40 % высоты, цифры ниже. Отступы от названия и до цифр — в dvh, на низких экранах ужимаются */}
-          <div className="focus-ring-wrap relative mt-[clamp(1.75rem,14dvh,7rem)] mb-[clamp(0.75rem,6.5dvh,4rem)] flex items-center justify-center [@media(max-height:600px)]:mt-[6dvh] [@media(max-height:600px)]:mb-2">
-            {/* Трек и дуга — два отдельных <svg> одного размера: свечение дуги — фильтр на её собственном <svg>, а не на
-                <circle> внутри. Фильтр на узле SVG браузер пересчитывает в главном потоке вместе с дугой на каждом кадре
-                её плавного хода (вся сессия: ~60 перерисовок в секунду, растр втрое дороже, замер focusrun.mjs, 14.11),
-                а фильтр на целом элементе со своим слоем применяет видеокарта. Размытие 4 единицы рисунка (viewBox 156)
-                = 4/156 ширины кольца; ширина кольца = кот + 2rem (--focus-cat, app/globals.css) */}
-            <svg
-              // явный размер: SVG — заменяемый элемент, Safari не растягивает его краевыми отступами (-inset-4)
-              // и рисовал кольцо меньше кота (iPhone владельца, 11.11)
-              className="pointer-events-none absolute -left-4 -top-4 size-[calc(100%+2rem)]"
-              viewBox="0 0 156 156"
-              aria-hidden="true"
-            >
-              <circle
-                cx="78"
-                cy="78"
-                r="72"
-                fill="none"
-                stroke="color-mix(in oklab, var(--foreground) 16%, transparent)"
-                strokeWidth="6.5"
-              />
+          {/* Круг с котом. Дуга показывает ОСТАВШЕЕСЯ время и тает по часовой стрелке от 12 часов (Tiimo: сиреневая дуга
+              убывает, на её конце искра). Видимое, убывающее количество времени — приём Time Timer при слепоте ко времени.
+              Трек и дуга — два отдельных <svg>: свечение — фильтр на целом <svg> дуги, его применяет видеокарта (14.11);
+              искра — HTML-обёртка, которая поворачивается вместе со временем (transform, без перерисовки). */}
+          <div className="focus-ring-wrap relative mt-[clamp(1.25rem,5dvh,4.5rem)] mb-[clamp(0.5rem,3dvh,2rem)] flex items-center justify-center [@media(max-height:600px)]:mt-5 [@media(max-height:600px)]:mb-1">
+            <svg className="pointer-events-none absolute -left-4 -top-4 size-[calc(100%+2rem)]" viewBox="0 0 156 156" aria-hidden="true">
+              <circle cx="78" cy="78" r="72" fill="none" stroke="color-mix(in oklab, var(--foreground) 14%, transparent)" strokeWidth="6.5" />
             </svg>
-            <svg
-              className="focus-ring-arc pointer-events-none absolute -left-4 -top-4 size-[calc(100%+2rem)]"
-              viewBox="0 0 156 156"
-              aria-hidden="true"
-            >
+            <svg className="focus-ring-arc pointer-events-none absolute -left-4 -top-4 size-[calc(100%+2rem)]" viewBox="0 0 156 156" aria-hidden="true">
               <circle
                 cx="78"
                 cy="78"
@@ -985,112 +1341,174 @@ export function FocusSession() {
                 stroke="var(--primary)"
                 strokeWidth="6.5"
                 strokeLinecap="round"
-                strokeDasharray={2 * Math.PI * 72}
                 style={{
-                  strokeDashoffset: 2 * Math.PI * 72 * (1 - progress),
+                  strokeDasharray: `${C * (1 - progress)} ${C}`,
+                  strokeDashoffset: -C * progress,
                   transform: 'rotate(-90deg)',
                   transformOrigin: '78px 78px',
-                  transition: reducedMotion ? 'none' : 'stroke-dashoffset 1s linear',
+                  transition: reducedMotion ? 'none' : 'stroke-dashoffset 1s linear, stroke-dasharray 1s linear',
                 }}
               />
             </svg>
-            {/* Кот в своём квадрате стоит низко (сверху окна рисунка запас под уши и прыжки), и кольцо, отцентрованное
-                по квадрату, висело над ним. Замер на рендере (ringgap.mjs, 11.11): без сдвига зазор кольцо→силуэт сверху
-                46,5 px, снизу 10,5, слева 13,5, справа 12,5. Подъём на 18 px уравнивает верх и низ; берём 16 — середина
-                «дыхания» (y 0 → −4). Только пиксели: проценты translate считаются от высоты обёртки, а она выше 130 */}
-            <div className="-translate-y-[12%]">
-            <motion.div
-              animate={
-                reducedMotion
-                  ? undefined
-                  : { y: [0, -4, 0], rotate: [0, 0, -1.5, 0, 1.5, 0, 0] }
-              }
-              transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
-            >
-              <MascotSvg
-                expression={cheering || backFromDrift ? 'happy' : 'focused'}
-                // body doubling: кот не надзирает, а сидит рядом и работает с тобой —
-                // «работаем вместе», та же метафора присутствия (кукла из эталона, блокнота
-                // у неё нет: прежний кот с блокнотом был старой моделью и удалён)
-                label="Напарник работает рядом"
-                size={188}
-                // кольцо = кот + 32 px: на телефоне ~220 px, как круг у референса; на низких экранах ужимается
-                className="size-[var(--focus-cat)]"
-              />
-            </motion.div>
-            </div>
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            {hideDigits ? (
-              <p className="flex h-12 items-center font-sans text-lg text-muted-foreground">
-                <EmphasisText text="время идёт — я *слежу*" />
-              </p>
-            ) : (
-              // U1: без aria-live — role="timer" имеет implicit "off";
-              // polite означал объявление КАЖДОЙ секунды скринридером
+            {progress < 0.995 && (
               <div
-                role="timer"
-                className="text-5xl font-bold tabular-nums tracking-tight"
+                className="focus-ring-head"
+                aria-hidden="true"
+                style={{ transform: `rotate(${progress * 360}deg)`, transition: reducedMotion ? 'none' : 'transform 1s linear' }}
               >
-                {mm}:{ss}
+                <span />
               </div>
             )}
-            <div className="flex items-center gap-3">
-              {/* U2: min-h-11 + padding — честная тап-зона 44px (Fitts) */}
-              <button
-                type="button"
-                onClick={toggleDigits}
-                className="min-h-11 px-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground underline-offset-2 hover:underline"
+            {/* Кот в своём квадрате стоит низко — подъём уравнивает зазоры до кольца (замер ringgap.mjs, 11.11) */}
+            <div className="-translate-y-[12%]">
+              <motion.div
+                animate={reducedMotion || paused ? undefined : { y: [0, -4, 0], rotate: [0, 0, -1.5, 0, 1.5, 0, 0] }}
+                transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
               >
-                {hideDigits ? 'показать цифры' : 'спрятать цифры'}
-              </button>
-              {/* Разделитель: два независимых переключателя рядом иначе
-                  читаются как один составной контрол (закон близости) */}
-              <span aria-hidden="true" className="h-3 w-px bg-border" />
-              <button
-                type="button"
-                onClick={toggleAmbient}
-                aria-pressed={ambientOn}
-                className={`min-h-11 px-2 font-mono text-[11px] uppercase tracking-widest underline-offset-2 hover:underline ${
-                  ambientOn ? 'text-primary' : 'text-muted-foreground'
-                }`}
-              >
-                {ambientOn ? 'костёр горит' : 'зажечь костёр'}
-              </button>
+                <MascotSvg
+                  expression={paused ? 'sleepy' : cheering || backFromDrift ? 'happy' : 'focused'}
+                  label="Напарник работает рядом"
+                  size={188}
+                  className="size-[var(--focus-cat)]"
+                />
+              </motion.div>
             </div>
           </div>
-          <p className="glass max-w-72 text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed">
-            <EmphasisText
-              text={
-                backFromDrift
-                  ? 'Ты отходил — это нормально. Мы всё ещё *в деле*.'
-                  : cheering
-                    ? '*Четверть пути* позади. Идём.'
-                    : voice
-              }
-            />
-          </p>
-          <div className="flex flex-col items-center gap-2 pt-1">
-            {/* Выход из сессии — секондари-действие, но не строка того же
-                веса, что переключатели выше: glass-пилюля даёт ему
-                собственную форму, не сливаясь с текстовым списком над ним. */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => finish(true)}
-              className="h-11 rounded-full px-5 text-sm text-muted-foreground"
+          {hideDigits ? (
+            <p className="flex h-[68px] items-center font-sans text-lg text-muted-foreground">
+              <EmphasisText text={paused ? 'пауза' : 'время идёт, я *слежу*'} />
+            </p>
+          ) : (
+            // без aria-live: role="timer" по умолчанию молчит, иначе скринридер объявлял бы каждую секунду
+            <div className="flex h-[68px] flex-col items-center">
+              <div role="timer" className="text-5xl font-bold tabular-nums tracking-tight">
+                {mm}:{ss}
+              </div>
+              {/* время окончания словами: при слепоте ко времени «к 19:40» понятнее, чем «осталось 12:31» */}
+              <p className="mt-0.5 font-mono text-[11px] uppercase tracking-widest text-primary/85">
+                {paused ? 'на паузе' : endLabel ? `закончишь к ${endLabel}` : ''}
+              </p>
+            </div>
+          )}
+          {/* Под цифрами — как у Tiimo: «+5» и пауза рядом с временем, всегда на месте (в прототипе «+5» появлялась только
+              в последние 5 минут — у источника она есть всю сессию: продлить хочется в любой момент, когда пошло).
+              Третья — «мысль»: отвлёкся — записал, таймер идёт. Подписи под значками: значок без слова пришлось бы угадывать */}
+          <div className="mt-2 flex items-start justify-center gap-5 [@media(max-height:600px)]:mt-0">
+            <RoundControl label="+5 мин" onClick={plusFive} ariaLabel="Добавить пять минут">
+              <span className="font-mono text-[15px] font-bold">+5</span>
+            </RoundControl>
+            <RoundControl
+              label={paused ? 'дальше' : pauseUsed ? 'была' : 'пауза'}
+              onClick={togglePause}
+              disabled={pauseUsed && !paused}
+              active={paused}
+              big
+              ariaLabel={paused ? 'Продолжить' : 'Пауза'}
             >
-              Закончить раньше
-            </Button>
+              {paused ? <Play className="size-6 fill-current" aria-hidden="true" /> : <Pause className="size-6 fill-current" aria-hidden="true" />}
+            </RoundControl>
+            <RoundControl label="мысль" onClick={() => setThoughtOpen((v) => !v)} active={thoughtOpen} ariaLabel="Отвлёкся: записать мысль на потом">
+              <NotebookPen className="size-[19px]" aria-hidden="true" />
+            </RoundControl>
           </div>
+          <div className={`mt-2 flex min-h-[52px] w-full items-center justify-center ${thoughtOpen ? '' : '[@media(max-height:600px)]:hidden'}`}>
+            {thoughtOpen ? (
+              // «Отвлёкся»: мысль не держим в голове и не бросаем дело — кладём в записку, таймер идёт
+              <form
+                className="glass flex w-full max-w-80 items-center gap-2 rounded-2xl p-2"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  saveThought()
+                }}
+              >
+                <label className="sr-only" htmlFor="thought">
+                  Что пришло в голову? Положу в Дела, вернёшься потом
+                </label>
+                <input
+                  id="thought"
+                  autoFocus
+                  value={thought}
+                  maxLength={200}
+                  onChange={(e) => setThought(e.target.value)}
+                  placeholder="Что пришло в голову?"
+                  className="h-11 min-w-0 flex-1 rounded-xl bg-white/5 px-3 text-base outline-none ring-1 ring-white/15 focus:ring-primary/60"
+                />
+                <button type="submit" disabled={!thought.trim()} className="btn-press h-11 shrink-0 rounded-xl bg-primary px-3.5 text-sm font-bold text-primary-foreground disabled:opacity-50">
+                  В Дела
+                </button>
+              </form>
+            ) : (
+              // Реплика кота — ответ на событие (старт, четверть пути, возврат, пауза), а не постоянная табличка: через
+              // 8 секунд она гаснет, место под неё остаётся — ничего не прыгает (контингентность, CLAUDE.md §3)
+              <p
+                className={`glass max-w-72 text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed transition-opacity duration-500 ${
+                  lineShown || paused ? 'opacity-100' : 'opacity-0'
+                }`}
+                aria-hidden={!(lineShown || paused)}
+              >
+                <EmphasisText text={line} />
+              </p>
+            )}
+          </div>
+          {/* Одна главная кнопка (Focus Friend: на экране фокуса одна «STOP FOCUSING»). У нас она не «бросить», а «сделал»:
+              выйти раньше — тоже победа, наказаний нет. Раньше здесь были две кнопки рядом, «Сделал» и «Закончить раньше» */}
+          <button
+            type="button"
+            onClick={() => finish(progress < 0.6, true)}
+            onTouchStart={() => {}}
+            className="btn-chunky mt-auto block w-full select-none rounded-[16px] outline-none"
+          >
+            <span className="btn-face flex h-[56px] items-center justify-center rounded-[16px] bg-primary px-6 text-[18px] font-bold tracking-[-0.01em] text-primary-foreground">
+              Сделал
+            </span>
+          </button>
         </motion.div>
       </>
     )
   }
 
+  if (phase === 'break') {
+    const bm = String(Math.floor(breakLeft / 60)).padStart(2, '0')
+    const bs = String(breakLeft % 60).padStart(2, '0')
+    return (
+      // кот и время — по центру свободного места, кнопки прижаты к низу над меню: в зоне большого пальца (Hoober)
+      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center gap-5 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-8">
+        <h1 className="sr-only">Перерыв</h1>
+        <div className="flex flex-1 flex-col items-center justify-center gap-5">
+        <MascotSvg expression="sleepy" label="Напарник отдыхает" size={160} />
+        <div className="text-center">
+          <p className="text-4xl font-bold tabular-nums">{breakLeft > 0 ? `${bm}:${bs}` : 'Отдохнули'}</p>
+          <p className="mt-1 text-[0.95rem] text-muted-foreground">
+            {breakLeft > 0 ? 'Встань, попей воды, посмотри в окно. Я подремлю.' : 'Продолжим? Можно и не продолжать.'}
+          </p>
+        </div>
+        </div>
+        <div className="flex w-full flex-col gap-2">
+          <Button
+            size="lg"
+            className="h-auto min-h-14 py-3 text-[17px] whitespace-normal"
+            onClick={() => {
+              setGrownElement(null)
+              if (nextUp.step) void start(nextUp.step)
+              else {
+                setTask('')
+                setPhase('setup')
+              }
+            }}
+          >
+            {nextUp.step ? `Продолжим: «${trimLabel(nextUp.step, 40)}»` : 'Продолжим'}
+          </Button>
+          <Button variant="ghost" className="h-11 text-muted-foreground" onClick={() => { setGrownElement(null); setRestRevealed(true); setPhase('done'); setDayDone(true) }}>
+            На сегодня всё
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 px-4 py-8">
-      <MascotSvg expression="excited" action="celebrate" label="Напарник радуется" size={110} />
+    <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-3 px-4 pb-24 pt-4">
+      <MascotSvg expression="excited" action="celebrate" label="Напарник радуется" size={72} />
       <div className="flex flex-col gap-2 text-center">
         <h1 className="text-2xl font-bold">
           {firstEver ? 'Первое дело сдвинуто.' : endedEarly ? 'Ты начал.' : 'Сделано.'}
@@ -1144,16 +1562,14 @@ export function FocusSession() {
                 : RARITY_LABEL[grownElement.rarity]}
             </span>
             <span className="text-balance text-xl font-bold">{grownElement.name}</span>
-            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-              смотреть остров целиком
-            </span>
+            <span className="sr-only">Смотреть остров целиком</span>
           </Link>
         </motion.div>
       )}
 
       {/* План и кнопки появляются после того, как находка отыграла свой момент */}
       <motion.div
-        className="flex w-full flex-col items-center gap-6"
+        className="flex w-full flex-col items-center gap-3"
         initial={false}
         animate={{ opacity: restRevealed ? 1 : 0, y: restRevealed ? 0 : 12 }}
         transition={{ duration: 0.45, ease: 'easeOut' }}
@@ -1196,127 +1612,150 @@ export function FocusSession() {
         </div>
       ) : (
       <>
-      {!planSaved ? (
-        !planFormOpen ? (
-          <div className="flex w-full flex-col gap-2">
-            {/* Однотаповый договор: на пике дофамина печатать — стена.
-                Если из дробления остался следующий шаг — план продолжает
-                ту же задачу; иначе — «это же дело» повторяется завтра. */}
+      {/* Три карточки итога (Shimmer: Win / Action / Insight) — сразу после находки, до кнопок: сначала «что вышло»,
+          потом «что дальше». Третью человек заполняет одним тапом, можно не отвечать */}
+      {restRevealed && !dayDone && <WinCards win={task} minutes={worked} next={nextUp.step} howWas={howWas} onHowWas={answerHowWas} />}
+      {/* Этап 1 (research/24 C/A): «Как было?» по желанию, потом три пути — следующий шаг сразу с тем же котом /
+          перерыв 5 минут / «на сегодня всё» + «когда следующий раз?». Раньше здесь были «план на завтра» и «ещё одна» */}
+      {!dayDone ? (
+        <div className="flex w-full flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setGrownElement(null)
+              setDoneVoice(null)
+              setEndedEarly(false)
+              if (nextUp.step) void start(nextUp.step)
+              else {
+                setTask('')
+                setPhase('setup')
+              }
+            }}
+            onTouchStart={() => {}}
+            className="btn-chunky block w-full select-none rounded-[16px] text-left outline-none"
+          >
+            <span className="btn-face flex min-h-[56px] flex-col justify-center rounded-[16px] bg-primary px-5 py-2 text-primary-foreground">
+              <span className="text-[16px] font-bold">{nextUp.step ? 'Следующий шаг' : 'Ещё одна сессия'}</span>
+              {nextUp.step && <span className="line-clamp-1 text-[13px] opacity-80">«{trimLabel(nextUp.step, 60)}» · кот остаётся рядом</span>}
+            </span>
+          </button>
+          <div className="flex gap-2">
             <button
               type="button"
               onClick={() => {
-                void savePlan({
-                  task: nextUp.queueTask ?? task,
-                  firstStep: nextUp.step ?? task,
-                })
-                setPlanSaved(true)
+                setBreakEnd(Date.now() + 5 * 60 * 1000)
+                setPhase('break')
               }}
-              className="glass glass-interactive press flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left"
+              className="glass glass-interactive press h-12 flex-1 rounded-2xl text-sm font-semibold"
             >
-              <span className="flex min-w-0 flex-col">
-                <span className="text-sm font-semibold">
-                  {nextUp.step ? 'Завтра — следующий шаг' : 'Это же дело — завтра'}
-                </span>
-                <span className="truncate text-sm text-muted-foreground">
-                  «{nextUp.step ?? task}»
-                </span>
-              </span>
-              <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-primary">
-                один тап
-              </span>
+              Перерыв 5 минут
             </button>
             <button
               type="button"
-              onClick={() => setPlanFormOpen(true)}
-              className="glass glass-interactive press flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left"
+              onClick={() => setDayDone(true)}
+              className="glass glass-interactive press h-12 flex-1 rounded-2xl text-sm font-semibold"
             >
-              <span className="text-sm font-semibold">Своё дело на завтра</span>
-              <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
+              На сегодня всё
             </button>
           </div>
-        ) : (
-          <div className="glass flex w-full flex-col gap-3 rounded-2xl p-4">
-            <p className="text-sm font-semibold">Договоримся с завтрашним собой?</p>
-            <input
-              value={tomorrowTask}
-              onChange={(e) => setTomorrowTask(e.target.value)}
-              placeholder="Что завтра важно"
-              aria-label="Дело на завтра"
-              className="glass h-11 rounded-xl px-4 text-sm"
-            />
-            <input
-              value={tomorrowStep}
-              onChange={(e) => setTomorrowStep(e.target.value)}
-              placeholder="Первый крошечный шаг"
-              aria-label="Первый шаг завтрашнего дела"
-              className="glass h-11 rounded-xl px-4 text-sm"
-            />
-            <Button
-              size="lg"
-              onClick={saveTomorrowPlan}
-              disabled={!tomorrowTask.trim() || !tomorrowStep.trim()}
-              className="h-11 font-semibold"
-            >
-              Положить план
-            </Button>
-            <p className="text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              можно пропустить — это не обязанность
-            </p>
+        </div>
+      ) : !nextTime ? (
+        <div className="glass flex w-full flex-col gap-3 rounded-2xl p-4">
+          <p className="text-center text-sm font-semibold">Когда следующий раз?</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {['Сегодня вечером', 'Завтра утром', 'Завтра вечером', 'Пока не знаю'].map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => {
+                  setNextTime(t)
+                  if (t !== 'Пока не знаю')
+                    void savePlan({ task: nextUp.queueTask ?? task, firstStep: nextUp.step ?? task, startTime: t })
+                }}
+                className="press h-11 rounded-full border border-white/10 px-3.5 text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {t}
+              </button>
+            ))}
           </div>
-        )
+        </div>
       ) : (
-        <div className="glass flex w-full flex-col gap-1 rounded-2xl p-4 text-center">
-          <p className="text-sm font-semibold">План лежит. Утром напишу первым.</p>
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            Просто открой эту страницу утром — первое слово будет за мной.
-          </p>
+        <div className="flex w-full flex-col gap-3">
+          <div className="glass flex w-full flex-col gap-1 rounded-2xl p-4 text-center">
+            <p className="text-sm font-semibold">
+              {nextTime === 'Пока не знаю' ? 'Хорошо. Шаг подождёт в Делах.' : `Договорились: ${nextTime.toLowerCase()}.`}
+            </p>
+            {nextUp.step && <p className="text-sm text-muted-foreground">«{trimLabel(nextUp.step, 60)}» ждёт в Делах. Ничего не сгорит.</p>}
+            {/* Уйти с назначенным временем (Shimmer: человек уходит с первой встречи с уже записанной следующей).
+                Настоящее напоминание у нас двух видов: Telegram, если связан, и файл календаря на завтра */}
+            {nextTime.startsWith('Завтра') && (
+              <button
+                type="button"
+                onClick={() => void import('@/lib/calendar').then((m) => m.downloadIcs(nextTime.toLowerCase(), nextTime === 'Завтра утром' ? '09:00' : '19:00', nextUp.step ?? task))}
+                className="press mx-auto mt-2 inline-flex h-11 items-center rounded-full border border-white/10 px-4 text-[13px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Добавить в календарь
+              </button>
+            )}
+            {nextTime !== 'Пока не знаю' && (
+              <div className="flex justify-center">
+                <TgRemind plan={{ task: nextUp.queueTask ?? task, firstStep: nextUp.step ?? task, startTime: nextTime }} current />
+              </div>
+            )}
+          </div>
+          <Button render={<Link href="/app" />} nativeButton={false} variant="ghost" className="h-11 text-muted-foreground">
+            На Дом
+          </Button>
         </div>
       )}
-
-      <div className="flex w-full flex-col gap-2">
-        {/* One-more-time hook: следующая цель острова названа прямо над
-            кнопкой — сессия заканчивается на «ещё разок», не на точке */}
-        {nextUp.tease && (
-          <p className="text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            {nextUp.tease}
-          </p>
-        )}
-        {/* whitespace-normal — не косметика. Button по умолчанию несёт
-            whitespace-nowrap + shrink-0 (проверено в components/ui/button.tsx),
-            поэтому кнопка с подставленным шагом не сжимается и не переносится,
-            а РАСПИРАЕТ контейнер за край экрана — на 320px это гарантированно.
-            Разрешаем перенос и рост в высоту, как у «Начинаю» на Доме: лимит
-            щедрый (60) и режет по границе слова, чтобы обрубок первого шага не
-            добавлял страха вместо того, чтобы его снимать. */}
-        <Button
-          size="lg"
-          className="h-auto py-3 font-semibold whitespace-normal"
-          onClick={() => {
-            // Очередь дробления сама подставляет следующий микрошаг —
-            // продолжение той же работы в один тап
-            setTask(nextUp.step ?? '')
-            setDoneVoice(null)
-            setEndedEarly(false)
-            setGrownElement(null)
-            setPhase('setup')
-          }}
-        >
-          <span className="text-pretty">
-            {nextUp.step ? `Ещё одна: «${trimLabel(nextUp.step, 60)}»` : 'Ещё одна сессия'}
-          </span>
-        </Button>
-        <Button
-          render={<Link href="/app/world" />}
-          nativeButton={false}
-          variant="ghost"
-          className="text-muted-foreground"
-        >
-          Посмотреть, как вырос мир
-        </Button>
-      </div>
       </>
       )}
       </motion.div>
     </div>
+  )
+}
+
+
+/** Круглая кнопка под цифрами таймера с подписью (у Tiimo — «+5» и пауза под временем) */
+function RoundControl({
+  label,
+  ariaLabel,
+  onClick,
+  children,
+  big = false,
+  active = false,
+  disabled = false,
+}: {
+  label: string
+  ariaLabel: string
+  onClick: () => void
+  children: React.ReactNode
+  big?: boolean
+  active?: boolean
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      className="press group flex w-16 flex-col items-center gap-1 focus-visible:outline-none disabled:opacity-40"
+    >
+      <span
+        className={`grid place-items-center rounded-full transition-colors duration-150 group-focus-visible:ring-2 group-focus-visible:ring-ring ${
+          big ? 'size-14' : 'mt-1 size-12'
+        } ${
+          active
+            ? 'bg-primary text-primary-foreground'
+            : big
+              ? 'bg-[oklch(0.97_0.005_100)] text-[oklch(0.2_0.02_130)] shadow-[0_3px_0_oklch(0.7_0.01_100)]'
+              : 'border border-white/15 bg-white/5 text-foreground/90'
+        }`}
+      >
+        {children}
+      </span>
+      <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">{label}</span>
+    </button>
   )
 }

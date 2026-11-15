@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pub = path.join(root, "public");
-const dirs = ["fonts", "mascot/poster", "mascot/doll", "scene"];
+const dirs = ["fonts", "mascot/poster", "mascot/doll", "scene", "pomogaet"];
 const versions = {};
 for (const d of dirs) {
   for (const f of fs.readdirSync(path.join(pub, d)).sort()) {

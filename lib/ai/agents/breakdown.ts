@@ -14,7 +14,10 @@ export const BREAKDOWN_SYSTEM = `Режим: ДРОБЛЕНИЕ ЗАДАЧИ. Ч
 - Первый шаг самый крошечный, почти смешной («Открыть документ»)
 - Максимум 6 слов на шаг
 - Никаких пояснений: ответь ТОЛЬКО тремя строками, по шагу на строку
-- Если перед делом есть блок ПАМЯТЬ О ЧЕЛОВЕКЕ, делай шаги под этого человека: его программы и места, то, с чего он уже начинал это дело, то, что ему мешает и помогает. Саму память не пересказывай и не упоминай: в ответе только три шага`
+- В конце каждой строки через вертикальную черту поставь честную оценку в минутах числом: «Открыть документ | 1»
+- Если в данных есть «Силы сейчас: мало», шаги совсем лёгкие: открыть, посмотреть, достать, по 1-2 минуты, без решений и без письма с нуля. Если «много», шаги могут быть по 5 минут и содержательнее
+- Если в данных есть «Размер шагов: мельче», дроби до одного движения рукой («Открыть ноутбук»); если «крупнее», шаг может занимать до 10 минут
+- Если перед делом есть блок ПАМЯТЬ О ЧЕЛОВЕКЕ, делай шаги под этого человека: его программы и места, то, с чего он уже начинал это дело, то, что ему мешает и помогает, и его просьбы «как говорить» (короче, буквально, без шуток). Саму память не пересказывай и не упоминай: в ответе только три шага`
 
 export const BREAKDOWN_FALLBACK = ['Открыть то, что нужно для дела', 'Сделать одно крошечное действие', 'Записать, что дальше']
 
@@ -29,6 +32,38 @@ export const BREAKDOWN_FALLBACK = ['Открыть то, что нужно дл�
 const MARKER = /^\s*(?:\d{1,2}[.)]|[-–—•*])\s+/
 
 const INTRO = /^(?:давай|вот|смотри|окей|ок|хорошо|слушай|так|итак|ладно|понял|готово|держи)(?!\p{L})/iu
+
+/** «Открыть документ | 2», «Открыть документ (2 мин)» → минуты; оценка необязательна, шаг годится и без неё */
+const MINUTES = /\s*(?:\||\()\s*(?:≈\s*)?(\d{1,2})\s*(?:мин\p{L}*\.?)?\s*\)?\s*$/u
+
+export function parseStepsWithMinutes(text: string): { steps: string[]; minutes: (number | undefined)[] } | null {
+  const minutes: (number | undefined)[] = []
+  const bare = text
+    .split('\n')
+    .map((line) => {
+      const m = line.match(MINUTES)
+      if (!m) return line
+      const n = Number(m[1])
+      return `${line.slice(0, m.index)}\u0000${n >= 1 && n <= 60 ? n : ''}`
+    })
+    .join('\n')
+  const byStep = new Map<string, number | undefined>()
+  const clean = bare
+    .split('\n')
+    .map((line) => {
+      const [body, n] = line.split('\u0000')
+      if (n !== undefined) byStep.set(body.trim(), n ? Number(n) : undefined)
+      return body
+    })
+    .join('\n')
+  const steps = parseSteps(clean)
+  if (!steps) return null
+  for (const st of steps) {
+    const hit = [...byStep.entries()].find(([k]) => k.replace(/\*/g, '').endsWith(st))
+    minutes.push(hit?.[1])
+  }
+  return { steps, minutes }
+}
 
 export function parseSteps(text: string): string[] | null {
   const lines = text
@@ -57,7 +92,7 @@ export function parseSteps(text: string): string[] | null {
 }
 
 export type BreakdownResult =
-  | { kind: 'steps'; steps: string[]; source: 'model' | 'fallback' }
+  | { kind: 'steps'; steps: string[]; minutes?: (number | undefined)[]; source: 'model' | 'fallback' }
   | { kind: 'care'; reply: string }
 
 export async function breakdown(input: {
@@ -84,10 +119,11 @@ export async function breakdown(input: {
     // Gemini через AnyModel иногда рассуждает скрыто, несмотря на reasoning_effort: none (набор задач 12.11: 160 из 160
     // токенов ушли на рассуждение, текста ноль). Платим за потраченное, запас бесплатен
     maxOutputTokens: 1000,
-    maxChars: 300,
+    maxChars: 340,
     parse: (text) => {
-      const steps = parseSteps(text)
-      return steps ? { kind: 'steps', steps, source: 'model' } : null
+      const r = parseStepsWithMinutes(text)
+      // оценки нет ни у одного шага — поля нет вовсе (ответ тот же, что был до оценок)
+      return r ? { kind: 'steps', steps: r.steps, ...(r.minutes.some(Boolean) ? { minutes: r.minutes } : {}), source: 'model' } : null
     },
     fallback: () => ({ kind: 'steps', steps: BREAKDOWN_FALLBACK, source: 'fallback' }),
     // кризисный текст вместо дела — не шаги, а бережный проверенный ответ (lib/ai/crisis.ts)

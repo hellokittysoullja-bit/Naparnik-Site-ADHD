@@ -99,7 +99,7 @@ test('кнопка ведёт в 2-минутную сессию, после н�
   await expect(page.getByRole('timer')).toContainText(/0[12]:\d\d/)
   await expect(page).toHaveURL(/\/app\/session\?.*from=sdvg/)
   // финал первой сессии ведёт на «Когда повторим завтра?», а не сразу домой
-  await page.getByRole('button', { name: 'Закончить раньше' }).click()
+  await page.getByRole('button', { name: 'Сделал' }).click()
   await expect(page.getByRole('link', { name: 'Дальше', exact: true })).toHaveAttribute('href', /\/sdvg-test\/dalshe\?t=M&s=study/, { timeout: 15000 })
   const next = await page.request.get('/sdvg-test/dalshe?t=M&s=study')
   expect(next.status()).toBe(200)

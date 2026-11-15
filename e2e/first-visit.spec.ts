@@ -17,7 +17,7 @@ test('новичок: лендинг → знакомство → первая �
   await expect(page).toHaveURL(/\/app\/session/)
   // автостарт от знакомства: сессия идёт без второго «старт» (пропуск в sessionStorage)
   await expect(page.getByRole('timer')).toBeVisible({ timeout: 10_000 })
-  await expect(page.getByRole('button', { name: 'Закончить раньше' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Сделал' })).toBeVisible()
 
   await page.goto('/app')
   // Дом после знакомства — как на примере владельца (13.11): поле, сфера из ответов подсвечена, строка над кнопкой
@@ -48,10 +48,10 @@ test('первый визит на Дом: без ошибок и без зам�
   expect(errors).toEqual([])
 })
 
-test('двойной тап «Закончить раньше» не проскакивает награду в Мир', async ({ page }) => {
+test('двойной тап «Сделал» не проскакивает награду в Мир', async ({ page }) => {
   await page.goto('/app/session?step=' + encodeURIComponent('Открыть файл') + '&d=15')
   await page.getByRole('button', { name: /Начали/ }).click()
-  const early = page.getByRole('button', { name: 'Закончить раньше' })
+  const early = page.getByRole('button', { name: 'Сделал' })
   await expect(early).toBeVisible({ timeout: 10_000 })
   const box = (await early.boundingBox())!
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)

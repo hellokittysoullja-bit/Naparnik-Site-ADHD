@@ -134,7 +134,7 @@ test('финал первой сессии из знакомства ведёт 
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/app\/session\?.*from=onb/)
   await expect(page.getByRole('timer')).toBeVisible({ timeout: 10_000 })
-  await page.getByRole('button', { name: 'Закончить раньше' }).click()
+  await page.getByRole('button', { name: 'Сделал' }).click()
   await expect(page.getByRole('link', { name: 'Дальше', exact: true })).toHaveAttribute('href', /\/app\/start\/after\?m=relief&b=fear&s=work/, { timeout: 15000 })
 })
 
@@ -195,11 +195,11 @@ for (const height of [553, 650, 664, 844]) {
     const geo = await page.evaluate(() => {
       const ring = document.querySelector('svg circle[r="72"]')!.closest('svg')!.getBoundingClientRect()
       const cat = document.querySelector('[aria-label="Напарник работает рядом"]')!.getBoundingClientRect()
-      const quit = [...document.querySelectorAll('button')].find((b) => /Закончить раньше/.test(b.textContent ?? ''))!.getBoundingClientRect()
+      const quit = [...document.querySelectorAll('button')].find((b) => /^Сделал$/.test((b.textContent ?? '').trim()))!.getBoundingClientRect()
       // экран сессии не прокручивается (overflow: hidden), поэтому проверяем, что ничего и не обрезано: выход виден целиком
       return { ring: ring.width, cat: cat.width, scroll: document.scrollingElement!.scrollHeight - innerHeight, quitBottom: quit.bottom }
     })
-    expect(geo.quitBottom, '«Закончить раньше» виден целиком').toBeLessThanOrEqual(height)
+    expect(geo.quitBottom, '«Сделал» виден целиком').toBeLessThanOrEqual(height)
     expect(geo.ring).toBeGreaterThanOrEqual(geo.cat + 25)
     expect(geo.scroll).toBeLessThanOrEqual(0)
     await ctx.close()
