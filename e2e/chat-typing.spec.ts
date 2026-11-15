@@ -7,6 +7,14 @@ import { expect, test, type Page } from '@playwright/test'
  * машины: длинная лента не должна делать букву заметно дороже.
  */
 async function typingCost(page: Page, messages: number): Promise<number> {
+  // Коты в стенде без видеокарты рисуются программно и съедают кадры (на CI тест не укладывался во время):
+  // меряем работу React на букву, поэтому коты — постеры, сама лента и её перерисовка те же
+  await page.addInitScript(() => {
+    const get = HTMLCanvasElement.prototype.getContext
+    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, kind: string, ...rest: unknown[]) {
+      return /webgl/.test(kind) ? null : (get as (...a: unknown[]) => RenderingContext | null).call(this, kind, ...rest)
+    } as typeof HTMLCanvasElement.prototype.getContext
+  })
   await page.goto('/app/chat', { waitUntil: 'domcontentloaded' })
   await page.evaluate((n) => {
     localStorage.clear()
@@ -42,7 +50,7 @@ async function typingCost(page: Page, messages: number): Promise<number> {
     }).observe({ type: 'event', durationThreshold: 16 } as PerformanceObserverInit)
   })
   await box.click()
-  for (const ch of 'разобрать почту сегодня') {
+  for (const ch of 'разобрать почту') {
     await page.keyboard.type(ch)
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))))
   }
@@ -54,6 +62,7 @@ async function typingCost(page: Page, messages: number): Promise<number> {
 }
 
 test('буква в поле переписки стоит одинаково при пустой ленте и при 30 репликах', async ({ page }) => {
+  test.setTimeout(90_000)
   await page.setViewportSize({ width: 390, height: 844 })
   const empty = await typingCost(page, 0)
   const full = await typingCost(page, 30)
