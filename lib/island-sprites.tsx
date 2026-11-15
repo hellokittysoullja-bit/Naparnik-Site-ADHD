@@ -8,7 +8,7 @@
  * ноль расхождений между страницей «Мир» и моментом награды.
  */
 
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { poolElementByKey } from '@/lib/island-elements'
 import type { IslandFindEntry } from '@/lib/memory'
 
@@ -22,6 +22,15 @@ export const ISLAND_COLORS = {
 } as const
 
 const c = ISLAND_COLORS
+
+/**
+ * Мерцание и покачивание — CSS-анимации (.sv-pulse, .sv-sway в globals.css), а не SMIL <animate>: SMIL браузер
+ * считает в главном потоке и на каждом шаге перерисовывает весь SVG вместе со стилями (Мир в покое, CPU ×6: 2,5 с
+ * работы из 5 с). Значения и ритм те же, что были у SMIL: «a;b;a» за dur, линейно (15.11).
+ */
+const pulse = (lo: number, hi: number, dur: string): CSSProperties => ({ '--lo': lo, '--hi': hi, '--d': dur }) as CSSProperties
+const sway = (deg: number, x: number, y: number, dur: string): CSSProperties =>
+  ({ '--a': `${deg}deg`, '--d': dur, transformOrigin: `${x}px ${y}px` }) as CSSProperties
 
 // ---------- Ориентиры (старты 1–10) ----------
 
@@ -44,14 +53,7 @@ export const landmarkNodes: ReactNode[] = [
   </>,
   // 1 — Дерево (лёгкое покачивание кроны от корня — тот же принцип
   // «дыхания», что уже у костра и фонаря, просто через поворот, не opacity)
-  <g>
-    <animateTransform
-      attributeName="transform"
-      type="rotate"
-      values="0 121 146; 1.2 121 146; 0 121 146; -1.2 121 146; 0 121 146"
-      dur="5s"
-      repeatCount="indefinite"
-    />
+  <g className="sv-sway" style={sway(1.2, 121, 146, '5s')}>
     <rect x="118" y="118" width="6" height="28" rx="3" fill={c.groundDark} />
     <circle cx="121" cy="108" r="20" fill={c.green} opacity="0.9" />
     <circle cx="108" cy="118" r="12" fill={c.green} opacity="0.75" />
@@ -61,13 +63,17 @@ export const landmarkNodes: ReactNode[] = [
   <>
     <line x1="238" y1="148" x2="252" y2="140" stroke={c.groundDark} strokeWidth="4" strokeLinecap="round" />
     <line x1="252" y1="148" x2="238" y2="140" stroke={c.groundDark} strokeWidth="4" strokeLinecap="round" />
-    <circle cx="245" cy="134" r="18" fill={c.warm} opacity="0.12">
-      <animate attributeName="opacity" values="0.07;0.18;0.07" dur="2.4s" repeatCount="indefinite" />
-      <animate attributeName="r" values="15;19;15" dur="2.4s" repeatCount="indefinite" />
-    </circle>
-    <path d="M245 138 q-6 -8 0 -16 q2 6 5 8 q3 -4 2 -8 q7 8 -1 16 q-3 2 -6 0z" fill={c.warm}>
-      <animate attributeName="opacity" values="1;0.75;1" dur="1.6s" repeatCount="indefinite" />
-    </path>
+    {/* ореол: радиус 15 → 19 → 15 — тот же круг r=18 масштабом от центра (без анимации — прежние 18) */}
+    <circle
+      cx="245"
+      cy="134"
+      r="18"
+      fill={c.warm}
+      opacity="0.12"
+      className="sv-glow"
+      style={{ ...pulse(0.07, 0.18, '2.4s'), '--s0': 15 / 18, '--s1': 19 / 18, transformOrigin: '245px 134px' } as CSSProperties}
+    />
+    <path d="M245 138 q-6 -8 0 -16 q2 6 5 8 q3 -4 2 -8 q7 8 -1 16 q-3 2 -6 0z" fill={c.warm} className="sv-pulse" style={pulse(1, 0.75, '1.6s')} />
   </>,
   // 3 — Домик
   <>
@@ -84,20 +90,11 @@ export const landmarkNodes: ReactNode[] = [
   <>
     <line x1="212" y1="152" x2="212" y2="118" stroke={c.soft} strokeWidth="2.5" strokeLinecap="round" />
     <circle cx="212" cy="112" r="6" fill={c.warm} />
-    <circle cx="212" cy="112" r="11" fill={c.warm} opacity="0.25">
-      <animate attributeName="opacity" values="0.15;0.35;0.15" dur="3.6s" repeatCount="indefinite" />
-    </circle>
+    <circle cx="212" cy="112" r="11" fill={c.warm} opacity="0.25" className="sv-pulse" style={pulse(0.15, 0.35, '3.6s')} />
   </>,
   // 6 — Второе дерево (свой ритм и амплитуда — не зеркало первого,
   // деревья на настоящем ветру не качаются синхронно)
-  <g>
-    <animateTransform
-      attributeName="transform"
-      type="rotate"
-      values="0 274.5 136; -1 274.5 136; 0 274.5 136; 1 274.5 136; 0 274.5 136"
-      dur="4.2s"
-      repeatCount="indefinite"
-    />
+  <g className="sv-sway" style={sway(-1, 274.5, 136, '4.2s')}>
     <rect x="272" y="112" width="5" height="24" rx="2.5" fill={c.groundDark} />
     <circle cx="274" cy="102" r="15" fill={c.green} opacity="0.8" />
     <circle cx="284" cy="110" r="9" fill={c.green} opacity="0.65" />
