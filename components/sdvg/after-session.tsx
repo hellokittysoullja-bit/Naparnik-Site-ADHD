@@ -84,7 +84,7 @@ export function AfterSession() {
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[16px] leading-relaxed">
             <span>{copy.after.planBefore}</span>
             <input
-              className="h-11 min-w-0 flex-1 basis-40 rounded-xl border border-border bg-card px-3 text-[16px] outline-none focus:ring-2 focus:ring-ring"
+              className="field field-compact flex-1 basis-40"
               placeholder={copy.after.customPlaceholder}
               aria-label={copy.after.planAria}
               maxLength={60}
@@ -115,7 +115,7 @@ export function AfterSession() {
                 <input
                   type="time"
                   aria-label={copy.after.timeAria}
-                  className="h-11 rounded-xl border border-border bg-card px-3 text-[16px] outline-none focus:ring-2 focus:ring-ring"
+                  className="field field-compact"
                   value={ownTime}
                   onChange={(e) => setOwnTime(e.target.value)}
                 />

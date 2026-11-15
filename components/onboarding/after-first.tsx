@@ -226,7 +226,7 @@ export function AfterFirst() {
                     setExact(e.target.value)
                     setNudge(false)
                   }}
-                  className="h-14 rounded-2xl border-2 border-primary bg-primary/10 px-4 text-base outline-none"
+                  className="field"
                 />
               )}
             </>

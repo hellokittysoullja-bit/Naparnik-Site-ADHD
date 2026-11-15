@@ -1016,7 +1016,7 @@ export function FocusSession() {
                     onBlur={() => setEditing(false)}
                     onKeyDown={(e) => e.key === 'Enter' && setEditing(false)}
                     aria-label="Шаг своими словами"
-                    className="h-11 w-full rounded-xl bg-white/5 px-3 text-base font-semibold outline-none ring-1 ring-primary/50"
+                    className="field field-compact"
                   />
                 ) : (
                   // смена шага — причина и следствие видны: старый уходит вверх за 140 мс, новый приходит за 220 мс
@@ -1138,7 +1138,8 @@ export function FocusSession() {
               autoFocus={!prefilledStep}
               enterKeyHint="go"
               placeholder="Открыть файл презентации"
-              className="glass h-12 rounded-xl px-4 text-base"
+              className="field"
+              autoCapitalize="sentences"
             />
           </label>
           )}
@@ -1431,9 +1432,11 @@ export function FocusSession() {
                   maxLength={200}
                   onChange={(e) => setThought(e.target.value)}
                   placeholder="Что пришло в голову?"
-                  className="h-11 min-w-0 flex-1 rounded-xl bg-white/5 px-3 text-base outline-none ring-1 ring-white/15 focus:ring-primary/60"
+                  className="field field-compact flex-1"
+                  enterKeyHint="done"
+                  autoCapitalize="sentences"
                 />
-                <button type="submit" disabled={!thought.trim()} className="btn-press h-11 shrink-0 rounded-xl bg-primary px-3.5 text-sm font-bold text-primary-foreground disabled:opacity-50">
+                <button type="submit" disabled={!thought.trim()} className="btn-press h-12 shrink-0 rounded-[14px] bg-primary px-4 text-[15px] font-bold text-primary-foreground disabled:opacity-50">
                   В Дела
                 </button>
               </form>

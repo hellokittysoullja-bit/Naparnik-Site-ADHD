@@ -1280,7 +1280,7 @@ export function HomeScreen() {
                     maxLength={24}
                     aria-label="Имя для напарника"
                     disabled={nameBusy}
-                    className="glass h-11 min-w-0 flex-1 rounded-xl px-3 text-base disabled:opacity-60"
+                    className="field field-compact flex-1"
                   />
                   <Button
                     type="submit"
