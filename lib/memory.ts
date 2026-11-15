@@ -5,6 +5,7 @@
  * Интерфейс намеренно асинхронный: замена на базу данных позже —
  * это замена реализации, а не рефакторинг всех вызовов.
  */
+import { askFacts } from './asks'
 import { activeFacts, applyFactOps, FACT_CATEGORIES, type Fact, type FactOp, type OpResult } from '@/lib/ai/memory/facts'
 import { aboutAny, contentWords } from '@/lib/ai/memory/stems'
 import { addForgotten } from '@/lib/forgotten'
@@ -834,7 +835,7 @@ export type MemoryContext = {
   recentStarts: Array<Pick<StartEntry, 'date' | 'label' | 'minutes' | 'fromPlan'>>
   patterns: Patterns
   /** Факты о человеке для разговора (номер факта для модели — место в этом списке) */
-  facts: Array<{ category: Fact['category']; text: string; since: string }>
+  facts: Array<{ category: Fact['category']; text: string; since?: string }>
   /** id тех же фактов в том же порядке: по ним устройство переводит номер из ответа модели обратно в факт */
   factIds: string[]
   /** Навыки кота о человеке — номер навыка для модели = место в списке */
@@ -857,7 +858,13 @@ export function peekMemoryContext(): MemoryContext {
   const starts = peekStarts()
   const patterns = peekPatterns()
   // не больше лимита снимка (lib/ai/memory/schema.ts): лишний факт выключил бы память целиком
-  const facts = peekFacts().slice(0, 20)
+  // просьбы к коту (lib/asks.ts) идут первыми как факты «как говорить»; id с приставкой — их нельзя «забыть» номером
+  const asks = askFacts()
+  const own = peekFacts().slice(0, 20 - asks.length)
+  const facts = [
+    ...asks.map((a) => ({ id: `ask:${a.text}`, category: a.category, text: a.text, createdAt: '' })),
+    ...own,
+  ]
   const finds = peekFinds()
   const companionName = peekCompanionName()
   return {
@@ -869,7 +876,7 @@ export function peekMemoryContext(): MemoryContext {
       fromPlan,
     })),
     patterns,
-    facts: facts.map((f) => ({ category: f.category, text: f.text, since: f.createdAt.slice(0, 10) })),
+    facts: facts.map((f) => ({ category: f.category, text: f.text, ...(f.createdAt ? { since: f.createdAt.slice(0, 10) } : {}) })),
     factIds: facts.map((f) => f.id),
     ...(() => {
       const skills = peekSkills()

@@ -164,6 +164,7 @@ export function FirstRun() {
   // человек сам нажал на шаг (а не оставил предвыбранный) — кот откликается
   // «Сколько висит?»: после ответа с пояснением список свёрнут до выбранного; «Другой ответ» — снова весь список
   const [hangOpen, setHangOpen] = useState(false)
+  const [blockOpen, setBlockOpen] = useState(false)
   const [pickedStep, setPickedStep] = useState(false)
   const [leaving, setLeaving] = useState(false)
   // Кот отзывается на каждое «Продолжить» (Duolingo: сова жмурится и искрит на каждый шаг)
@@ -726,7 +727,8 @@ export function FirstRun() {
                   </>
                 )}
                 {step === STEP_BLOCKER &&
-                  BLOCKERS.map((b, i) => (
+                  // как у «сколько висит»: после ответа остальные варианты уходят, на их месте — «почему у тебя так»
+                  BLOCKERS.filter((b) => !blocker || blockOpen || b.key === blocker.key).map((b, i) => (
                     <Option
                       key={b.key}
                       firstTab={i === 0 && !state.blocker}
@@ -746,10 +748,26 @@ export function FirstRun() {
                         }
                         setNudge(false)
                         // Новая помеха — новый порядок и умолчание шагов: старый выбор шага сбрасываем
+                        setBlockOpen(false)
                         update({ blocker: b.key, firstStep: null })
                       }}
                     />
                   ))}
+                {step === STEP_BLOCKER && blocker && !blockOpen && (
+                  <>
+                    <div className="glass-hearthside mt-1 rounded-2xl px-4 py-3">
+                      <p className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.2em] text-primary/90">почему так</p>
+                      <p className="mt-1 text-[15px] leading-snug text-foreground/90">{blocker.insert}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setBlockOpen(true)}
+                      className="press min-h-11 self-start rounded-full px-3 text-[15px] font-semibold text-muted-foreground"
+                    >
+                      Другой ответ
+                    </button>
+                  </>
+                )}
                 {step === STEP_MOTIVE &&
                   MOTIVES.map((m, i) => (
                     <Option

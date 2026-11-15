@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Timer, Sprout } from "lucide-react";
+import { ListChecks, Sprout, Timer } from "lucide-react";
 import { CatSilhouette } from "@/components/icons/cat-silhouette";
 import { getActiveSession, getUnseenWorldCount } from "@/lib/memory";
 import { NAV_PILL_CLASS, NAV_PILL_STYLE } from "@/components/nav-pill-style";
@@ -15,7 +15,8 @@ import { NAV_PILL_CLASS, NAV_PILL_STYLE } from "@/components/nav-pill-style";
  */
 const tabs = [
   { href: "/app", label: "Дом", icon: CatSilhouette, exact: true },
-  { href: "/app/session", label: "Фокус", icon: Timer, exact: false },
+  // Этап 2 (research/24 PLAN): Фокус — действие с Дома и из Дел, а не вкладка; на его месте — «Дела»
+  { href: "/app/deals", label: "Дела", icon: ListChecks, exact: false },
   { href: "/app/world", label: "Мир", icon: Sprout, exact: false },
 ];
 
@@ -96,16 +97,25 @@ export function AppNav() {
       aria-label="Основная навигация"
       className="glass-nav fixed inset-x-0 bottom-0 z-50 border-t border-white/10 pb-[env(safe-area-inset-bottom)]"
     >
+      {/* Ушёл со страницы, а сессия идёт — сверху пилюля «Фокус · ещё 12 мин» (как Live Activity у Focus Friend): вернуться в один тап */}
+      {minutesLeft !== null && !pathname.startsWith("/app/session") && (
+        <Link
+          href="/app/session"
+          className="nav-session-pill press fixed left-1/2 top-[max(0.75rem,env(safe-area-inset-top))] z-50 flex h-11 -translate-x-1/2 items-center gap-2 rounded-full bg-primary px-4 text-[13px] font-bold text-primary-foreground shadow-[0_6px_20px_-6px_oklch(0.86_0.22_130/0.6)]"
+        >
+          <Timer className="size-4" aria-hidden="true" />
+          Фокус · ещё {minutesLeft} мин
+        </Link>
+      )}
       <div className="mx-auto flex max-w-md items-center justify-around py-2">
         {tabs.map((tab) => {
           // чат переехал с Дома на /app/chat и открывается с Дома — Дом остаётся подсвеченным
           const active = tab.exact
-            ? pathname === tab.href || (tab.href === "/app" && pathname === "/app/chat")
+            ? pathname === tab.href || (tab.href === "/app" && (pathname === "/app/chat" || pathname.startsWith("/app/session") || pathname.startsWith("/app/stuck")))
             : pathname.startsWith(tab.href);
           const Icon = tab.icon;
           const showBadge = tab.href === "/app/world" && worldUnseen && !active;
-          const showTimer =
-            tab.href === "/app/session" && minutesLeft !== null && !active;
+          const showTimer = false;
           return (
             <Link
               key={tab.href}

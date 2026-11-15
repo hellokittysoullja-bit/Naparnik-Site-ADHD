@@ -39,7 +39,13 @@ export const ASSET_VERSIONS: Record<string, string> = {
   "/scene/night-landscape.webp": "fa97fa4fe1",
   "/scene/night-portrait.mp4": "4b1dcf5283",
   "/scene/night-portrait.webm": "a9a645abe6",
-  "/scene/night-portrait.webp": "11ae8a5f98"
+  "/scene/night-portrait.webp": "11ae8a5f98",
+  "/pomogaet/cards.webp": "685a37d5f9",
+  "/pomogaet/deals.webp": "f22da03a17",
+  "/pomogaet/finale.webp": "b7694a459e",
+  "/pomogaet/step.webp": "9f9778af5a",
+  "/pomogaet/stuck.webp": "fbc86c2f4e",
+  "/pomogaet/timer.webp": "5eac1f3fb4"
 };
 
 /** Адрес своей статики с версией содержимого: такой адрес кэшируется на год (next.config.ts). */

@@ -71,7 +71,7 @@ const TASK_FACTS = 6
 /** темы, которые задаче полезны всегда; остальные — только если перекликаются с делом */
 const ALWAYS: Readonly<Record<TaskView, readonly FactCategory[]>> = {
   // как человек работает и что ему мешает — из этого и делаются шаги; «о себе» даёт род и занятие
-  breakdown: ['helps', 'obstacle', 'task', 'about'],
+  breakdown: ['helps', 'obstacle', 'task', 'about', 'style'],
   // голосу важнее тон и то, что человеку помогает; остальное — только к делу
   'session-voice': ['style', 'helps', 'about'],
 }

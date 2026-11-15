@@ -35,6 +35,8 @@ test('ничего не положено: «Что сейчас висит?», �
   await field.press('Enter')
   await expect(page).toHaveURL(/\/app\/session\?step=/)
   expect(new URL(page.url()).searchParams.get('step')).toBe('реферат по истории')
+  // перед первым дроблением кот спрашивает про силы; «не знаю» дробит как раньше
+  await page.getByRole('button', { name: 'Не знаю, просто разломай' }).click()
   await expect(page.getByText('Написать одну фразу')).toBeVisible()
 })
 
@@ -90,10 +92,15 @@ test('Фокус: дробление следующего шага не стир
   })
   await page.route('**/api/breakdown', (route) => route.fulfill({ json: { steps: ['Открыть папку', 'Найти файл', 'Открыть его'], source: 'model' } }))
   await page.goto('/app/session?step=' + encodeURIComponent('Найти файл курсовой') + '&break=1')
-  await page.getByRole('button', { name: 'Открыть папку' }).click()
-  const q = await page.evaluate(() => JSON.parse(localStorage.getItem('naparnik:stepQueue') ?? 'null'))
+  // перед первым дроблением кот спрашивает про силы; «не знаю» дробит как раньше
+  await page.getByRole('button', { name: 'Не знаю, просто разломай' }).click()
+  // первый подшаг уже выбран и стоит крупно; очередь складывается в момент старта
+  await expect(page.getByText('Открыть папку')).toBeVisible()
+  await page.getByRole('button', { name: /Начали/ }).click()
   // подшаги встали на место раздробленного шага, второй шаг дела на месте
-  expect(q).toEqual({ task: 'Курсовая', steps: ['Найти файл', 'Открыть его', 'Написать план из трёх пунктов'] })
+  await expect
+    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('naparnik:stepQueue') ?? 'null')), { timeout: 5_000 })
+    .toEqual({ task: 'Курсовая', steps: ['Найти файл', 'Открыть его', 'Написать план из трёх пунктов'] })
 })
 
 test('Фокус: план из прошлых дней, начатый по плану, закрывается и больше не возвращается', async ({ page }) => {
@@ -104,9 +111,11 @@ test('Фокус: план из прошлых дней, начатый по п�
   }, today(-2))
   await page.route('**/api/breakdown', (route) => route.fulfill({ json: { steps: ['Открыть ноутбук', 'Найти таблицу', 'Открыть её'], source: 'model' } }))
   await page.goto('/app/session?step=' + encodeURIComponent('Открыть таблицу с отчётом') + '&break=1&plan=1')
-  await page.getByRole('button', { name: 'Открыть ноутбук' }).click()
+  // перед первым дроблением кот спрашивает про силы; «не знаю» дробит как раньше
+  await page.getByRole('button', { name: 'Не знаю, просто разломай' }).click()
+  await expect(page.getByText('Открыть ноутбук')).toBeVisible()
   await page.getByRole('button', { name: /Начали/ }).click()
-  await expect(page.getByRole('button', { name: 'Закончить раньше' })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole('button', { name: 'Сделал' })).toBeVisible({ timeout: 10_000 })
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('naparnik:plan') ?? 'null')), { timeout: 5_000 }).toBeNull()
 })
 
@@ -396,6 +405,8 @@ test('пустое поле: «Разломать на шаг» дробит д�
   await page.goto('/app')
   await page.getByRole('link', { name: 'Разломать на шаг' }).click()
   await expect(page).toHaveURL(/\/app\/session\?step=/)
+  // перед первым дроблением кот спрашивает про силы; «не знаю» дробит как раньше
+  await page.getByRole('button', { name: 'Не знаю, просто разломай' }).click()
   await expect(page.getByText('Найти файл')).toBeVisible()
   expect(asked.length).toBeGreaterThan(5)
 })
