@@ -64,8 +64,9 @@ test('Дом не прокручивается ни вбок, ни вниз; н�
     await page.goto('/app')
     await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
     const m = await page.evaluate(() => ({
-      sw: document.documentElement.scrollWidth,
-      sh: document.documentElement.scrollHeight,
+      // прокручивается слой экранов /app, а не документ (components/app-scroll.tsx) — мерим и то и другое
+      sw: Math.max(document.documentElement.scrollWidth, document.querySelector('[data-app-scroll]')!.scrollWidth),
+      sh: Math.max(document.documentElement.scrollHeight, document.querySelector('[data-app-scroll]')!.scrollHeight),
       backdrop: getComputedStyle(document.querySelector('[data-app-backdrop]')!).display,
       chatBottom: document.querySelector('.btn-paper')!.getBoundingClientRect().bottom,
       navTop: document.querySelector('nav')!.getBoundingClientRect().top,

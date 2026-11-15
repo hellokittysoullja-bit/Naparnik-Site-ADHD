@@ -35,14 +35,14 @@ import {
   clearPlan,
   consumeQueueStep,
   getActiveSession,
-  getCompanionName,
   getFinds,
-  getPatterns,
   getPlan,
   getStarts,
   getStepQueue,
   markSkillsShown,
+  peekCompanionName,
   peekMemoryContext,
+  peekPatterns,
   recordStart,
   saveActiveSession,
   savePlan,
@@ -232,12 +232,12 @@ export function FocusSession() {
   // механику вечно: на 20-й сессии человек уже знает, что «первый шаг —
   // не вся задача». Раз узнаём на маунте — реплика сетапа тратится
   // мгновенно, к моменту, когда человек читает текст, состояние уже есть.
-  const [companionName, setCompanionName] = useState<string | null>(null)
-  const [priorSessions, setPriorSessions] = useState(0)
-  useEffect(() => {
-    void getCompanionName().then(setCompanionName)
-    void getPatterns().then((p) => setPriorSessions(p.totalStarts))
-  }, [])
+  // Читаем ДО первого кадра (peek*): раньше имя и число сессий приходили после показа, и кот сначала говорил реплику
+  // новичка «Что делаем? Назови первый шаг…», а через миг менял её на «Погнали… Хуисос рядом» — пузырь из двух строк
+  // становился одной и весь экран дёргался (запись экрана владельца 16.11). Фокус рисуется только на устройстве
+  // (useSearchParams под Suspense), поэтому память здесь уже доступна; проверка window — на всякий случай
+  const [companionName] = useState<string | null>(() => (typeof window === 'undefined' ? null : peekCompanionName()))
+  const [priorSessions] = useState(() => (typeof window === 'undefined' ? 0 : peekPatterns().totalStarts))
 
   // «Раздроби мне задачу»: человек пишет большое пугающее дело —
   // AI возвращает 3 крошечных шага. Task initiation — главный
@@ -456,28 +456,29 @@ export function FocusSession() {
 
   // Обратный отсчёт для СДВГ — давление дедлайна. Цифры можно спрятать:
   // остаются существо и полоска. Выбор запоминается.
-  const [hideDigits, setHideDigits] = useState(false)
-  useEffect(() => {
+  // тоже до первого кадра: иначе у того, кто прятал цифры, при открытии сессии сначала мелькали цифры
+  const [hideDigits, setHideDigits] = useState(() => {
     try {
-      setHideDigits(localStorage.getItem(HIDE_DIGITS_KEY) === '1')
+      return typeof window !== 'undefined' && localStorage.getItem(HIDE_DIGITS_KEY) === '1'
     } catch {
-      /* приватный режим */
+      return false
     }
-  }, [])
+  })
   // Эмбиент костра: опт-ин, паттерн Calm — тихий фон снижает
   // perceived effort. Играет только пока идёт сессия.
   // Звук на выбор: костёр, дождь, ровный шум или тишина (components/sound-chip.tsx). Прежний переключатель
   // «зажечь костёр» переезжает как есть: у кого костёр был включён, тот его и услышит
-  const [sound, setSound] = useState<SoundChoice>('off')
-  useEffect(() => {
+  // выбор звука — до первого кадра: иначе плашка сначала показывала «Тишина», а потом переключалась
+  const [sound, setSound] = useState<SoundChoice>(() => {
     try {
+      if (typeof window === 'undefined') return 'off'
       const v = localStorage.getItem(SOUND_KEY)
-      if (v === 'fire' || v === 'rain' || v === 'noise') setSound(v)
-      else if (v !== 'off' && localStorage.getItem(AMBIENT_KEY) === '1') setSound('fire')
+      if (v === 'fire' || v === 'rain' || v === 'noise') return v
+      return v !== 'off' && localStorage.getItem(AMBIENT_KEY) === '1' ? 'fire' : 'off'
     } catch {
-      /* приватный режим */
+      return 'off'
     }
-  }, [])
+  })
   useEffect(() => {
     if (phase === 'running' && sound !== 'off') startAmbient(sound)
     else stopAmbient()
@@ -1016,7 +1017,7 @@ export function FocusSession() {
                     onBlur={() => setEditing(false)}
                     onKeyDown={(e) => e.key === 'Enter' && setEditing(false)}
                     aria-label="Шаг своими словами"
-                    className="h-11 w-full rounded-xl bg-white/5 px-3 text-base font-semibold outline-none ring-1 ring-primary/50"
+                    className="field field-compact"
                   />
                 ) : (
                   // смена шага — причина и следствие видны: старый уходит вверх за 140 мс, новый приходит за 220 мс
@@ -1138,7 +1139,8 @@ export function FocusSession() {
               autoFocus={!prefilledStep}
               enterKeyHint="go"
               placeholder="Открыть файл презентации"
-              className="glass h-12 rounded-xl px-4 text-base"
+              className="field"
+              autoCapitalize="sentences"
             />
           </label>
           )}
@@ -1431,9 +1433,11 @@ export function FocusSession() {
                   maxLength={200}
                   onChange={(e) => setThought(e.target.value)}
                   placeholder="Что пришло в голову?"
-                  className="h-11 min-w-0 flex-1 rounded-xl bg-white/5 px-3 text-base outline-none ring-1 ring-white/15 focus:ring-primary/60"
+                  className="field field-compact flex-1"
+                  enterKeyHint="done"
+                  autoCapitalize="sentences"
                 />
-                <button type="submit" disabled={!thought.trim()} className="btn-press h-11 shrink-0 rounded-xl bg-primary px-3.5 text-sm font-bold text-primary-foreground disabled:opacity-50">
+                <button type="submit" disabled={!thought.trim()} className="btn-press h-12 shrink-0 rounded-[14px] bg-primary px-4 text-[15px] font-bold text-primary-foreground disabled:opacity-50">
                   В Дела
                 </button>
               </form>

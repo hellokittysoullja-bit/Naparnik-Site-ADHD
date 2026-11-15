@@ -197,7 +197,7 @@ for (const height of [553, 650, 664, 844]) {
       const cat = document.querySelector('[aria-label="Напарник работает рядом"]')!.getBoundingClientRect()
       const quit = [...document.querySelectorAll('button')].find((b) => /^Сделал$/.test((b.textContent ?? '').trim()))!.getBoundingClientRect()
       // экран сессии не прокручивается (overflow: hidden), поэтому проверяем, что ничего и не обрезано: выход виден целиком
-      return { ring: ring.width, cat: cat.width, scroll: document.scrollingElement!.scrollHeight - innerHeight, quitBottom: quit.bottom }
+      return { ring: ring.width, cat: cat.width, scroll: document.querySelector('[data-app-scroll]')!.scrollHeight - innerHeight, quitBottom: quit.bottom }
     })
     expect(geo.quitBottom, '«Сделал» виден целиком').toBeLessThanOrEqual(height)
     expect(geo.ring).toBeGreaterThanOrEqual(geo.cat + 25)

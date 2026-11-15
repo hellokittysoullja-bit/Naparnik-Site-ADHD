@@ -2047,3 +2047,127 @@ body[data-home-camp] .glass-nav {
 @media (prefers-reduced-motion: reduce) {
   .btn-press, .btn-press:active:not(:disabled) { transition: none; transform: none; }
 }
+
+/* ==========================================================================
+   Поле ввода — один стандарт на весь продукт (15.11, владелец: «индикатор поля ужасный, все поля к единому виду»).
+   Откуда числа:
+   - высота 56 — как у Material 3 и как наша главная кнопка (одна высота строки «поле → кнопка»); 48 — поле в ряд
+     с кнопкой (мысль на потом, имя кота): Apple HIG требует не меньше 44;
+   - шрифт 16 px ровно: меньше — iPhone приближает страницу при касании поля;
+   - фокус как у Stripe и Linear: рамка становится цветом акцента и вокруг мягкое кольцо 4 px низкой плотности. Без
+     отступа и без свечения — прежняя обводка (outline 2 px + отступ 2 px) рисовала второй толстый контур вокруг поля;
+   - цвет каретки — акцент; подсказка — приглушённый текст, контраст ≥ 4,5:1 на фоне поля;
+   - при фокусе поле само прокручивается так, чтобы под ним оставалось место для кнопки над клавиатурой
+     (scroll-margin-bottom).
+   Обычные стили (не @layer): ими перебиваются старые утилиты высоты и рамки, поэтому вид везде один.
+   ========================================================================== */
+.field {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 56px;
+  padding: 0 16px;
+  border-radius: 16px;
+  border: 1.5px solid oklch(1 0 0 / 0.14);
+  background: oklch(0.205 0.012 130 / 0.94);
+  color: var(--foreground);
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 500;
+  caret-color: var(--primary);
+  scroll-margin-bottom: 140px;
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+.field::placeholder { color: oklch(0.68 0.012 120); font-weight: 400; opacity: 1; }
+@media (hover: hover) {
+  .field:hover:not(:focus):not(:disabled) { border-color: oklch(1 0 0 / 0.24); }
+}
+.field:focus,
+.field:focus-visible,
+.field-shell:focus-within {
+  outline: none !important;
+  border-color: color-mix(in oklab, var(--primary) 85%, transparent);
+  background: oklch(0.22 0.014 130 / 0.96);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--primary) 16%, transparent);
+}
+.field-shell .field-inner:focus,
+.field-shell .field-inner:focus-visible { outline: none !important; box-shadow: none; }
+.field[aria-invalid="true"] { border-color: var(--destructive); }
+.field:disabled { opacity: 0.55; }
+.field-compact { height: 48px; padding: 0 14px; border-radius: 14px; }
+textarea.field {
+  height: auto;
+  min-height: 56px;
+  padding: 15px 16px;
+  resize: none;
+  field-sizing: content;
+  max-height: 160px;
+}
+/* поле с приставкой (стоит «ДЕЛО» перед текстом): рамка у обёртки, сам input прозрачный */
+.field-shell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 56px;
+  padding: 0 16px;
+  border-radius: 16px;
+  border: 1.5px solid oklch(1 0 0 / 0.14);
+  background: oklch(0.205 0.012 130 / 0.94);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.field-shell .field-inner {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  background: transparent;
+  border: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--foreground);
+  caret-color: var(--primary);
+}
+.field-shell .field-inner::placeholder { color: oklch(0.68 0.012 120); font-weight: 400; }
+@media (prefers-reduced-motion: reduce) { .field, .field-shell { transition: none; } }
+
+/* Экраны /app: документ высотой ровно в экран и не прокручивается — прокручивается .app-scroll
+   (components/app-scroll.tsx). Так iPhone не оттягивает всю страницу и не показывает системный значок обновления */
+html:has(.app-scroll),
+html:has(.app-scroll) body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+.app-scroll {
+  position: fixed;
+  inset: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: none;
+  -webkit-overflow-scrolling: touch;
+}
+/* кот вместо значка обновления: тёмный кружок, чтобы постер читался на любой сцене */
+.ptr-cat {
+  position: fixed;
+  left: 50%;
+  top: max(10px, env(safe-area-inset-top));
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: oklch(0.23 0.014 130 / 0.96);
+  border: 1px solid oklch(1 0 0 / 0.12);
+  box-shadow: 0 10px 24px -10px oklch(0 0 0 / 0.8);
+  pointer-events: none;
+  will-change: transform;
+}
+.ptr-cat-img { width: 52px; height: 52px; margin-top: -4px; }
+@keyframes ptr-pop { 0% { scale: 1; } 45% { scale: 1.14; } 100% { scale: 1; } }
+@keyframes ptr-hop { 0%, 100% { translate: 0 0; } 45% { translate: 0 -9px; } }
+.ptr-cat[data-ready] .ptr-cat-img { animation: ptr-pop 260ms cubic-bezier(0.22, 1.4, 0.36, 1); }
+.ptr-cat[data-refreshing] .ptr-cat-img { animation: ptr-hop 520ms cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+@media (prefers-reduced-motion: reduce) { .ptr-cat .ptr-cat-img { animation: none !important; } }

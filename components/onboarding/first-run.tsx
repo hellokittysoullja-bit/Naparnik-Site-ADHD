@@ -844,7 +844,7 @@ export function FirstRun() {
                         maxLength={80}
                         aria-label="Свой первый шаг"
                         placeholder="Например: открыть черновик"
-                        className="h-14 rounded-2xl border-2 border-primary bg-primary/10 px-4 text-base outline-none placeholder:text-muted-foreground"
+                        className="field"
                       />
                     ) : (
                       <Option

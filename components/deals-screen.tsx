@@ -256,7 +256,9 @@ export function DealsScreen() {
           onChange={(e) => setDump(e.target.value.slice(0, 400))}
           rows={2}
           placeholder="отчёт, записаться к врачу, ещё посуда со вчера"
-          className="min-h-[56px] w-full resize-none rounded-[14px] border border-white/12 bg-[oklch(0.2_0.012_130/0.9)] px-3.5 py-2.5 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="field"
+          enterKeyHint="enter"
+          autoCapitalize="sentences"
         />
         <div className="flex items-center gap-2">
           <button

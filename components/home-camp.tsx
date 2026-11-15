@@ -147,7 +147,8 @@ export function HomeCamp() {
               placeholder={homeExample(sphere)}
               enterKeyHint="go"
               autoComplete="off"
-              className="h-12 w-full rounded-[14px] border border-white/15 bg-[oklch(0.22_0.012_130/0.9)] px-4 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="field"
+              autoCapitalize="sentences"
             />
           </form>
           <div className="mt-3 flex justify-center gap-2" role="group" aria-label="Сфера дела">

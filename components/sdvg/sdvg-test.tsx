@@ -383,7 +383,7 @@ export function SdvgTest() {
             <p className="mt-1 text-sm text-muted-foreground">{copy.name.hint}</p>
           </Head>
           <input
-            className="h-12 rounded-xl border border-border bg-card px-4 text-[17px] outline-none focus:ring-2 focus:ring-ring"
+            className="field"
             placeholder={copy.name.placeholder}
             maxLength={40}
             value={name}
@@ -605,7 +605,7 @@ function Result({
         <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">{copy.types.yourStep}</p>
         {ownOpen ? (
           <input
-            className="h-12 rounded-xl border border-border bg-card px-4 text-[17px] outline-none focus:ring-2 focus:ring-ring"
+            className="field"
             placeholder={copy.types.ownPlaceholder}
             aria-label={copy.types.ownLink}
             maxLength={80}

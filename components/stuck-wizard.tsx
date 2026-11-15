@@ -141,16 +141,26 @@ export function StuckWizard() {
   const [word, setWord] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
   const [left, setLeft] = useState(0);
-  const [opener, setOpener] = useState(0);
-  // каждый заход — со следующего вопроса; счётчик живёт на устройстве
-  useEffect(() => {
+  // каждый заход — со следующего вопроса; счётчик живёт на устройстве. Номер считается ДО первого кадра: раньше первым
+  // кадром всегда стоял вопрос №1, а через миг его подменял нужный (тот же баг, что с репликой Фокуса, 16.11)
+  const [opener, setOpener] = useState(() => {
     try {
-      const n = (Number(window.localStorage.getItem(OPENER_KEY) ?? "-1") + 1) % OPENERS.length;
-      window.localStorage.setItem(OPENER_KEY, String(n));
-      setOpener(n);
+      return typeof window === "undefined" ? 0 : (Number(window.localStorage.getItem(OPENER_KEY) ?? "-1") + 1) % OPENERS.length;
+    } catch {
+      return 0;
+    }
+  });
+  const savedOpener = useRef(false);
+  useEffect(() => {
+    if (savedOpener.current) return;
+    savedOpener.current = true;
+    try {
+      window.localStorage.setItem(OPENER_KEY, String(opener));
     } catch {
       /* приватный режим: всегда первый вопрос */
     }
+    // только при открытии
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const probe = kind ? PROBE[kind] : null;
@@ -252,14 +262,16 @@ export function StuckWizard() {
       </div>
 
       {/* дело — сверху, как у источника: мастер всё время говорит про него */}
-      <label className="mt-1 flex items-center gap-2 rounded-2xl border border-white/10 bg-[oklch(0.22_0.012_130/0.9)] px-3.5 focus-within:ring-2 focus-within:ring-ring">
+      <label className="field-shell mt-1">
         <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-primary/90">дело</span>
         <input
           value={task}
           maxLength={100}
           onChange={(e) => setTask(e.target.value)}
           placeholder="например, курсовая"
-          className="h-12 min-w-0 flex-1 bg-transparent text-base font-semibold outline-none placeholder:font-normal placeholder:text-muted-foreground"
+          className="field-inner"
+          enterKeyHint="done"
+          autoCapitalize="sentences"
         />
       </label>
 
@@ -325,7 +337,9 @@ export function StuckWizard() {
                 onChange={(e) => setWord(e.target.value)}
                 placeholder={probe.placeholder}
                 aria-label="Ответ"
-                className="h-14 rounded-2xl border border-white/15 bg-[oklch(0.22_0.012_130/0.9)] px-4 text-[17px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="field"
+                enterKeyHint="next"
+                autoCapitalize="sentences"
               />
               <p className="text-[13px] text-muted-foreground">Это никуда не уходит и не сохраняется.</p>
               <WizardButton label="Дальше" className="mt-auto" />

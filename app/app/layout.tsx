@@ -1,5 +1,6 @@
 import { AppBackdrop } from "@/components/app-backdrop";
 import { AppNav } from "@/components/app-nav";
+import { AppScroll } from "@/components/app-scroll";
 import { preloadFonts } from "@/lib/font-preload";
 
 /**
@@ -40,7 +41,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
       <AppBackdrop />
-      {children}
+      {/* документ не прокручивается, прокручивается этот слой: иначе iPhone оттягивает всю страницу (components/app-scroll.tsx) */}
+      <AppScroll>{children}</AppScroll>
       <AppNav />
     </>
   );
