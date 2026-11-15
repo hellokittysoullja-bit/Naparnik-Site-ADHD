@@ -141,16 +141,26 @@ export function StuckWizard() {
   const [word, setWord] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
   const [left, setLeft] = useState(0);
-  const [opener, setOpener] = useState(0);
-  // каждый заход — со следующего вопроса; счётчик живёт на устройстве
-  useEffect(() => {
+  // каждый заход — со следующего вопроса; счётчик живёт на устройстве. Номер считается ДО первого кадра: раньше первым
+  // кадром всегда стоял вопрос №1, а через миг его подменял нужный (тот же баг, что с репликой Фокуса, 16.11)
+  const [opener, setOpener] = useState(() => {
     try {
-      const n = (Number(window.localStorage.getItem(OPENER_KEY) ?? "-1") + 1) % OPENERS.length;
-      window.localStorage.setItem(OPENER_KEY, String(n));
-      setOpener(n);
+      return typeof window === "undefined" ? 0 : (Number(window.localStorage.getItem(OPENER_KEY) ?? "-1") + 1) % OPENERS.length;
+    } catch {
+      return 0;
+    }
+  });
+  const savedOpener = useRef(false);
+  useEffect(() => {
+    if (savedOpener.current) return;
+    savedOpener.current = true;
+    try {
+      window.localStorage.setItem(OPENER_KEY, String(opener));
     } catch {
       /* приватный режим: всегда первый вопрос */
     }
+    // только при открытии
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const probe = kind ? PROBE[kind] : null;
