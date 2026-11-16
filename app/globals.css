@@ -2306,3 +2306,15 @@ html:has(.app-scroll) body {
 .ptr-cat[data-ready] .ptr-cat-img { animation: ptr-pop 260ms cubic-bezier(0.22, 1.4, 0.36, 1); }
 .ptr-cat[data-refreshing] .ptr-cat-img { animation: ptr-hop 520ms cubic-bezier(0.45, 0, 0.55, 1) infinite; }
 @media (prefers-reduced-motion: reduce) { .ptr-cat .ptr-cat-img { animation: none !important; } }
+
+/* «Полено» в Фокусе (components/break-reveal/log-reveal.ts): пока идёт сцена, шаги, точки, «ещё N» и первый штамп скрыты —
+   их по одному проявляют анимации (WAAPI сильнее этих правил); после сцены анимации снимаются и всё стоит на месте. */
+[data-rv='playing'] :is([data-rv-step], [data-rv-bullet], [data-rv-more], [data-rv-stamp]) {
+  opacity: 0;
+}
+.rv-print {
+  background: var(--primary);
+  -webkit-mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
+  mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
+  transform: rotate(-12deg);
+}
