@@ -14,6 +14,8 @@ test('Фокус: ночная сцена, без чипов, «Раздроби
   for (const chip of ['Открыть документ', 'Убрать одну вещь', 'Ответить на одно сообщение'])
     await expect(page.getByRole('button', { name: chip })).toHaveCount(0)
   await expect(page.getByText('Первый шаг', { exact: true })).toHaveCount(0)
+  // подпись под стартом снята навсегда (владелец 16.11)
+  await expect(page.getByText(/засчитывается сразу/i)).toHaveCount(0)
 
   // фон — ночная сцена Дома, общий фон /app скрыт
   const bg = await page.evaluate(() => ({

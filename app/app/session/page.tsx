@@ -6,7 +6,7 @@ import { preloadCatPoster } from '@/lib/font-preload'
 
 export const metadata: Metadata = {
   title: 'Фокус — Напарник',
-  description: 'Фокус-сессия вдвоём с напарником. Старт засчитывается сразу.',
+  description: 'Фокус-сессия вдвоём с напарником.',
 }
 
 export default function SessionPage() {

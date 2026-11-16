@@ -1225,9 +1225,6 @@ export function FocusSession() {
               Начали. Я рядом
             </Button>
           </motion.div>
-          <p className="text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            старт засчитывается сразу — даже если выйдешь раньше
-          </p>
         </div>
       </div>
     )
