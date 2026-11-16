@@ -66,7 +66,8 @@ import {
 } from '@/lib/island-elements'
 import { playStartSigh } from '@/lib/reward-sound'
 import { startAmbient, stopAmbient } from '@/lib/ambient'
-import { hapticDone, hapticStart, hapticThreshold } from '@/lib/haptics'
+import { hapticDone, hapticReaction, hapticReward, hapticStart, hapticThreshold } from '@/lib/haptics'
+import { celebrateCat, nextBreakCount, playLogReveal, preloadReveal } from '@/components/break-reveal/log-reveal'
 import { trimLabel } from '@/lib/utils'
 import { FIRST_MINUTES } from '@/lib/onboarding'
 import { trackEvent } from '@/lib/events'
@@ -253,6 +254,14 @@ export function FocusSession() {
   // AI возвращает 3 крошечных шага. Task initiation — главный
   // bottleneck СДВГ; выбор готового микрошага снимает стену.
   const [brokenSteps, setBrokenSteps] = useState<BStep[] | null>(null)
+  // «Полено» (владелец 16.11): дело, которое только что разломано, раскалывается на шаги поверх экрана; null — сцены нет.
+  // nth — которая по счёту разбивка: первые три 1,3 с, до десятой 0,9 с, дальше 0,6 с (components/break-reveal/log-reveal.ts)
+  const [reveal, setReveal] = useState<{ task: string; nth: number } | null>(null)
+  // квитанция после разбивки — только правда: сколько шагов вышло
+  const [receipt, setReceipt] = useState<string | null>(null)
+  const [cheer, setCheer] = useState(false)
+  const setupRef = useRef<HTMLDivElement>(null)
+  const catRef = useRef<HTMLDivElement>(null)
   // дело целиком («Курсовая по логистике»): шаги дробления лежат в «Делах» под этим названием
   const [dealTitle, setDealTitle] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
@@ -305,6 +314,12 @@ export function FocusSession() {
     applyEstimate(st.minutes)
     setEditing(false)
   }
+  function startReveal(source: string, list: BStep[]) {
+    const n = list.length
+    const word = n % 10 === 1 && n % 100 !== 11 ? 'шаг' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'шага' : 'шагов'
+    setReceipt(`Разломал на ${n} ${word}. Начнём *с первого*, остальное — в Делах.`)
+    if (!reducedMotion) setReveal({ task: source, nth: nextBreakCount() })
+  }
   /** Дробление: первый раз — всего дела; «Ещё мельче» — выбранного шага, его подшаги встают на его место */
   function applyTemplate(t: Template) {
     const list: BStep[] = t.steps.map((x) => ({ text: x.text, minutes: x.minutes, wait: x.wait }))
@@ -314,6 +329,7 @@ export function FocusSession() {
     setCareReply(null)
     setDropped(null)
     setDealTitle(t.title)
+    startReveal(t.title, list)
     setBrokenSteps(list)
     setShowAll(false)
     selectStep(list[0])
@@ -369,6 +385,8 @@ export function FocusSession() {
             list = [...brokenSteps.slice(0, Math.max(0, i)), ...fresh, ...brokenSteps.slice(i + 1)]
           }
           setDealTitle(title)
+          if (!finer) startReveal(target, list)
+          else setReceipt(null)
           setBrokenSteps(list)
           setShowAll(false)
           selectStep(fresh[0])
@@ -418,6 +436,45 @@ export function FocusSession() {
     setTask(text)
     setEstimate(null)
   }
+  useEffect(() => preloadReveal(), [])
+  useLayoutEffect(() => {
+    const root = setupRef.current
+    const cat = catRef.current
+    if (!reveal || !root || !cat) return
+    const q = <T extends Element>(sel: string) => root.querySelector<T>(sel)
+    const card = q<HTMLElement>('[data-rv-card]')
+    const source = q<HTMLElement>('[data-rv-source]')
+    const stamp0 = q<HTMLElement>('[data-rv-stamp]')
+    const texts = [...root.querySelectorAll<HTMLElement>('[data-rv-step]')]
+    if (!card || !source || !stamp0 || !texts.length) {
+      setReveal(null)
+      return
+    }
+    const bullets = [...root.querySelectorAll<HTMLElement>('[data-rv-bullet]')]
+    const more = q<HTMLElement>('[data-rv-more]')
+    const r = playLogReveal({ cat, card, source, texts, bullets, more, stamp0 }, reveal.nth, hapticReaction)
+    // тап в любом месте — сразу итог; кнопка под пальцем при этом срабатывает как обычно
+    const onDown = () => r.skip()
+    document.addEventListener('pointerdown', onDown, true)
+    let alive = true
+    let cheerTimer = 0
+    void r.finished.then(() => {
+      document.removeEventListener('pointerdown', onDown, true)
+      if (!alive) return
+      setReveal(null)
+      // праздник как у Duolingo: кот прыгает, конфетти на весь экран, двойная мягкая вибрация
+      hapticReward()
+      setCheer(true)
+      celebrateCat(cat)
+      cheerTimer = window.setTimeout(() => setCheer(false), 1400)
+    })
+    return () => {
+      alive = false
+      window.clearTimeout(cheerTimer)
+      document.removeEventListener('pointerdown', onDown, true)
+      r.skip()
+    }
+  }, [reveal])
   const [minutes, setMinutes] = useState(restored ? restored.minutes : initialMinutes)
   // #7 · Default Effect: пока человек сам не тронул длительность, чип 25
   // мин помечен как рекомендованный, а не просто «уже выбранный системой».
@@ -950,13 +1007,15 @@ export function FocusSession() {
       ? 'Не вышло разломать мельче, сеть подвела. *Попробуем ещё раз?*'
       : dropped
       ? `Убрал «${trimLabel(dropped.step.text, 28)}».`
+      : reveal
+      ? 'Сейчас *расколю*!'
       : brokenSteps
-      ? 'Начнём *с этого*. Остальное я положил в Дела.'
+      ? (receipt ?? 'Начнём *с этого*. Остальное я положил в Дела.')
       : busy
         ? 'Секунду, *разламываю*…'
         : buildSetupLine(prefilledStep, priorSessions, companionName)
     return (
-      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-4 py-5">
+      <div ref={setupRef} data-rv={reveal ? 'playing' : undefined} className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-4 py-5">
         <h1 className="sr-only">Фокус-сессия: выбери первый шаг</h1>
         {/* Сцена: реплика сверху, кот под ней — крупный и внизу, прямо над полем (владелец 16.11). Размер от высоты экрана:
             на 360×640 кнопка старта не уходит под меню */}
@@ -981,14 +1040,17 @@ export function FocusSession() {
               </button>
             )}
           </p>
-          <MascotSvg
-            expression="calm"
-            action={busy ? 'think' : 'idle'}
-            label={companionName ?? 'Напарник'}
-            // у куклы над ушами пустое поле рисунка — подтягиваем кота к пузырю; на низком экране кот меньше, чтобы старт не
-            // уходил под меню (360×640)
-            className={brokenSteps ? '-mt-3 size-[clamp(96px,calc(100dvh_-_600px),150px)]' : '-mt-5 size-[clamp(112px,calc(100dvh_-_570px),232px)] [@media(min-height:740px)]:-mt-12'}
-          />
+          {/* обёртка — для прыжка-праздника после разбивки (сам кот — общий компонент, его не трогаем) */}
+          <div ref={catRef} className={brokenSteps ? '-mt-3' : '-mt-5 [@media(min-height:740px)]:-mt-12'}>
+            <MascotSvg
+              expression={cheer ? 'excited' : 'calm'}
+              action={cheer ? 'celebrate' : busy || reveal ? 'think' : 'idle'}
+              label={companionName ?? 'Напарник'}
+              // у куклы над ушами пустое поле рисунка — подтягиваем кота к пузырю; на низком экране кот меньше, чтобы старт не
+              // уходил под меню (360×640)
+              className={brokenSteps ? 'size-[clamp(96px,calc(100dvh_-_600px),150px)]' : 'size-[clamp(112px,calc(100dvh_-_570px),232px)]'}
+            />
+          </div>
         </div>
         {/* листы появляются в разметке (и в сети) только после первого открытия */}
         {sheetsUsed.templates && <TemplatesSheet open={templatesOpen} onClose={() => setTemplatesOpen(false)} onPick={applyTemplate} />}
@@ -1002,6 +1064,16 @@ export function FocusSession() {
                 <p className="min-w-0 flex-1 truncate font-mono text-[10.5px] font-semibold uppercase tracking-[0.2em] text-primary/90">
                   первый шаг · {trimLabel(dealTitle ?? '', 30)}
                 </p>
+                {/* карта штампов (подаренный прогресс, Nunes & Drèze): первый штамп — отпечаток лапы за разломанное дело (это
+                    правда), второй — первый шаг, закрашен наполовину */}
+                <span role="img" aria-label={`1 из ${brokenSteps.length + 1} уже есть: дело разломано, первый шаг начат`} className="flex shrink-0 items-center gap-1">
+                  {Array.from({ length: Math.min(brokenSteps.length + 1, 6) }, (_, i) => (
+                    <span key={i} className={`relative grid size-4 place-items-center rounded-full ${i === 0 ? 'bg-primary/20' : 'border border-dashed border-white/25'}`}>
+                      {i === 0 && <span data-rv-stamp className="rv-print block size-[11px]" />}
+                      {i === 1 && <span className="absolute inset-0 rounded-full opacity-55" style={{ background: 'conic-gradient(var(--primary) 0 50%, transparent 50%)' }} />}
+                    </span>
+                  ))}
+                </span>
                 {/* размер шагов и просьбы — настройка, а не действие: значок в строке подписи, а не четвёртая кнопка-слово */}
                 <button
                   type="button"
@@ -1012,7 +1084,13 @@ export function FocusSession() {
                   <SlidersHorizontal className="size-[18px]" aria-hidden="true" />
                 </button>
               </div>
-              <div className="glass relative rounded-2xl border border-primary/40 px-4 pb-3 pt-3.5">
+              <div data-rv-card className="glass relative rounded-2xl border border-primary/40 px-4 pb-3 pt-3.5">
+                {/* дело словами человека — на нём начинается «Полено»; видно только во время сцены */}
+                {reveal && (
+                  <p data-rv-source aria-hidden="true" className="pointer-events-none absolute inset-x-4 top-3.5 text-pretty text-[1.15rem] font-bold leading-snug">
+                    {reveal.task}
+                  </p>
+                )}
                 {editing ? (
                   <input
                     autoFocus
@@ -1034,6 +1112,7 @@ export function FocusSession() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={reducedMotion ? { opacity: 0, transition: { duration: 0.1 } } : { opacity: 0, y: -6, transition: { duration: 0.14 } }}
                       transition={{ duration: reducedMotion ? 0.1 : 0.22, ease: [0.05, 0.7, 0.1, 1] }}
+                      data-rv-step={busy ? undefined : ''}
                       className="text-pretty text-[1.15rem] font-bold leading-snug"
                     >
                       {busy ? 'Разламываю…' : task}
@@ -1086,8 +1165,8 @@ export function FocusSession() {
                   transition={{ duration: 0.22, delay: reducedMotion ? 0 : 0.04 * i, ease: [0.05, 0.7, 0.1, 1] }}
                   className="press flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-left text-[13.5px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
-                  <span className="line-clamp-1">{st.text}</span>
+                  <span data-rv-bullet aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
+                  <span data-rv-step className="line-clamp-1">{st.text}</span>
                   {st.wait && <span className="shrink-0 font-mono text-[9.5px] uppercase tracking-widest text-reward/90">пока ждёшь</span>}
                 </motion.button>
               ))}
@@ -1095,6 +1174,7 @@ export function FocusSession() {
               {others.length > 2 && !showAll && (
                 <button
                   type="button"
+                  data-rv-more
                   onClick={() => setShowAll(true)}
                   className="min-h-11 self-start px-3 font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
