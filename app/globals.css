@@ -1856,6 +1856,53 @@ body[data-focus-immersive] {
 /* На Доме своя ночная сцена закрывает экран целиком: общий фон /app под ней не рисуем вовсе. display: none снимает
    отрисовку и CSS-анимации неба, гряды и очага; редкие JS-таймеры фона (падающая звезда, светлячок — раз в минуты)
    продолжают тикать, это копейки. Метку «свой» (markHome) фон ставит по-прежнему */
+/* Первый кадр /app при обновлении (16.11, запись экрана владельца). До загрузки кода память читает скрипт первого кадра
+   (lib/app-prepaint.ts) и ставит атрибуты и переменные на <html>; здесь — как они выглядят. Правила действуют, только
+   пока компонент не прочитал память сам ([data-pre], *-pre, пустая #home-hint): дальше всё рисует React, ровно так же.
+   Дом: подсвеченная и третья сфера, строка над кнопкой, плашка находок. */
+html[data-home-sphere="study"] [data-pre] [data-chip="study"],
+html[data-home-sphere="work"] [data-pre] [data-chip="work"],
+html[data-home-sphere="home"] [data-pre] [data-chip="third"],
+html[data-home-sphere="message"] [data-pre] [data-chip="third"] {
+  border-color: transparent;
+  background-color: oklch(0.97 0.005 100);
+  color: #141a10;
+  box-shadow: 0 2px 0 oklch(0.75 0.01 100);
+}
+html:not([data-home-third="message"]) [data-third="message"],
+html[data-home-third="message"] [data-third="home"] {
+  display: none;
+}
+html:not([data-home-finds]) .home-finds-pre {
+  display: none;
+}
+.home-pre-finds::before {
+  content: var(--home-finds, "");
+}
+/* Меню: точка «есть новое» у Мира и минуты идущей сессии у Фокуса (components/app-nav.tsx) */
+html:not([data-world-new]) [data-pre-badge],
+html:not([data-focus-left]) [data-pre-timer] {
+  display: none;
+}
+[data-pre-timer]:empty::before {
+  content: var(--focus-left, "");
+}
+/* строка над кнопкой — те же размеры, что у <p> в home-camp.tsx */
+#home-hint:empty::before {
+  content: var(--home-hint, "");
+  margin-inline: auto;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  max-width: 34ch;
+  text-wrap: balance;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 22px;
+  color: oklch(0.93 0.04 90);
+}
+
 body[data-home-camp] [data-app-backdrop] {
   display: none;
 }

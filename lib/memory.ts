@@ -414,6 +414,11 @@ export type ActiveSession = {
 const isActiveSession: Guard<ActiveSession> = (v): v is ActiveSession =>
   isObj(v) && isNum(v.startedAt) && isNum(v.minutes) && isStr(v.task) && isStr(v.startId)
 
+/** синхронно — экрану, который рисуется только на устройстве и должен открыться сразу с идущей сессией */
+export function peekActiveSession(): ActiveSession | null {
+  return read<ActiveSession | null>(KEYS.activeSession, null, isActiveSession)
+}
+
 export async function getActiveSession(): Promise<ActiveSession | null> {
   return read<ActiveSession | null>(KEYS.activeSession, null, isActiveSession)
 }

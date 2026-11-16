@@ -16,20 +16,26 @@ async function mockAi(page: Page, seen: Record<string, unknown>[] = []) {
   return seen
 }
 
-test('перед дроблением кот спрашивает про силы; ответ уходит в запрос и ставит 5 минут', async ({ page }) => {
+test('дробление без вопроса про силы: шаги сразу; «нет сил» из знакомства делает шаги лёгкими и ставит 5 минут', async ({ page }) => {
   const seen = await mockAi(page)
   await page.goto('/app/session?step=' + encodeURIComponent('Курсовая по логистике') + '&break=1')
-  const group = page.getByRole('group', { name: 'Сколько сил сейчас' })
-  await expect(group).toBeVisible()
-  expect(seen, 'до ответа дробление не запрашивается').toHaveLength(0)
-  await group.getByRole('button', { name: /Почти нет/ }).click()
   await expect(page.getByText('Открыть файл курсовой')).toBeVisible()
-  expect(seen[0].energy).toBe('low')
+  await expect(page.getByRole('group', { name: 'Сколько сил сейчас' })).toHaveCount(0)
+  expect(seen[0].energy).toBeUndefined()
+
+  await page.addInitScript(() => localStorage.setItem('naparnik:onboarding', JSON.stringify({ sphere: 'study', blocker: 'tired' })))
+  await page.route('**/api/breakdown', async (route) => {
+    seen.push(route.request().postDataJSON() as Record<string, unknown>)
+    await route.fulfill({ json: { steps: ['Открыть файл', 'Посмотреть тему', 'Закрыть'], source: 'model' } })
+  })
+  await page.goto('/app/session?step=' + encodeURIComponent('Отчёт за квартал') + '&break=1')
+  await expect(page.getByText('Открыть файл', { exact: true })).toBeVisible()
+  expect(seen[1].energy).toBe('low')
   await expect(page.getByRole('button', { name: '5 мин', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  // второй раз за визит вопрос не задаётся: «Ещё мельче» дробит сразу и просит шаги мельче
+  // «Ещё мельче» дробит выбранный шаг сразу и просит шаги мельче
   await page.getByRole('button', { name: 'Ещё мельче' }).click()
-  await expect.poll(() => seen.length).toBe(2)
-  expect(seen[1]).toMatchObject({ energy: 'low', fineness: 'fine' })
+  await expect.poll(() => seen.length).toBe(3)
+  expect(seen[2]).toMatchObject({ energy: 'low', fineness: 'fine' })
 })
 
 test('готовое дело: шаги появляются без запроса к ИИ, первый шаг на минуту, есть шаг «пока ждёшь»', async ({ page }) => {
@@ -52,17 +58,17 @@ test('готовое дело: шаги появляются без запрос
   expect(deals[0].steps).toHaveLength(6)
 })
 
-test('дело из поля, совпавшее с готовым, не ходит к ИИ и не спрашивает про силы', async ({ page }) => {
-  const seen = await mockAi(page)
-  await page.goto('/app/session?step=' + encodeURIComponent('помыть посуду') + '&break=1')
-  await expect(page.getByText('Включить воду и музыку')).toBeVisible()
-  expect(seen).toHaveLength(0)
+test('дело из поля, совпавшее с готовым: сервер отдаёт наш шаблон сразу, с «пока ждёшь»', async ({ page }) => {
+  // готовые дела ищет сервер (база в телефон не качается); без модели — проверяет tests/unit/breakdown-goblin.test.ts
+  await page.route('**/api/session-voice', (route) => route.fulfill({ json: { text: null } }))
+  await page.goto('/app/session?step=' + encodeURIComponent('убрать ванную') + '&break=1')
+  await expect(page.getByText('Достать средство и губку').first()).toBeVisible()
+  await expect(page.getByText('пока ждёшь').first()).toBeVisible()
 })
 
 test('просьба к коту и размер шагов уходят в дробление', async ({ page }) => {
   const seen = await mockAi(page)
   await page.goto('/app/session?step=' + encodeURIComponent('Курсовая по логистике') + '&break=1')
-  await page.getByRole('button', { name: 'Не знаю, просто разломай' }).click()
   await expect(page.getByText('Открыть файл курсовой')).toBeVisible()
   await page.getByRole('button', { name: /Как дробить/ }).click()
   const sheet = page.getByRole('dialog', { name: 'Как дробить' })
@@ -73,7 +79,6 @@ test('просьба к коту и размер шагов уходят в др
   await expect(sheet).toBeHidden()
   // новое дело дробится уже с просьбой и с размером шагов
   await page.goto('/app/session?step=' + encodeURIComponent('Отчёт за квартал') + '&break=1')
-  await page.getByRole('button', { name: 'Не знаю, просто разломай' }).click()
   await expect.poll(() => seen.length).toBe(2)
   expect(seen[1].fineness).toBe('coarse')
   const facts = (seen[1].memory as { facts: { category: string; text: string }[] }).facts
@@ -206,4 +211,10 @@ test('каталог «боль → приём»: вкладки, кнопка �
   const src = await page.locator('.phone-frame img').first().getAttribute('src')
   expect(src).toMatch(/^\/pomogaet\/\w+\.webp\?v=[0-9a-f]+$/)
   expect((await request.get(src!)).headers()['cache-control']).toContain('immutable')
+})
+
+test('дело из разбивок goblin.tools: план гоблина сразу, а не наш шаблон с тем же названием (владелец 16.11)', async ({ page }) => {
+  await page.goto('/app/session?step=' + encodeURIComponent('Помыть посуду') + '&break=1')
+  await expect(page.getByText('Собрать всю грязную посуду').first()).toBeVisible()
+  await expect(page.getByText('Включить воду и музыку')).toHaveCount(0)
 })

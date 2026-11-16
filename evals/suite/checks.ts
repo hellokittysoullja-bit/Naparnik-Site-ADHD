@@ -180,10 +180,11 @@ export const must =
 
 // первое слово шага — глагол: инфинитив или повелительное (Открыть / Открой / Встань)
 const VERB = /^(?:\p{L}+(?:ть|ти|чь)(?:ся|сь)?|\p{L}+(?:й|йте|и|ите|ь|ьте)(?:сь|ся)?)$/iu
-export const threeSteps: Check = (r) => {
+/** План до конца дела (16.11, как у goblin.tools): 3–12 разных шагов, первый короткий и с глагола, всё по-русски */
+export const planSteps: Check = (r) => {
   const s = r.steps
-  if (!s || s.length !== 3) return `нет трёх шагов: ${JSON.stringify(s)}`
-  if (new Set(s.map((x) => x.toLowerCase())).size !== 3) return 'шаги повторяются'
+  if (!s || s.length < 2 || s.length > 12) return `не план из 2–12 шагов: ${JSON.stringify(s)}`
+  if (new Set(s.map((x) => x.toLowerCase())).size !== s.length) return 'шаги повторяются'
   const first = s[0].split(/\s+/)
   if (first.length > 6) return `первый шаг длинный: «${s[0]}»`
   if (!VERB.test(first[0].replace(/[^\p{L}]/gu, ''))) return `первый шаг не с глагола: «${s[0]}»`

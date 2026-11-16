@@ -10,7 +10,7 @@ import type { TurnContext } from './turn'
  */
 /** cancelled — попытку отменили, потому что другая модель уже ответила (не сбой) */
 /** 'no-tool' — модель ответила словами вместо обязательного вызова инструмента (это её поведение, не сбой провайдера) */
-export type AttemptResult = 'ok' | 'parse' | 'timeout' | 'cancelled' | 'error' | 'no-tool' | OutputViolation
+export type AttemptResult = 'ok' | 'parse' | 'timeout' | 'cancelled' | 'error' | 'no-tool' | 'filtered' | OutputViolation
 export type TurnOutcome = 'model' | 'fallback' | 'crisis' | 'aborted'
 
 export type HarnessEvent =

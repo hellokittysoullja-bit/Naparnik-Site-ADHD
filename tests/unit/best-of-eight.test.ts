@@ -23,8 +23,8 @@ describe('оценка шага в минутах', () => {
     const text = '1. Открыть документ\n2. Написать заголовок\n3. Набросать план'
     expect(parseStepsWithMinutes(text)).toEqual({ steps: parseSteps(text), minutes: [undefined, undefined, undefined] })
   })
-  test('нелепая оценка (0 или больше часа) не показывается', () => {
-    expect(parseStepsWithMinutes('Открыть документ | 0\nНаписать заголовок | 99\nНабросать план | 3')?.minutes).toEqual([undefined, undefined, 3])
+  test('нелепая оценка (0 или больше 4 часов) не показывается, этап на 2 часа показывается', () => {
+    expect(parseStepsWithMinutes('Открыть документ | 0\nНаписать заголовок | 999\nПеревезти коробки | 120')?.minutes).toEqual([undefined, undefined, 120])
   })
 })
 

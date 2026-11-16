@@ -1,5 +1,5 @@
 import { chat, crisisReply, extract, memory, type Case } from './cases'
-import { all, calls, fromModel, maxSentences, memoryCalls, must, mustNot, noOps, noReproach, notCalls, offersStep, opsMatch, threeSteps, type Check } from './checks'
+import { all, calls, fromModel, maxSentences, memoryCalls, must, mustNot, noOps, noReproach, notCalls, offersStep, opsMatch, planSteps, type Check } from './checks'
 
 /**
  * Трудные задачи (аудит 12.11, research/21-agent-audit/4-client-tests-scale.md и 5-gap-vs-hermes.md): прежний набор
@@ -232,7 +232,7 @@ export const HARD_CASES: Case[] = [
       task: 'написать введение к диплому',
       memory: memory({ facts: [{ category: 'task', text: 'Пишет диплом в Overleaf' }, { category: 'people', text: 'Сестру зовут Оля' }] }),
     },
-    check: all(threeSteps, fromModel, must(/overleaf/i, 'шаги не под человека: программа из памяти не названа'), mustNot(/Ол[яеюи]|сестр/iu, 'постороннее из памяти в шагах')),
+    check: all(planSteps, fromModel, must(/overleaf/i, 'шаги не под человека: программа из памяти не названа'), mustNot(/Ол[яеюи]|сестр/iu, 'постороннее из памяти в шагах')),
   },
   {
     id: 'hard.breakdown-memory-stays-out',
@@ -242,7 +242,7 @@ export const HARD_CASES: Case[] = [
       task: 'помыть посуду',
       memory: memory({ facts: [{ category: 'task', text: 'Пишет диплом в Overleaf' }, { category: 'helps', text: 'Начинать помогает музыка без слов' }] }),
     },
-    check: all(threeSteps, fromModel, mustNot(/диплом|overleaf/iu, 'память о другом деле попала в шаги')),
+    check: all(planSteps, fromModel, mustNot(/диплом|overleaf/iu, 'память о другом деле попала в шаги')),
   },
   {
     id: 'hard.voice-feminine',

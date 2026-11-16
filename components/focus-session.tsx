@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { MascotDoll as MascotSvg } from '@/components/mascot-doll'
 import { EmphasisText } from '@/components/emphasis-text'
 import { RevealIsland, type RevealNewItem } from '@/components/reveal-island'
-import { BatteryFull, BatteryLow, BatteryMedium, Eye, EyeOff, LayoutList, NotebookPen, Pause, Play, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { Eye, EyeOff, LayoutList, NotebookPen, Pause, Play, SlidersHorizontal, Sparkles } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { SoundChip, type SoundChoice } from '@/components/sound-chip'
 import type { Fineness } from '@/components/breakdown-prefs'
@@ -35,6 +35,7 @@ import {
   clearPlan,
   consumeQueueStep,
   getActiveSession,
+  peekActiveSession,
   getFinds,
   getPlan,
   getStarts,
@@ -43,6 +44,7 @@ import {
   peekCompanionName,
   peekMemoryContext,
   peekPatterns,
+  peekProfile,
   recordStart,
   saveActiveSession,
   savePlan,
@@ -52,6 +54,7 @@ import {
   updateStartMinutes,
   type IslandFindEntry,
 } from '@/lib/memory'
+import { BREAK_TOO_SHORT, BREAK_UNCLEAR, breakable } from '@/lib/break-task'
 import {
   drawFind,
   elementNameForStartNumber,
@@ -73,14 +76,10 @@ import { addCard, addThought, markStepDone, nextAfter, updateCard, upsertDeal } 
 const durations = [5, 15, 25, 45]
 const pickDuration = (m: number) => (m <= 5 ? 5 : m <= 15 ? 15 : m <= 25 ? 25 : 45)
 type BStep = { text: string; minutes?: number; wait?: boolean }
-/** «Сколько сил сейчас?» — вопрос перед дроблением (Tiimo Co-Planner: «First, how's your energy right now? Then, we'll
- *  choose our first simple task»; research/25-deep-teardowns/img/tiimo-appstore-5.jpg). От ответа зависит размер шага */
-type Energy = 'low' | 'mid' | 'high'
-const ENERGY: { key: Energy; label: string; hint: string; icon: typeof BatteryLow; hue: number }[] = [
-  { key: 'low', label: 'Почти нет', hint: 'шаг на минуту, можно лёжа', icon: BatteryLow, hue: 25 },
-  { key: 'mid', label: 'Средне', hint: 'обычный маленький шаг', icon: BatteryMedium, hue: 88 },
-  { key: 'high', label: 'Много', hint: 'шаг покрупнее, минут на пять', icon: BatteryFull, hue: 150 },
-]
+// Вопроса «Сколько сил сейчас?» перед дроблением больше нет (16.11, владелец): кнопка обещает шаг, а давала вопрос и
+// лишнее нажатие на каждом заходе. Силы знаем из знакомства («Нет сил даже начать»), размер шагов — из настройки,
+// мельче — одной кнопкой после результата (lib/break-task.ts)
+type Energy = 'low'
 const SOUND_KEY = 'naparnik:sound'
 const HOW_WAS_KEY = 'naparnik:howWas'
 const endClock = (ms: number) => new Date(ms).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
@@ -216,7 +215,8 @@ export function FocusSession() {
   // Дом («Разломать на шаг») открывает Фокус с делом и пометкой break=1: дробление запускается само. Старт — только
   // руками человека, поэтому чужая ссылка с break=1 ничего не начинает, а лишь показывает шаги
   // короче 8 знаков не дробим (тот же порог, что у кнопки дробления; сервер не принимает < 3): только подставляем
-  const breakOnOpen = !autoStart && searchParams.get('break') === '1' && prefilledStep.length >= 8
+  const breakAsked = !autoStart && searchParams.get('break') === '1'
+  const breakOnOpen = breakAsked && breakable(prefilledStep)
   const initialMinutes =
     durations.includes(prefilledDuration) ||
     (autoStart && prefilledDuration === FIRST_MINUTES)
@@ -225,8 +225,13 @@ export function FocusSession() {
 
   // Автостарт из знакомства сразу открывается хореографией старта: раньше до ответа памяти (getActiveSession) на
   // ~0,15 с мелькал экран выбора шага с «Шаг уже выбран» — второй «точно?», которого быть не должно (02.11)
-  const [phase, setPhase] = useState<Phase>(autoStart ? 'starting' : 'setup')
-  const [task, setTask] = useState(prefilledStep)
+  // Идущая сессия — тоже до первого кадра: при обновлении страницы на ~0,1 с мелькал экран выбора шага («Погнали.
+  // Что в фокусе?», шаги, «25 мин»), и только потом — таймер (16.11, покадровая проверка). Фокус рисуется только на
+  // устройстве (см. ниже про useSearchParams), поэтому память доступна уже здесь; эффект восстановления ниже доделывает
+  // остальное (адрес, «Дела», голос) так же, как раньше
+  const [restored] = useState(() => (typeof window === 'undefined' ? null : peekActiveSession()))
+  const [phase, setPhase] = useState<Phase>(restored ? 'running' : autoStart ? 'starting' : 'setup')
+  const [task, setTask] = useState(restored ? restored.task : prefilledStep)
 
   // Имя и число прошлых сессий — тот же экран не должен объяснять
   // механику вечно: на 20-й сессии человек уже знает, что «первый шаг —
@@ -253,10 +258,13 @@ export function FocusSession() {
   // оценка выбранного шага в минутах (если модель её дала) — сама ставит длительность
   const [estimate, setEstimate] = useState<number | null>(null)
   const [breaking, setBreaking] = useState(false)
-  const [energy, setEnergy] = useState<Energy | null>(null)
-  const [energyAsk, setEnergyAsk] = useState(false)
-  const [fineness, setFineness] = useState<Fineness>('normal')
-  useEffect(() => setFineness(readFineness()), [])
+  // «Нет сил даже начать» из знакомства — шаги самые лёгкие и 5 минут, без вопроса перед каждым дроблением
+  const [energy] = useState<Energy | null>(() => (typeof window !== 'undefined' && peekProfile()?.blocker === 'tired' ? 'low' : null))
+  // кот не понял дело (набор букв) или разламывать нечего: просьба написать словами вместо общих шагов
+  const [breakNote, setBreakNote] = useState<string | null>(() => (breakAsked && !breakable(prefilledStep) ? BREAK_TOO_SHORT : null))
+  // размер шагов читаем до первого кадра: дробление с Дома стартует сразу при открытии и должно уже знать настройку
+  // (раньше её читал эффект после открытия, и первое дробление шло без неё — ловил e2e «размер шагов уходят в дробление»)
+  const [fineness, setFineness] = useState<Fineness>(() => (typeof window === 'undefined' ? 'normal' : readFineness()))
   const [templatesOpen, setTemplatesOpenRaw] = useState(false)
   const [prefsOpen, setPrefsOpenRaw] = useState(false)
   const [sheetsUsed, setSheetsUsed] = useState({ templates: false, prefs: false })
@@ -291,7 +299,7 @@ export function FocusSession() {
   function applyTemplate(t: Template) {
     const list: BStep[] = t.steps.map((x) => ({ text: x.text, minutes: x.minutes, wait: x.wait }))
     setTemplatesOpen(false)
-    setEnergyAsk(false)
+    setBreakNote(null)
     setBreakError(false)
     setCareReply(null)
     setDropped(null)
@@ -301,19 +309,12 @@ export function FocusSession() {
     selectStep(list[0])
     upsertDeal(t.title, list)
   }
-  /** Первое дробление дела: готовое дело — шаги сразу; иначе сначала один вопрос про силы (один раз за визит) */
+  /** Первое дробление дела: готовое дело — шаги сразу, иначе модель. Одно и то же с Дома, из «Дел», «Не могу начать» и кнопкой здесь */
   async function requestBreak() {
-    // список готовых дел подгружается только здесь (он не нужен, пока человек ничего не дробит)
-    const tpl = await import('@/lib/templates').then((m) => m.findTemplate(task)).catch(() => null)
-    if (tpl) applyTemplate(tpl)
-    else if (energy) void breakDown()
-    else setEnergyAsk(true)
-  }
-  function chooseEnergy(e: Energy) {
-    hapticThreshold()
-    setEnergy(e)
-    setEnergyAsk(false)
-    void breakDown(false, e)
+    if (!breakable(task)) return setBreakNote(BREAK_TOO_SHORT)
+    // готовые разбивки (goblin.tools, затем наши шаблоны) сервер отдаёт сразу, без модели: база готовых дел живёт на
+    // сервере и в телефон не качается, сколько бы дел в ней ни было (владелец 16.11: «в будущем хоть 1000 дел»)
+    void breakDown()
   }
   async function breakDown(finer = false, e: Energy | null = energy) {
     const target = task.trim()
@@ -321,19 +322,36 @@ export function FocusSession() {
     setBreaking(true)
     setBreakError(false)
     setFinerError(false)
+    setBreakNote(null)
     setDropped(null)
     try {
       const res = await fetch('/api/breakdown', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: target, memory: memoryForTask(), energy: e ?? undefined, fineness: finer ? 'fine' : fineness === 'normal' ? undefined : fineness }),
+        body: JSON.stringify({
+          task: target,
+          memory: memoryForTask(),
+          energy: e ?? undefined,
+          fineness: finer ? 'fine' : fineness === 'normal' ? undefined : fineness,
+          // шаг дробится внутри своего дела: модель видит дело целиком и не повторяет соседние шаги
+          ...(finer && dealTitle && dealTitle !== target
+            ? { parent: dealTitle, siblings: (brokenSteps ?? []).map((b) => b.text).filter((t) => t !== target).slice(0, 12) }
+            : {}),
+        }),
       })
       if (res.ok) {
-        const data = (await res.json()) as { steps: string[] | null; minutes?: (number | null)[]; reply?: string; source?: string }
+        const data = (await res.json()) as { steps: string[] | null; minutes?: (number | null)[]; wait?: boolean[]; reply?: string; source?: string; unclear?: boolean; title?: string }
         if (data.reply) setCareReply(data.reply)
+        else if (data.unclear) setBreakNote(BREAK_UNCLEAR)
+        // модели не ответили, пришла заготовка «для любого дела» — это не план: честно «не вышло, ещё раз»
+        else if (data.source === 'fallback') {
+          if (finer) setFinerError(true)
+          else setBreakError(true)
+        }
         else if (data.steps && data.steps.length) {
-          const fresh: BStep[] = data.steps.map((t, i) => ({ text: t, minutes: data.minutes?.[i] ?? undefined }))
-          const title = finer && dealTitle ? dealTitle : target
+          const fresh: BStep[] = data.steps.map((t, i) => ({ text: t, minutes: data.minutes?.[i] ?? undefined, ...(data.wait?.[i] ? { wait: true } : {}) }))
+          // дело из базы готовых, написанное с опечаткой («сдклать презентацию»), записывается правильно
+          const title = finer && dealTitle ? dealTitle : (data.title ?? target)
           let list = fresh
           if (finer && brokenSteps) {
             const i = brokenSteps.findIndex((b) => b.text === target)
@@ -389,12 +407,14 @@ export function FocusSession() {
     setTask(text)
     setEstimate(null)
   }
-  const [minutes, setMinutes] = useState(initialMinutes)
+  const [minutes, setMinutes] = useState(restored ? restored.minutes : initialMinutes)
   // #7 · Default Effect: пока человек сам не тронул длительность, чип 25
   // мин помечен как рекомендованный, а не просто «уже выбранный системой».
   // Как только выбор стал осознанным — метка больше не нужна.
   const [durationTouched, setDurationTouched] = useState(Boolean(prefilledDuration))
-  const [secondsLeft, setSecondsLeft] = useState(0)
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    restored ? Math.max(0, Math.ceil(restored.minutes * 60 - (Date.now() - restored.startedAt) / 1000)) : 0,
+  )
   const [voice, setVoice] = useState(fallbackVoice.start)
   const [doneVoice, setDoneVoice] = useState<string | null>(null)
   const [endedEarly, setEndedEarly] = useState(false)
@@ -514,9 +534,9 @@ export function FocusSession() {
     if (!grownElement) setRestRevealed(true)
   }, [phase, grownElement])
 
-  const totalRef = useRef(0)
-  const startIdRef = useRef<string | null>(null)
-  const startedAtRef = useRef<number>(0)
+  const totalRef = useRef(restored ? restored.minutes * 60 : 0)
+  const startIdRef = useRef<string | null>(restored ? restored.startId : null)
+  const startedAtRef = useRef<number>(restored ? restored.startedAt : 0)
   const firedMomentsRef = useRef<Set<Moment>>(new Set())
 
   const speak = useCallback((moment: Moment, taskLabel: string) => {
@@ -607,6 +627,8 @@ export function FocusSession() {
         return
       }
       if (searchParams.get('break') === '1') {
+        // сессия уже идёт — новое дело с Дома не теряем: оно ждёт в «Делах», разломаем после этой сессии
+        if (breakable(prefilledStep) && prefilledStep !== s.task) upsertDeal(prefilledStep)
         const keep = new URLSearchParams(window.location.search)
         keep.delete('break')
         const q = keep.toString()
@@ -907,8 +929,8 @@ export function FocusSession() {
   if (phase === 'setup') {
     const sel = brokenSteps ? Math.max(0, brokenSteps.findIndex((b) => b.text === task)) : -1
     const others = brokenSteps ? brokenSteps.filter((_, i) => i !== sel) : []
-    const line = energyAsk
-      ? 'Сколько сил *сейчас*? Под это подберу шаг.'
+    const line = breakNote
+      ? breakNote
       : finerError
       ? 'Не вышло разломать мельче, сеть подвела. *Попробуем ещё раз?*'
       : dropped
@@ -945,49 +967,6 @@ export function FocusSession() {
         {/* листы появляются в разметке (и в сети) только после первого открытия */}
         {sheetsUsed.templates && <TemplatesSheet open={templatesOpen} onClose={() => setTemplatesOpen(false)} onPick={applyTemplate} />}
         {sheetsUsed.prefs && <BreakdownPrefs open={prefsOpen} onClose={() => setPrefsOpen(false)} fineness={fineness} onFineness={setFineness} />}
-        {energyAsk ? (
-          // Один вопрос перед дроблением (Tiimo: сначала силы, потом первый простой шаг). Три крупных ответа в зоне
-          // большого пальца; ответ сразу запускает дробление, отдельной кнопки «дальше» нет
-          <div className="flex flex-col gap-2.5 pb-2" role="group" aria-label="Сколько сил сейчас">
-            <p className="truncate font-mono text-[10.5px] font-semibold uppercase tracking-[0.2em] text-primary/90">
-              дело · {trimLabel(task, 36)}
-            </p>
-            {ENERGY.map((o, i) => (
-              <motion.button
-                key={o.key}
-                type="button"
-                onClick={() => chooseEnergy(o.key)}
-                onTouchStart={() => {}}
-                initial={reducedMotion ? false : { opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.24, delay: reducedMotion ? 0 : 0.05 * i, ease: [0.05, 0.7, 0.1, 1] }}
-                className="option-card flex min-h-[64px] w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left"
-              >
-                <span
-                  aria-hidden="true"
-                  className="grid size-10 shrink-0 place-items-center rounded-[12px]"
-                  style={{ background: `oklch(0.74 0.12 ${o.hue} / 0.18)`, color: `oklch(0.88 0.13 ${o.hue})` }}
-                >
-                  <o.icon className="size-5" strokeWidth={2.2} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[16px] font-semibold">{o.label}</span>
-                  <span className="block text-[13px] text-muted-foreground">{o.hint}</span>
-                </span>
-              </motion.button>
-            ))}
-            <button
-              type="button"
-              onClick={() => {
-                setEnergyAsk(false)
-                void breakDown(false, null)
-              }}
-              className="press min-h-11 self-center px-3 text-[14px] font-medium text-muted-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Не знаю, просто разломай
-            </button>
-          </div>
-        ) : (
         <div className="flex flex-col gap-4">
           {brokenSteps ? (
             // Этап 1 (research/24 C): один шаг крупно и уже выбран, ещё два — мельче, остальные свёрнуты. Полный список
@@ -1130,6 +1109,7 @@ export function FocusSession() {
               onChange={(e) => {
                 setTask(e.target.value)
                 setBrokenSteps(null)
+                setBreakNote(null)
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229 && task.trim()) {
@@ -1147,7 +1127,7 @@ export function FocusSession() {
 
           {!brokenSteps && (
             <div className="flex flex-wrap gap-2">
-              {task.trim().length >= 8 && !stepChips.includes(task) && (
+              {breakable(task) && !stepChips.includes(task) && (
                 <button
                   type="button"
                   onClick={() => void requestBreak()}
@@ -1244,7 +1224,6 @@ export function FocusSession() {
             старт засчитывается сразу — даже если выйдешь раньше
           </p>
         </div>
-        )}
       </div>
     )
   }

@@ -24,9 +24,10 @@ import { hapticThreshold } from '@/lib/haptics'
 export type Fineness = 'coarse' | 'normal' | 'fine'
 const KEY = 'naparnik:fineness'
 const LEVELS: { key: Fineness; label: string; hint: string }[] = [
-  { key: 'coarse', label: 'Крупнее', hint: 'Шаг до 10 минут' },
-  { key: 'normal', label: 'Как обычно', hint: 'Шаг на 1–5 минут' },
-  { key: 'fine', label: 'Мельче', hint: 'Одно движение рукой' },
+  // все уровни ведут дело до конца; меняется размер и число шагов (lib/ai/agents/breakdown.ts)
+  { key: 'coarse', label: 'Крупнее', hint: 'Несколько крупных этапов, до 20 минут каждый' },
+  { key: 'normal', label: 'Как обычно', hint: 'Шаги на несколько минут, от начала до конца' },
+  { key: 'fine', label: 'Мельче', hint: 'Много шагов, каждый на одно движение рукой' },
 ]
 
 export function readFineness(): Fineness {

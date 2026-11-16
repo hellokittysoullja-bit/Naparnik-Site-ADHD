@@ -6,6 +6,7 @@ import { useReducedMotion } from "@/lib/reduced-motion";
 import { getFinds, getStarts, markHome } from "@/lib/memory";
 import { LANDMARK_COUNT } from "@/lib/island-elements";
 import { landmarkAnchors, landmarkNodes } from "@/lib/island-sprites";
+import { RIDGE, moonPhase, phaseForHour, type SkyPhase } from "@/lib/sky";
 
 /**
  * Тихий ночной фон приложения — континуитет со сценой лендинга без её драмы.
@@ -45,32 +46,7 @@ const STARS: ReadonlyArray<readonly [number, number, number, number]> = [
   [87, 56, 1.5, 0.2],
 ];
 
-/**
- * #20 · Фаза луны по реальному лунному календарю.
- * Синодический месяц 29.53059 суток от известного новолуния (2000-01-06).
- * Возвращает 0..1, где 0 и 1 — новолуние, 0.5 — полная луна.
- * Луна появляется только после 10-го ориентира («Луна над островом») —
- * небо буквально меняется за прохождение карты, а дальше живёт своим
- * циклом: мир существует по своим законам, а не по нашим сессиям.
- */
-function moonPhase(now: Date): number {
-  const KNOWN_NEW_MOON = Date.UTC(2000, 0, 6, 18, 14);
-  const SYNODIC = 29.530588853 * 86400000;
-  const diff = now.getTime() - KNOWN_NEW_MOON;
-  const phase = ((diff % SYNODIC) + SYNODIC) % SYNODIC;
-  return phase / SYNODIC;
-}
 
-/** Фазы неба. Граница ночи совпадает с продуктовой (NIGHT_UNTIL_HOUR = 5). */
-type SkyPhase = "night" | "dawn" | "day" | "dusk";
-
-function phaseForHour(hour: number): SkyPhase {
-  if (hour < 5) return "night";
-  if (hour < 9) return "dawn";
-  if (hour < 17) return "day";
-  if (hour < 21) return "dusk";
-  return "night";
-}
 
 /**
  * НЕБО ПО ЧАСУ СУТОК.
@@ -127,30 +103,31 @@ const SKY: Record<
 
 const PHASES: SkyPhase[] = ["night", "dawn", "day", "dusk"];
 
-/**
- * Куда встаёт каждый заработанный ориентир на дальней гряде.
- *
- * Координаты — в системе слоя ориентиров (viewBox 0 0 400 80). Значения y
- * выведены из геометрии дальнего холма (его гребень идёт через y=16/9/13/12/
- * 10/14 при x=0/18/36/70/86/100 в системе холмов), пересчитанной в этот
- * viewBox — поэтому ориентир стоит НА линии гребня, а не висит над ней и не
- * тонет в заливке. Разлёт к краям намеренный: центр внизу занят очагом и
- * силуэтом существа, и постройка там спорила бы с ними.
- *
- * Порядок совпадает с ISLAND_ELEMENT_NAMES. Луна (индекс 9) сюда не входит —
- * её рисует отдельный слой в небе, у неё уже есть своя механика фаз.
+/*
+ * ПЕРВЫЙ КАДР ПРИ ОБНОВЛЕНИИ (16.11). До монтирования фон не знает ни часа, ни памяти — раньше рисовал ночь без
+ * ориентиров, а потом днём перетекал в день и «выращивал» гряду, луну и сияние на глазах. Теперь час и память читает
+ * скрипт первого кадра (lib/app-prepaint.ts) и ставит атрибуты на <html>; эти правила показывают по ним то же, что
+ * фон нарисует после монтирования. Действуют только с [data-pre] (до монтирования), значения — из тех же SKY и RIDGE.
  */
-const RIDGE: ReadonlyArray<{ x: number; y: number; s: number }> = [
-  { x: 60, y: 13, s: 0.8 },   // росток
-  { x: 104, y: 19, s: 0.62 }, // дерево
-  { x: 150, y: 42, s: 0.62 }, // костёр
-  { x: 268, y: 33, s: 0.6 },  // домик
-  { x: 306, y: 24, s: 0.58 }, // грядки
-  { x: 342, y: 12, s: 0.6 },  // фонарь
-  { x: 376, y: 34, s: 0.6 },  // второе дерево
-  { x: 24, y: 50, s: 0.62 },  // флаг
-  { x: 210, y: 37, s: 0.58 }, // причал
-];
+const PRE = "[data-app-backdrop][data-pre]";
+const PREPAINT_CSS = [
+  ...PHASES.flatMap((p) => [
+    `html[data-sky="${p}"] ${PRE} [data-sky-layer]{opacity:0!important}`,
+    `html[data-sky="${p}"] ${PRE} [data-sky-layer="${p}"]{opacity:1!important}`,
+    `html[data-sky="${p}"] ${PRE} :is([data-stars],[data-moon-svg]){opacity:${SKY[p].stars}!important}`,
+    `html[data-sky="${p}"] ${PRE} [data-hearth]{opacity:${SKY[p].hearth}!important}`,
+  ]),
+  `html:not([data-lm]) ${PRE} [data-lm-svg],html[data-lm="0"] ${PRE} [data-lm-svg]{display:none}`,
+  ...Array.from({ length: RIDGE.length }, (_, c) =>
+    `html[data-lm="${c}"] ${PRE} :is(${Array.from({ length: RIDGE.length - c }, (_, k) => `[data-lm-i="${c + k}"]`).join(",")}){display:none}`,
+  ),
+  `html:is(:not([data-lm]),[data-lm="0"],[data-lm="1"],[data-lm="2"],[data-lm="3"]) ${PRE} [data-lm-smoke]{display:none}`,
+  `@media (prefers-reduced-motion: reduce){${PRE} [data-lm-smoke]{display:none}}`,
+  `html:not([data-moon]) ${PRE} [data-moon-svg]{display:none}`,
+  `${PRE} [data-moon-shade]{transform:translateX(calc(var(--moon-dx, 0) * 1px))}`,
+  `html:not([data-aurora]) ${PRE} [data-aurora-layer]{display:none}`,
+].join("");
+
 
 export function AppBackdrop() {
   const [hasAurora, setHasAurora] = useState(false);
@@ -187,8 +164,6 @@ export function AppBackdrop() {
 
   useEffect(() => {
     let alive = true;
-    setMounted(true);
-    setHour(new Date().getHours());
 
     const readMemory = () => {
       void Promise.all([getFinds(), getStarts()]).then(([finds, starts]) => {
@@ -212,6 +187,10 @@ export function AppBackdrop() {
         }
         if (count > seen) setPendingGrowth(count - 1);
         setPhase(moonPhase(new Date()));
+        // «смонтирован» — вместе с памятью, одним обновлением: если час и признак ставить раньше, был кадр, где фон уже
+        // не первый (правила первого кадра сняты), а ориентиры ещё 0 — гряда пропадала и возвращалась (16.11)
+        setHour(new Date().getHours());
+        setMounted(true);
       });
     };
     readMemory();
@@ -312,8 +291,11 @@ export function AppBackdrop() {
     <div
       aria-hidden="true"
       data-app-backdrop=""
+      data-pre={mounted ? undefined : ""}
       className="pointer-events-none fixed inset-0 overflow-hidden"
     >
+      {/* первый кадр при обновлении — по часу и памяти из скрипта (PREPAINT_CSS выше); одинаков на сервере и клиенте */}
+      <style>{PREPAINT_CSS}</style>
       {/* НЕБО. Четыре слоя стоят всегда, видимость решает opacity: градиенты
           браузер между кадрами не интерполирует, а кроссфейд по opacity
           интерполирует идеально и считает на композиторе, без перерисовки
@@ -321,6 +303,7 @@ export function AppBackdrop() {
       {PHASES.map((p) => (
         <div
           key={p}
+          data-sky-layer={p}
           className="absolute inset-0 transition-opacity duration-[1200ms] ease-out motion-reduce:transition-none"
           style={{
             opacity: p === skyPhase ? 1 : 0,
@@ -353,8 +336,9 @@ export function AppBackdrop() {
           разными периодами: один слой читается как «анимация», два в
           противофазе — как погода. Держится в верхней трети, далеко от
           текста; blend 'screen' складывает свет, не перекрашивает сцену. */}
-      {hasAurora && (
+      {(mounted ? hasAurora : true) && (
         <div
+          data-aurora-layer=""
           className="absolute inset-x-0 top-0 h-[46vh] overflow-hidden"
           style={{ mixBlendMode: "screen" }}
         >
@@ -390,6 +374,7 @@ export function AppBackdrop() {
       {/* ЗВЁЗДЫ гаснут к рассвету и зажигаются к сумеркам — час суток
           читается с одного взгляда, до всякого текста. */}
       <div
+        data-stars=""
         className="absolute inset-0 transition-opacity duration-[1200ms] motion-reduce:transition-none"
         style={{ opacity: sky.stars }}
       >
@@ -446,12 +431,13 @@ export function AppBackdrop() {
           было ни в одной из них по отдельности. sky.stars уже кодирует ровно
           нужную величину («насколько сейчас темно для неба») — не считать
           её заново, а разделить с тем же сигналом, что гасит звёзды. */}
-      {hasMoon && phase !== null && lit > 0.06 && (
+      {(mounted ? hasMoon && phase !== null && lit > 0.06 : true) && (
         // moon-drift: луна не висит гвоздём — за 4 минуты едва заметно
         // смещается на несколько пикселей, как небесное тело в реальном
         // движении. Цикл настолько медленный, что глаз не ловит «анимацию»,
         // только ощущение, что небо живое, если засечь его дольше минуты.
         <svg
+          data-moon-svg=""
           className="moon-drift absolute right-[14%] top-[11%] h-auto w-[clamp(2.6rem,7vw,4rem)] transition-opacity duration-[1200ms] motion-reduce:transition-none"
           viewBox="0 0 20 20"
           style={{ opacity: sky.stars }}
@@ -462,8 +448,10 @@ export function AppBackdrop() {
               <circle cx="10" cy="10" r="6" fill="white" />
               {/* Тёмный круг съезжает по диску: положение задаёт и фазу,
                   и сторону освещения — одна цифра вместо восьми картинок. */}
+              {/* до монтирования фазу ставит скрипт первого кадра (--moon-dx, сдвиг в единицах рисунка) */}
               <circle
-                cx={10 + maskShift * 6}
+                data-moon-shade=""
+                cx={mounted ? 10 + maskShift * 6 : 10}
                 cy="10"
                 r="6"
                 fill="black"
@@ -528,19 +516,23 @@ export function AppBackdrop() {
           внимание с текстом переписки. SMIL внутри самих спрайтов (качание
           кроны, пламя костра) остаётся живым: ровно та медленная
           диегетическая жизнь, на которой стоит вся сцена. */}
-      {landmarks > 0 && (
+      {/* до монтирования стоят все места гряды, лишние скрыты по числу стартов из скрипта первого кадра; после — ровно
+          landmarks тех же узлов (ключи совпадают — ничего не пересоздаётся, качание деревьев не сбивается) */}
+      {(mounted ? landmarks > 0 : true) && (
         <svg
+          data-lm-svg=""
           className="absolute bottom-[16vh] left-1/2 h-[13vh] w-[104vw] -translate-x-1/2"
           viewBox="0 0 400 80"
           preserveAspectRatio="xMidYMax meet"
           style={{ filter: "brightness(0.4) saturate(0.6)" }}
         >
-          {Array.from({ length: landmarks }, (_, i) => {
+          {Array.from({ length: mounted ? landmarks : RIDGE.length }, (_, i) => {
             const p = RIDGE[i];
             const a = landmarkAnchors[i];
             return (
               <g
                 key={i}
+                data-lm-i={i}
                 transform={`translate(${p.x} ${p.y}) scale(${p.s}) translate(${-a.x} ${-a.y})`}
               >
                 {/* island-grow анимирует CSS transform: на одном узле с
@@ -562,8 +554,8 @@ export function AppBackdrop() {
               метрономное поднятие, как настоящий дым. Внутри той же SVG,
               что и сам домик, — общий viewBox и brightness-фильтр держат
               дым в том же «силуэтном» языке, что вся гряда. */}
-          {landmarks > 3 && !reduceMotion && (
-            <g transform="translate(266 25)" opacity="0.55">
+          {(mounted ? landmarks > 3 && !reduceMotion : true) && (
+            <g data-lm-smoke="" transform="translate(266 25)" opacity="0.55">
               <circle className="chimney-smoke" style={{ animationDelay: "0s" }} r="2.1" fill="oklch(0.78 0.008 90)" />
               <circle className="chimney-smoke" style={{ animationDelay: "2s" }} r="1.7" fill="oklch(0.78 0.008 90)" />
               <circle className="chimney-smoke" style={{ animationDelay: "4s" }} r="1.3" fill="oklch(0.78 0.008 90)" />
@@ -595,6 +587,7 @@ export function AppBackdrop() {
           света: самое заметное движение фона привязано к событию, а не к
           таймеру, и потому не приедается. */}
       <div
+        data-hearth=""
         className="app-hearth absolute bottom-[150px] left-1/2 -translate-x-1/2 translate-y-1/2 rounded-full blur-3xl transition-opacity duration-[1200ms] motion-reduce:transition-none"
         style={{
           width: "clamp(20rem, 60vw, 36rem)",

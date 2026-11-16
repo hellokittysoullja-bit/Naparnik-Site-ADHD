@@ -122,7 +122,9 @@ const ROUTES: Record<TaskName, readonly (keyof typeof PROFILES)[]> = {
   test: DEFAULT_ROUTE,
   chat: DEFAULT_ROUTE,
   'session-voice': DEFAULT_ROUTE,
-  breakdown: DEFAULT_ROUTE,
+  // разбивка — ответ за ≤ 3 с (владелец 16.11, у goblin.tools ~1 с): DeepSeek отвечает 5–7 с и в этот срок не влезает,
+  // поэтому страхуют та же Gemini по второму маршруту и Gemini напрямую у Google
+  breakdown: ['primary', 'reserve', 'independent'],
   'onboarding-first-step': DEFAULT_ROUTE,
   'memory-extract': DEFAULT_ROUTE,
   recall: DEFAULT_ROUTE,

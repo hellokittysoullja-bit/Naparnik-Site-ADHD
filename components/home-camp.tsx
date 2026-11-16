@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PawPrint, Sprout, Zap } from "lucide-react";
 import { splitDump, upsertDeal } from "@/lib/deals";
+import { BREAK_TOO_SHORT, breakable } from "@/lib/break-task";
 import { NightScene } from "@/components/landing/night-scene";
 import { Knoll, Moon } from "@/components/hero-scene";
 import { MascotDoll } from "@/components/mascot-doll";
@@ -51,6 +52,8 @@ export function HomeCamp() {
   // переход по табу — память читаем сразу; гидратация статического HTML — после монтирования (hooks/use-client-mount)
   const [data, setData] = useState<Data | null>(() => (clientMount ? readData() : null));
   const [text, setText] = useState("");
+  // «Разломать» с делом, которое нечем разламывать («Hh»): кот просит слова в строке над кнопкой, экран не меняется
+  const [tooShort, setTooShort] = useState(false);
   const [sphere, setSphere] = useState<Sphere | null>(() => (clientMount ? homeSphere(peekProfile()) : null));
 
   // своя сцена закрывает экран — общий фон /app под ней не рисуется (app/globals.css, «Дом «Привал»»)
@@ -91,6 +94,13 @@ export function HomeCamp() {
   const keepRest = () => {
     if (many) for (const d of dump.slice(1)) upsertDeal(d);
   };
+  // пустое поле разламывает дело из ответов знакомства; написанное — только если его можно разламывать (lib/break-task.ts)
+  const canBreak = !text.trim() || breakable(target);
+  const go = () => {
+    if (!canBreak) return setTooShort(true);
+    keepRest();
+    router.push(href);
+  };
 
   return (
     <main className="relative h-dvh overflow-hidden">
@@ -102,14 +112,15 @@ export function HomeCamp() {
       <div className="relative z-10 flex h-full flex-col pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
         {/* находки острова — тихая плашка, ведёт в Мир; у новичка её нет */}
         <div className="flex min-h-14 items-start justify-end px-5 pt-[max(1rem,env(safe-area-inset-top))] [@media(max-height:620px)]:min-h-10 [@media(max-height:620px)]:pt-2">
-          {data && data.finds > 0 && (
+          {/* до чтения памяти (обновление страницы) плашку и число показывает CSS по памяти из скрипта первого кадра (lib/app-prepaint.ts) */}
+          {(data ? data.finds > 0 : true) && (
             <Link
               href="/app/world"
               // зона касания 44 px при плашке ~32 px: невидимое продолжение вокруг
-              className="press relative flex items-center gap-1.5 rounded-full border border-white/10 bg-[oklch(0.2_0.02_130/0.55)] px-3 py-1.5 text-[13px] font-semibold after:absolute after:-inset-1.5 after:content-['']"
+              className={`press relative flex items-center gap-1.5 rounded-full border border-white/10 bg-[oklch(0.2_0.02_130/0.55)] px-3 py-1.5 text-[13px] font-semibold after:absolute after:-inset-1.5 after:content-['']${data ? "" : " home-finds-pre"}`}
             >
               <Sprout className="size-4 text-primary" aria-hidden="true" />
-              {findsLabel(data.finds)}
+              {data ? findsLabel(data.finds) : <span className="home-pre-finds" />}
             </Link>
           )}
         </div>
@@ -133,8 +144,7 @@ export function HomeCamp() {
             className="mt-3"
             onSubmit={(e) => {
               e.preventDefault();
-              keepRest();
-              router.push(href);
+              go();
             }}
           >
             <label className="sr-only" htmlFor="home-task">
@@ -143,7 +153,10 @@ export function HomeCamp() {
             <input
               id="home-task"
               value={text}
-              onChange={(e) => setText(e.target.value.slice(0, 120))}
+              onChange={(e) => {
+                setText(e.target.value.slice(0, 120));
+                setTooShort(false);
+              }}
               placeholder={homeExample(sphere)}
               enterKeyHint="go"
               autoComplete="off"
@@ -151,12 +164,14 @@ export function HomeCamp() {
               autoCapitalize="sentences"
             />
           </form>
-          <div className="mt-3 flex justify-center gap-2" role="group" aria-label="Сфера дела">
-            {homeChips(profile).map((c) => (
+          {/* до чтения памяти подсвеченную и третью сферу ставит CSS по атрибутам, которые выставил скрипт первого кадра */}
+          <div className="mt-3 flex justify-center gap-2" role="group" aria-label="Сфера дела" data-pre={data ? undefined : ""}>
+            {homeChips(profile).map((c, i) => (
               <button
                 key={c.sphere}
                 type="button"
                 aria-pressed={sphere === c.sphere}
+                data-chip={data || i < 2 ? c.sphere : "third"}
                 onClick={() => setSphere(sphere === c.sphere ? null : c.sphere)}
                 className={`press min-h-11 rounded-full border px-3.5 text-[13px] font-semibold transition-colors ${
                   sphere === c.sphere
@@ -164,14 +179,31 @@ export function HomeCamp() {
                     : "border-white/10 bg-[oklch(0.24_0.014_130/0.9)] text-foreground"
                 }`}
               >
-                <span aria-hidden="true">{c.icon}</span> {c.label}
+                {data || i < 2 ? (
+                  <>
+                    <span aria-hidden="true">{c.icon}</span> {c.label}
+                  </>
+                ) : (
+                  <>
+                    <span data-third="home">
+                      <span aria-hidden="true">🏠</span> Дом
+                    </span>
+                    <span data-third="message">
+                      <span aria-hidden="true">✉️</span> Написать
+                    </span>
+                  </>
+                )}
               </button>
             ))}
           </div>
           {/* строка над кнопкой по двум ответам знакомства (25 вариантов, без ответов — общая); место под две строки
               занято всегда, поэтому строка любой длины не сдвигает ни кота, ни кнопки */}
-          <div className="mt-2.5 flex h-11 items-center justify-center">
-            {many ? (
+          <div id="home-hint" className="mt-2.5 flex h-11 items-center justify-center">
+            {tooShort ? (
+              <p role="status" className="mx-auto line-clamp-2 max-w-[34ch] text-balance text-[16px] font-bold leading-[22px] text-[oklch(0.93_0.04_90)]">
+                {BREAK_TOO_SHORT}
+              </p>
+            ) : many ? (
               <p className="mx-auto line-clamp-2 max-w-[34ch] text-balance text-[15px] font-bold leading-[21px] text-[oklch(0.93_0.04_90)]">
                 Возьму «{dump[0].slice(0, 24)}» сейчас, остальное ({dump.length - 1}) положу в Дела
               </p>
@@ -182,7 +214,13 @@ export function HomeCamp() {
 
           <Link
             href={href}
-            onClick={keepRest}
+            onClick={(e) => {
+              // переход делает сама ссылка (предзагрузка Фокуса остаётся); нечего разламывать — остаёмся на Доме
+              if (!canBreak) {
+                e.preventDefault();
+                setTooShort(true);
+              } else keepRest();
+            }}
             // iOS Safari включает :active только при наличии touch-слушателя
             onTouchStart={() => {}}
             className="btn-chunky mt-3 block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -219,6 +257,7 @@ export function HomeCamp() {
           </div>
           </div>
         </section>
+
         {/* сцена: кот по центру на холме, костёр слева от него */}
         <div className="relative flex min-h-0 flex-1 items-end justify-center">
           {/* луна, как на лендинге: справа вверху, отдельно от видео */}

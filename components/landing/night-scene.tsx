@@ -96,7 +96,9 @@ export function NightScene({ children }: { children?: ReactNode }) {
           <img
             src={src("portrait", "webp")}
             alt=""
-            decoding="async"
+            // sync: из кэша (обновление, переход) заставка раскодируется до кадра и приходит вместе со страницей, а не
+            // через 1–3 кадра после текста (16.11, покадровая съёмка Дома); с сети ничего не меняет — ждём байты
+            decoding="sync"
             fetchPriority="high"
             className="absolute inset-0 size-full object-cover"
           />

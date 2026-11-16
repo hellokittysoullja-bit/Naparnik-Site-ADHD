@@ -285,10 +285,12 @@ describe('маршруты задач (Hermes: свой маршрут у каж
     vi.stubEnv('ANYMODEL_API_KEY', 'test-key')
     const { modelChain, resetModelsForTests } = await vi.importActual<typeof import('@/lib/ai/models')>('@/lib/ai/models')
     resetModelsForTests()
-    for (const task of ['chat', 'session-voice', 'breakdown', 'onboarding-first-step', 'memory-extract', 'recall'] as const) {
+    for (const task of ['chat', 'session-voice', 'onboarding-first-step', 'memory-extract', 'recall'] as const) {
       const c = modelChain(task)
       expect(c.map((s) => s.id)).toEqual(['gc/gemini-2.5-flash', 'ag/gemini-2.5-flash', 'ds/deepseek-v4-flash'])
     }
+    // разбивка — ответ за ≤ 3 с (владелец 16.11): DeepSeek (5–7 с) в этот срок не влезает и в цепочку не входит
+    expect(modelChain('breakdown').map((s) => s.id)).toEqual(['gc/gemini-2.5-flash', 'ag/gemini-2.5-flash'])
     vi.unstubAllEnvs()
     resetModelsForTests()
   })

@@ -19,7 +19,9 @@ const SHAME = [
   // «стыдно» само по себе не стыдит («Стыдно бывает всем, это нормально»): ловим обращённое к человеку
   word(String.raw`(?:тебе|вам)\s+(?:должно\s+быть\s+)?стыдно|как\s+(?:тебе\s+)?не\s+стыдно|не\s+стыдно\s*\?|постыдись|стыдись`),
   notAfterNe('позор'),
-  word(String.raw`слабак|тряпк[аи]|нытик|хватит\s+ныть|разочарован`),
+  // «тряпка» — ярлык, только когда обращено к человеку («ты тряпка», «тряпка ты»); «положить тряпки под холодильник»
+  // в разбивке уборки — просто тряпки (ответ браковался как стыд, прогон 16.11)
+  word(String.raw`слабак|(?:ты|вы|сам|сама|как(?:ая|ой)?|настоящ(?:ая|ий))\s+(?:и\s+)?тряпк[аи]|тряпк[аи]\s+(?:ты|вы)(?!${L})|нытик|хватит\s+ныть|разочарован`),
   word(String.raw`надо\s+было\s+(?:раньше|сразу|давно)`),
   notAfterNe(String.raw`долж(?:ен|на)\s+был`),
   word(String.raw`соберись|возьми\s+себя\s+в\s+руки`),
@@ -52,8 +54,10 @@ const LATIN_WORDS = /(?<![a-z])[a-z]{3,}(?![a-z])/gi
 
 // Названия, которые по-русски пишут латиницей всегда: человек сказал «пдф» / «ютуб», кот вправе написать PDF /
 // YouTube — это не смена языка (аудит 12.11: без списка каждая такая реплика уходила в заготовку)
+// названия, без которых шаг разбивки не сказать («Открыть Google Slides», «Оформить возврат на Ozon»): иначе ответ
+// с ними браковался как «чужой язык», и человек получал заготовку (прогон разбивки 16.11)
 const COMMON_LATIN: ReadonlySet<string> = new Set(
-  'pdf youtube pomodoro telegram adhd wifi excel word notion google zoom email whatsapp todoist figma github iphone android mac windows tiktok instagram docs powerpoint slack trello obsidian gmail chrome safari doc docx xls xlsx ppt pptx txt csv png jpg jpeg zip'.split(' '),
+  'pdf youtube pomodoro telegram adhd wifi excel word notion google zoom email whatsapp todoist figma github iphone android mac windows tiktok instagram docs powerpoint slack trello obsidian gmail chrome safari doc docx xls xlsx ppt pptx txt csv png jpg jpeg zip slides keynote canva sheets drive ozon wildberries avito hh vk yandex discord spotify outlook teams onedrive dropbox miro jira steam netflix'.split(' '),
 )
 
 function foreignWord(text: string, echo: ReadonlySet<string>): boolean {

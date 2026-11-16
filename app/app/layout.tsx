@@ -1,6 +1,7 @@
 import { AppBackdrop } from "@/components/app-backdrop";
 import { AppNav } from "@/components/app-nav";
 import { AppScroll } from "@/components/app-scroll";
+import { prepaintScript } from "@/lib/app-prepaint";
 import { preloadFonts } from "@/lib/font-preload";
 
 /**
@@ -40,6 +41,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   preloadFonts("manrope-400-cyr", "manrope-500-cyr", "manrope-600-cyr");
   return (
     <>
+      {/* первый кадр при обновлении — уже со своей памятью и своим часом (lib/app-prepaint.ts): до фона и экранов */}
+      <script dangerouslySetInnerHTML={{ __html: prepaintScript() }} />
       <AppBackdrop />
       {/* документ не прокручивается, прокручивается этот слой: иначе iPhone оттягивает всю страницу (components/app-scroll.tsx) */}
       <AppScroll>{children}</AppScroll>

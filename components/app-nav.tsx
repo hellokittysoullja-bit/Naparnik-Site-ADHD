@@ -53,12 +53,14 @@ export function AppNav() {
       window.removeEventListener("keydown", load, { capture: true });
     };
   }, []);
-  const [worldUnseen, setWorldUnseen] = useState(false);
+  // null / undefined — память ещё не прочитана (первый кадр при обновлении): точку и минуты тогда показывает CSS по
+  // атрибутам скрипта первого кадра (lib/app-prepaint.ts), а не прячет до ответа памяти
+  const [worldUnseen, setWorldUnseen] = useState<boolean | null>(null);
 
   // К-Д · Активная сессия видна с любого экрана: бейдж оставшихся минут
   // на табе «Фокус» (паттерн активного звонка iOS). Ощущение контроля:
   // ушёл на Мир — сессия не «исчезла».
-  const [minutesLeft, setMinutesLeft] = useState<number | null>(null);
+  const [minutesLeft, setMinutesLeft] = useState<number | null | undefined>(undefined);
   useEffect(() => {
     const tick = async () => {
       const s = await getActiveSession();
@@ -107,9 +109,11 @@ export function AppNav() {
             ? pathname === tab.href || (tab.href === "/app" && (pathname === "/app/chat" || pathname.startsWith("/app/stuck")))
             : pathname.startsWith(tab.href);
           const Icon = tab.icon;
-          const showBadge = tab.href === "/app/world" && worldUnseen && !active;
+          const showBadge = tab.href === "/app/world" && worldUnseen === true && !active;
+          const preBadge = tab.href === "/app/world" && worldUnseen === null && !active;
           // идёт сессия, а человек на другом экране — минуты на вкладке «Фокус» (как в main)
-          const showTimer = tab.href === "/app/session" && minutesLeft !== null && !active;
+          const showTimer = tab.href === "/app/session" && typeof minutesLeft === "number" && !active;
+          const preTimer = tab.href === "/app/session" && minutesLeft === undefined && !active;
           return (
             <Link
               key={tab.href}
@@ -138,18 +142,20 @@ export function AppNav() {
                   strokeWidth={active ? 2.4 : 2}
                   aria-hidden="true"
                 />
-                {showBadge && (
+                {(showBadge || preBadge) && (
                   <span
+                    data-pre-badge={preBadge ? "" : undefined}
                     className="absolute -right-1 -top-1 size-2 animate-pulse rounded-full bg-reward shadow-[0_0_6px_oklch(0.8_0.16_85/0.8)] motion-reduce:animate-none"
                     aria-hidden="true"
                   />
                 )}
-                {showTimer && (
+                {(showTimer || preTimer) && (
                   <span
+                    data-pre-timer={preTimer ? "" : undefined}
                     className="absolute -right-3.5 -top-1.5 rounded-full bg-primary px-1 text-[9px] font-bold leading-4 text-primary-foreground"
                     aria-hidden="true"
                   >
-                    {minutesLeft}м
+                    {showTimer ? `${minutesLeft}м` : null}
                   </span>
                 )}
               </span>

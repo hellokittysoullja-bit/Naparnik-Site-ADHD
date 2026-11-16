@@ -12,6 +12,7 @@
     "test": "vitest run",
     "eval:ai": "vitest run --config vitest.eval.config.ts evals/ai",
     "eval:suite": "vitest run --config vitest.eval.config.ts evals/suite.eval.ts",
+    "eval:breakdown": "npx tsx --tsconfig tsconfig.json evals/breakdown/run.mts",
     "test:e2e": "playwright test",
     "check": "tsc --noEmit && eslint . && vitest run"
   },

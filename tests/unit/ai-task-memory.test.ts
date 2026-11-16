@@ -135,25 +135,34 @@ describe('память доходит до модели в задачах Фок
 
   it('дробление: блок памяти стоит перед данными задачи, шаг с названием из памяти проходит проверку языка', async () => {
     chain.steps = [{ id: 'm1', model: model('Открыть Overleaf\nНайти введение\nНаписать одну фразу', sent) }]
-    const r = await breakdown({ task: 'написать введение диплома', memory: memory({ facts: [fact('task', 'Пишет диплом в Overleaf')] }) })
+    vi.stubEnv('BREAKDOWN_EXAMPLES', '1')
+    const r = await breakdown({ task: 'написать введение диплома', memory: memory({ facts: [fact('task', 'Пишет диплом в Overleaf')] }) }).finally(() => vi.unstubAllEnvs())
     expect(r).toEqual({ kind: 'steps', steps: ['Открыть Overleaf', 'Найти введение', 'Написать одну фразу'], source: 'model' })
+    // порядок: память (меняется редко) → образцы похожих дел (breakdown-examples.ts) → данные задачи
     const user = sent[0].filter((m) => m.role === 'user')
-    expect(user).toHaveLength(2)
+    expect(user).toHaveLength(3)
     expect(user[0].text).toContain('ПАМЯТЬ О ЧЕЛОВЕКЕ')
     expect(user[0].text).toContain('Overleaf')
-    expect(user[1].text).toContain('ДАННЫЕ О СИТУАЦИИ')
+    expect(user[1].text).toMatch(/^ОБРАЗЦЫ/)
+    expect(user[1].text).toContain('Дело: Написать диплом')
+    expect(user[2].text).toContain('ДАННЫЕ О СИТУАЦИИ')
   })
-  it('дробление без памяти: одно сообщение, как раньше; чужое латинское слово по-прежнему брак', async () => {
+  it('образцы похожих дел выключены, пока не прошли живой прогон: в запросе их нет', async () => {
+    chain.steps = [{ id: 'm1', model: model('Открыть файл\nНайти введение\nНаписать одну фразу', sent) }]
+    await breakdown({ task: 'написать введение диплома' })
+    expect(sent[0].some((m) => m.text.startsWith('ОБРАЗЦЫ'))).toBe(false)
+  })
+  it('дробление без памяти: без блока памяти, как раньше; чужое латинское слово по-прежнему брак', async () => {
     chain.steps = [{ id: 'm1', model: model('Открыть Overleaf\nНайти введение\nНаписать одну фразу', sent) }]
     const r = await breakdown({ task: 'написать введение диплома' })
-    expect(sent[0].filter((m) => m.role === 'user')).toHaveLength(1)
+    expect(sent[0].filter((m) => m.role === 'user' && !m.text.startsWith('ОБРАЗЦЫ'))).toHaveLength(1)
     expect(r).toMatchObject({ kind: 'steps', source: 'fallback' })
   })
   it('память с устройства в негодной форме: дробление без памяти, а не отказ', async () => {
     chain.steps = [{ id: 'm1', model: model('Открыть файл\nНайти введение\nНаписать одну фразу', sent) }]
     const r = await breakdown({ task: 'написать введение диплома', memory: new ClientSnapshotMemory({ facts: 'не список' }) })
     expect(r).toMatchObject({ kind: 'steps', source: 'model' })
-    expect(sent[0].filter((m) => m.role === 'user')).toHaveLength(1)
+    expect(sent[0].filter((m) => m.role === 'user' && !m.text.startsWith('ОБРАЗЦЫ'))).toHaveLength(1)
   })
   it('медленное хранилище памяти не держит ход', async () => {
     chain.steps = [{ id: 'm1', model: model('Открыть файл\nНайти введение\nНаписать одну фразу', sent) }]
