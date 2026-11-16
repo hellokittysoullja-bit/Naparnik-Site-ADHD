@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
+import { HOLD_ROUTES } from "@/lib/first-frame";
 import { usePathname } from "next/navigation";
 import { useReducedMotion } from "@/lib/reduced-motion";
 import { getFinds, getStarts, markHome } from "@/lib/memory";
@@ -150,6 +151,10 @@ export function AppBackdrop() {
   const [pendingGrowth, setPendingGrowth] = useState<number | null>(null);
   const [grownIndex, setGrownIndex] = useState<number | null>(null);
   const pathname = usePathname();
+  // ушли с экрана, который скрывал страницу до готовности (знакомство уводит вернувшегося домой и т. п.), — запрет снят
+  useLayoutEffect(() => {
+    if (!(HOLD_ROUTES as readonly string[]).includes(pathname)) (window as unknown as { __nfReady?: () => void }).__nfReady?.();
+  }, [pathname]);
   const reduceMotion = useReducedMotion();
 
   // #ЖИВОЙ МИР · Падающая звезда и светлячок — редкие, диегетичные события

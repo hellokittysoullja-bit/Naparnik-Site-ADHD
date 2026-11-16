@@ -1,11 +1,15 @@
 import Link from 'next/link'
 import { AppBackdrop } from '@/components/app-backdrop'
+import { prepaintScript } from '@/lib/app-prepaint'
 import { MascotDoll as MascotSvg } from '@/components/mascot-doll'
 import { Button } from '@/components/ui/button'
 
 export default function NotFound() {
   return (
     <main className="relative flex min-h-svh flex-col items-center justify-center gap-6 px-6 text-center">
+      {/* небо и гряда — по часу и памяти с первого кадра, как на экранах /app (lib/app-prepaint.ts); без этого при
+          обновлении небо сначала было ночным, а потом менялось на дневное (16.11) */}
+      <script dangerouslySetInnerHTML={{ __html: prepaintScript() }} />
       <AppBackdrop />
       {/* Содержимое — в своём позиционированном слое: AppBackdrop fixed и без z-index, а непозиционированный
           текст и кнопка рисовались ПОД ним — на экране был только кот (он relative), без текста и кнопки */}

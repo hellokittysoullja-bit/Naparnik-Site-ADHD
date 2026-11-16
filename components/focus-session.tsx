@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useFirstFrameReady } from '@/lib/first-frame'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
@@ -174,6 +175,8 @@ async function spliceQueue(task: string, rest: string[]) {
 
 export function FocusSession() {
   const reducedMotion = useReducedMotion()
+  // экран рисуется только на устройстве: первый показанный кадр — уже он (lib/first-frame.ts)
+  useFirstFrameReady(true)
   const searchParams = useSearchParams()
   // шаг из адреса — с потолком: ссылка не должна приносить простыню на экран сессии и в память
   const prefilledStep = (searchParams.get('step') ?? '').trim().slice(0, STEP_MAX)
@@ -230,6 +233,9 @@ export function FocusSession() {
   // устройстве (см. ниже про useSearchParams), поэтому память доступна уже здесь; эффект восстановления ниже доделывает
   // остальное (адрес, «Дела», голос) так же, как раньше
   const [restored] = useState(() => (typeof window === 'undefined' ? null : peekActiveSession()))
+  // сессия восстановлена при открытии — экран идущей сессии стоит сразу, без проявления; проявление остаётся только после
+  // хореографии старта (16.11, покадровый аудит: после обновления таймер 0,6 с проявлялся из прозрачного)
+  const [openedRunning, setOpenedRunning] = useState(restored !== null)
   const [phase, setPhase] = useState<Phase>(restored ? 'running' : autoStart ? 'starting' : 'setup')
   const [task, setTask] = useState(restored ? restored.task : prefilledStep)
 
@@ -257,7 +263,12 @@ export function FocusSession() {
   const [finerError, setFinerError] = useState(false)
   // оценка выбранного шага в минутах (если модель её дала) — сама ставит длительность
   const [estimate, setEstimate] = useState<number | null>(null)
+  // «Разломать на шаг» с Дома: экран сразу в состоянии дробления — раньше на миг показывался выбор шага с «Шаг уже выбран»
+  // и кнопкой «Раздробить», и только потом начиналось дробление (16.11, покадровый аудит)
   const [breaking, setBreaking] = useState(false)
+  const [breakPending, setBreakPending] = useState(() => breakOnOpen && !restored)
+  // на экране: дробление идёт или вот-вот начнётся (запрос уходит из эффекта открытия)
+  const busy = breaking || breakPending
   // «Нет сил даже начать» из знакомства — шаги самые лёгкие и 5 минут, без вопроса перед каждым дроблением
   const [energy] = useState<Energy | null>(() => (typeof window !== 'undefined' && peekProfile()?.blocker === 'tired' ? 'low' : null))
   // кот не понял дело (набор букв) или разламывать нечего: просьба написать словами вместо общих шагов
@@ -320,6 +331,7 @@ export function FocusSession() {
     const target = task.trim()
     if (!target || breaking) return
     setBreaking(true)
+    setBreakPending(false)
     setBreakError(false)
     setFinerError(false)
     setBreakNote(null)
@@ -650,6 +662,10 @@ export function FocusSession() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    if (phase !== 'running') setOpenedRunning(false)
+  }, [phase])
+
   // Завершение по нулю — отдельным эффектом, а не изнутри setState-апдейтера
   useEffect(() => {
     if (phase === 'running' && secondsLeft === 0 && totalRef.current > 0) {
@@ -937,7 +953,7 @@ export function FocusSession() {
       ? `Убрал «${trimLabel(dropped.step.text, 28)}».`
       : brokenSteps
       ? 'Начнём *с этого*. Остальное я положил в Дела.'
-      : breaking
+      : busy
         ? 'Секунду, *разламываю*…'
         : buildSetupLine(prefilledStep, priorSessions, companionName)
     return (
@@ -945,24 +961,27 @@ export function FocusSession() {
         <h1 className="sr-only">Фокус-сессия: выбери первый шаг</h1>
         {/* Сцена: существо в центре внимания, а не в углу формы */}
         <div className="flex flex-1 flex-col items-center justify-center gap-3">
-          <MascotSvg expression="calm" action={breaking ? 'think' : 'idle'} label={companionName ?? 'Напарник'} size={brokenSteps ? 120 : 150} />
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.p
-              key={line}
-              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
-              transition={{ duration: reducedMotion ? 0.1 : 0.22, ease: [0.05, 0.7, 0.1, 1] }}
-              className="glass max-w-80 text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed"
-            >
-              <EmphasisText text={line} />
-              {dropped && (
-                <button type="button" onClick={undoDrop} className="press ml-2 inline-flex min-h-11 items-center px-1 font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  Вернуть
-                </button>
-              )}
-            </motion.p>
-          </AnimatePresence>
+          <MascotSvg expression="calm" action={busy ? 'think' : 'idle'} label={companionName ?? 'Напарник'} size={brokenSteps ? 120 : 150} />
+          {/* Пузырь стоит на месте, меняется только реплика в нём (16.11, покадровая съёмка): раньше он целиком уходил и
+              приходил заново (AnimatePresence mode="wait"), и между репликами ~0,25 с кот был без пузыря */}
+          <p className="glass max-w-80 text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed">
+            {/* первая реплика — сразу, без проявления; следующие (ответ на действие) — короткое проявление поверх старой */}
+            <AnimatePresence initial={false}>
+              <motion.span
+                key={line}
+                initial={reducedMotion ? false : { opacity: 0.35 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.18, ease: [0.05, 0.7, 0.1, 1] }}
+              >
+                <EmphasisText text={line} />
+              </motion.span>
+            </AnimatePresence>
+            {dropped && (
+              <button type="button" onClick={undoDrop} className="press ml-2 inline-flex min-h-11 items-center px-1 font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Вернуть
+              </button>
+            )}
+          </p>
         </div>
         {/* листы появляются в разметке (и в сети) только после первого открытия */}
         {sheetsUsed.templates && <TemplatesSheet open={templatesOpen} onClose={() => setTemplatesOpen(false)} onPick={applyTemplate} />}
@@ -986,7 +1005,7 @@ export function FocusSession() {
                   <SlidersHorizontal className="size-[18px]" aria-hidden="true" />
                 </button>
               </div>
-              <div className="glass rounded-2xl border border-primary/40 px-4 pb-3 pt-3.5">
+              <div className="glass relative rounded-2xl border border-primary/40 px-4 pb-3 pt-3.5">
                 {editing ? (
                   <input
                     autoFocus
@@ -999,17 +1018,18 @@ export function FocusSession() {
                     className="field field-compact"
                   />
                 ) : (
-                  // смена шага — причина и следствие видны: старый уходит вверх за 140 мс, новый приходит за 220 мс
-                  <AnimatePresence mode="wait" initial={false}>
+                  // смена шага — причина и следствие видны: старый уходит вверх за 140 мс, новый приходит за 220 мс; одновременно
+                  // (popLayout), а не по очереди — по очереди 140 мс карточка стояла без шага (16.11)
+                  <AnimatePresence mode="popLayout" initial={false}>
                     <motion.p
-                      key={breaking ? '…' : task}
+                      key={busy ? '…' : task}
                       initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={reducedMotion ? { opacity: 0, transition: { duration: 0.1 } } : { opacity: 0, y: -6, transition: { duration: 0.14 } }}
                       transition={{ duration: reducedMotion ? 0.1 : 0.22, ease: [0.05, 0.7, 0.1, 1] }}
                       className="text-pretty text-[1.15rem] font-bold leading-snug"
                     >
-                      {breaking ? 'Разламываю…' : task}
+                      {busy ? 'Разламываю…' : task}
                     </motion.p>
                   </AnimatePresence>
                 )}
@@ -1022,12 +1042,12 @@ export function FocusSession() {
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   <button
                     type="button"
-                    disabled={breaking}
+                    disabled={busy}
                     onClick={() => void breakDown(true)}
                     className="press inline-flex min-h-11 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring gap-1.5 rounded-full bg-primary/15 px-3 text-[13px] font-semibold text-primary disabled:opacity-60"
                   >
                     <Sparkles className="size-3.5" aria-hidden="true" />
-                    {breaking ? 'Дроблю…' : 'Ещё мельче'}
+                    {busy ? 'Дроблю…' : 'Ещё мельче'}
                   </button>
                   <button
                     type="button"
@@ -1131,11 +1151,11 @@ export function FocusSession() {
                 <button
                   type="button"
                   onClick={() => void requestBreak()}
-                  disabled={breaking}
+                  disabled={busy}
                   className="glass glass-interactive press inline-flex min-h-11 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-foreground disabled:opacity-60"
                 >
                   <Sparkles className="size-4 shrink-0 text-primary" aria-hidden="true" />
-                  {breaking ? 'Дроблю…' : 'Раздробить'}
+                  {busy ? 'Дроблю…' : 'Раздробить'}
                 </button>
               )}
               {/* готовые разбивки бытовых дел: шаги без ожидания ИИ (lib/templates.ts) */}
@@ -1154,7 +1174,7 @@ export function FocusSession() {
               {careReply}
             </p>
           )}
-          {breakError && !brokenSteps && !breaking && (
+          {breakError && !brokenSteps && !busy && (
             <div
               role="status"
               className="flex items-center gap-2 self-start rounded-full border border-white/10 bg-background/70 px-4 py-2 text-xs leading-relaxed text-muted-foreground"
@@ -1214,7 +1234,7 @@ export function FocusSession() {
             <Button
               size="lg"
               onClick={() => void start()}
-              disabled={!task.trim() || breaking}
+              disabled={!task.trim() || busy}
               className="h-14 w-full text-[17px]"
             >
               Начали. Я рядом
@@ -1282,7 +1302,7 @@ export function FocusSession() {
         <div key="running-scrim" aria-hidden="true" className="focus-dim pointer-events-none fixed inset-0 bg-[oklch(0.135_0.012_130/0.8)]" />
         <motion.div
           className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
-          initial={reducedMotion ? false : { opacity: 0 }}
+          initial={reducedMotion || openedRunning ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6 }}
         >

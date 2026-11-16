@@ -1,7 +1,6 @@
 import { SiteAnalytics } from "@/components/analytics";
 import { VisitBeacon } from "@/components/visit-beacon";
 import { CookieNotice } from "@/components/cookie-notice";
-import { Suspense } from "react";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
@@ -62,13 +61,21 @@ export default function RootLayout({
       data-scroll-behavior="smooth"
       className="bg-background"
     >
+      <head>
+        {/* Первый кадр — только целиком разобранной страницей (16.11, покадровый аудит): HTML приходит и разбирается
+            порциями, и браузер рисовал кадр, когда разобрана только часть — пустой фон, фон без экрана, половина
+            карточек. Эта строка просит не рисовать, пока не разобрана метка #first-frame в самом конце содержимого (до
+            служебных скриптов). Дольше разбора страницы ожидание не длится: когда разбор закончен, запрет снят. Chrome и
+            Edge это понимают; Safari и Firefox пропускают строку и ведут себя как раньше (Safari и так не рисует
+            «почти пустую» страницу). */}
+        <link rel="expect" href="#first-frame" {...{ blocking: "render" }} />
+      </head>
       <body className="antialiased font-sans">
         {children}
+        <span id="first-frame" hidden />
         <VisitBeacon />
-        {/* Suspense: плашка читает адрес (шаг теста), статические страницы остаются статическими */}
-        <Suspense fallback={null}>
-          <CookieNotice />
-        </Suspense>
+        {/* плашка есть в HTML с первого кадра; кому не нужна — прячет встроенный скрипт до отрисовки (cookie-notice.tsx) */}
+        <CookieNotice />
         {process.env.NODE_ENV === "production" && <SiteAnalytics />}
       </body>
     </html>

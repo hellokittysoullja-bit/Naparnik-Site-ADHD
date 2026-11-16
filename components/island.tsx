@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useFirstFrameReady } from '@/lib/first-frame'
 import { useReducedMotion } from 'motion/react'
 import {
   addFind,
@@ -139,6 +140,8 @@ export function Island() {
   // находок и отметка «увидел» — по-прежнему в эффекте
   const clientMount = useClientMount()
   const [starts, setStarts] = useState<StartEntry[] | null>(() => (clientMount ? peekStarts() : null))
+  // остров и подписи из памяти устройства: страница видна сразу с ними (lib/first-frame.ts)
+  useFirstFrameReady(starts !== null)
   const [finds, setFinds] = useState<IslandFindEntry[]>(() => (clientMount ? peekFinds() : []))
   const [patterns, setPatterns] = useState<Patterns | null>(() => (clientMount ? peekPatterns() : null))
 

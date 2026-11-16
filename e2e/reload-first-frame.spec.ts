@@ -153,6 +153,9 @@ test('Мир: с первого кадра весь остров стоит, н�
   await record(
     page,
     String(() => {
+      // кадры, которых человек не видит, не считаем: до #first-frame отрисовка заблокирована (app/layout.tsx), пока body
+      // скрыт — страница держится до готовности (lib/first-frame.ts)
+      if (!document.getElementById('first-frame') || getComputedStyle(document.body).visibility === 'hidden') return null
       const svg = document.querySelector('svg[role="img"][aria-label^="Остров"]')
       if (!svg) return null
       const pre = svg.hasAttribute('data-island-pre')

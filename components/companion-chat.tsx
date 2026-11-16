@@ -25,7 +25,7 @@ import { hapticStart } from '@/lib/haptics'
 import { PullToStretch } from '@/components/pull-to-stretch'
 import { ChatBubble, BubbleTail, type Reaction } from '@/components/chat-bubble'
 import { EmphasisText } from '@/components/emphasis-text'
-import { SPRING_ITEM, SPRING_SNAPPY, stagger } from '@/lib/motion'
+import { SPRING_ITEM, SPRING_SNAPPY } from '@/lib/motion'
 import Link from 'next/link'
 import {
   applyMemoryOps,
@@ -461,6 +461,9 @@ export function CompanionChat({
   // свежий таймстемп новой реплики никогда не попадёт на экран: ref не
   // вызывает перерендер сам по себе.
   const [times, setTimes] = useState<Record<string, string>>(boot?.times ?? {})
+  // реплики, которые были в памяти при открытии экрана, стоят сразу; въезжает только пришедшая при открытом экране
+  // (16.11, покадровый аудит: при каждом открытии и обновлении переписка проявлялась заново)
+  const [storedIds, setStoredIds] = useState<ReadonlySet<string>>(() => new Set(boot ? boot.chat.map((m) => m.id) : []))
   useEffect(() => {
     if (chatRestoredRef.current) return
     chatRestoredRef.current = true
@@ -469,6 +472,7 @@ export function CompanionChat({
       getChatTimestamps(),
     ]).then(([saved, loadedTimes]) => {
       setTimes(loadedTimes)
+      setStoredIds(new Set(saved.map((m) => m.id)))
       if (saved.length > 0) setMessages(saved)
       answerUnanswered(saved, loadedTimes)
     })
@@ -969,9 +973,11 @@ export function CompanionChat({
               </span>
             </div>
           ) : null}
+          {/* приветствие — часть экрана, не событие: стоит с первого кадра (16.11, покадровый аудит — проявлялось при
+              каждом открытии и обновлении) */}
           <motion.div
             className="flex items-start gap-2"
-            initial={{ opacity: 0, y: 10 }}
+            initial={false}
             animate={{ opacity: 1, y: 0 }}
             transition={SPRING_ITEM}
           >
@@ -1002,19 +1008,14 @@ export function CompanionChat({
           {messages.length === 0 && showSuggestions && (
             <motion.div
               className="ml-10 flex flex-col gap-2"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ ...SPRING_ITEM, delay: 0.35 }}
+              // без въезда: подсказки — часть экрана, а не событие; первый видимый кадр уже полный (16.11)
+              initial={false}
             >
               <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
                 можно просто нажать
               </span>
               <div className="flex flex-wrap gap-2">
-                {suggestionChips.map((chip, ci) => (
-                  // Stagger 45мс — в стандартном диапазоне 20–80мс и только
-                  // при первом появлении списка: ряд «собирается», а не
-                  // выпрыгивает плитой. Дальше чипы исчезают навсегда, так
-                  // что повторной ценой это не станет.
+                {suggestionChips.map((chip) => (
                   <motion.button
                     key={chip}
                     type="button"
@@ -1024,11 +1025,11 @@ export function CompanionChat({
                       sendMessage({ text: chip })
                     }}
                     disabled={!canSend}
-                    initial={{ opacity: 0, y: 6 }}
+                    // подсказки — часть экрана, стоят с первого кадра вместе с приветствием (16.11; раньше приходили
+                    // лесенкой через 0,4 с после него при каждом открытии)
+                    initial={false}
                     animate={{ opacity: 1, y: 0 }}
-                    // #27 · Чипы приходят лестницей после приветствия:
-                    // stagger из lib/motion — один шаг ритма на весь продукт.
-                    transition={{ ...SPRING_SNAPPY, delay: stagger(ci, 0.4) }}
+                    transition={SPRING_SNAPPY}
                     // disabled: пока запрос уже летит, повторный тап по чипу
                     // раньше тихо отправлял дубль — теперь кнопка блокируется,
                     // тот же гард, что уже стоит на форме композера ниже.
@@ -1133,10 +1134,13 @@ export function CompanionChat({
                       // в пределах 4-8px нормы для входа элемента, не рывок),
                       // а не одинаково всплывает снизу вне зависимости от
                       // того, чья это реплика.
+                      // сохранённые реплики стоят сразу, въезжает только новая (storedIds выше)
                       initial={
-                        reduceMotion
-                          ? { opacity: 0 }
-                          : { opacity: 0, y: 10, scale: isUser ? 0.97 : 0.9, x: isUser ? 8 : -8 }
+                        storedIds.has(message.id)
+                          ? false
+                          : reduceMotion
+                            ? { opacity: 0 }
+                            : { opacity: 0, y: 10, scale: isUser ? 0.97 : 0.9, x: isUser ? 8 : -8 }
                       }
                       animate={{ opacity: 1, y: 0, scale: 1, x: 0 }}
                       // Пришедшая реплика бота стартует ниже по scale и оседает
