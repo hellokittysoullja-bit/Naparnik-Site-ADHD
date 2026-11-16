@@ -15,7 +15,7 @@ export function RevealProto({ plans }: { plans: Plan[] }) {
   const [bare, setBare] = useState(false)
   useEffect(() => {
     const q = new URLSearchParams(location.search)
-    if (q.get('v') === 'paw') setV('paw')
+    if (q.get('v') === 'paw' || q.get('v') === 'log') setV(q.get('v') as RevealVariant)
     if (q.get('p')) setP(Number(q.get('p')))
     if (q.get('n')) setNth(Number(q.get('n')))
     setBare(q.has('bare'))
@@ -32,9 +32,9 @@ export function RevealProto({ plans }: { plans: Plan[] }) {
     <>
       {!bare && (
         <div className="relative z-[60] mx-auto flex w-full max-w-md flex-wrap gap-1.5 px-4 pt-3 text-[12px]">
-          {(['yarn', 'paw'] as const).map((x) => (
+          {(['log', 'yarn', 'paw'] as const).map((x) => (
             <button key={x} onClick={() => { setV(x); setRun((r) => r + 1) }} className={`rounded-full border px-3 py-1 ${v === x ? 'border-primary text-primary' : 'border-white/15'}`}>
-              {x === 'yarn' ? 'Клубок' : 'Лапой'}
+              {x === 'yarn' ? 'Клубок' : x === 'log' ? 'Полено' : 'Лапой'}
             </button>
           ))}
           <select value={p} onChange={(e) => { setP(Number(e.target.value)); setRun((r) => r + 1) }} className="rounded-full border border-white/15 bg-transparent px-2">

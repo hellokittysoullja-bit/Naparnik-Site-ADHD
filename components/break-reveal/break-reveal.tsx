@@ -32,7 +32,7 @@ import { hapticReaction, hapticReward } from '@/lib/haptics'
 import { celebrate, preloadConfetti } from './confetti'
 
 export type RevealStep = { text: string; minutes?: number; wait?: boolean }
-export type RevealVariant = 'yarn' | 'paw'
+export type RevealVariant = 'yarn' | 'paw' | 'log'
 
 const PAW = '/mascot/reveal/paw.webp'
 const PRINT = '/mascot/reveal/print.webp'
@@ -522,6 +522,268 @@ function playPaw(c: Ctx) {
   run(print, [{ opacity: 1 }, { opacity: 0 }], tS + 0.08, tS + 0.081)
 }
 
+/* ───────────────────────────── «Полено» ───────────────────────────── */
+
+/** Полено сбоку: кора с прожилками, сучок, спил с годовыми кольцами справа. Рисуется под размер карточки дела. */
+function logSvg(w: number, h: number, seed: number) {
+  const r = h / 2
+  const capRx = h * 0.3
+  let rnd = seed
+  const rand = () => ((rnd = (rnd * 16807) % 2147483647) / 2147483647)
+  const grain: string[] = []
+  for (let i = 0; i < 11; i++) {
+    const y = h * (0.14 + 0.72 * (i / 10)) + (rand() - 0.5) * 4
+    const x0 = capRx * 0.4 + rand() * w * 0.12
+    const x1 = w - capRx * 1.3 - rand() * w * 0.1
+    const amp = 1 + rand() * 2.2
+    let d = `M${x0.toFixed(1)},${y.toFixed(1)}`
+    for (let x = x0; x < x1; x += 26) d += ` Q${(x + 13).toFixed(1)},${(y + (rand() - 0.5) * amp * 2).toFixed(1)} ${(x + 26).toFixed(1)},${(y + (rand() - 0.5) * amp).toFixed(1)}`
+    grain.push(`<path d="${d}" fill="none" stroke="${i % 3 ? '#2a170b' : '#c08a5a'}" stroke-opacity="${i % 3 ? 0.45 : 0.28}" stroke-width="${i % 3 ? 1.4 : 1}" stroke-linecap="round"/>`)
+  }
+  const kx = w * (0.22 + rand() * 0.15)
+  const ky = h * (0.3 + rand() * 0.15)
+  const rings = [0.82, 0.64, 0.47, 0.31, 0.16].map((k) => `<ellipse cx="${w - capRx}" cy="${r}" rx="${capRx * k}" ry="${r * k * 0.92}" fill="none" stroke="#b07a46" stroke-opacity=".75" stroke-width="1.2"/>`).join('')
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;overflow:visible">
+    <defs>
+      <linearGradient id="rvBark${seed}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#8d5b36"/><stop offset=".22" stop-color="#a36d43"/><stop offset=".5" stop-color="#6e4428"/><stop offset=".85" stop-color="#4a2c18"/><stop offset="1" stop-color="#33200f"/>
+      </linearGradient>
+      <radialGradient id="rvCut${seed}" cx="50%" cy="50%" r="55%"><stop offset="0" stop-color="#f3cf98"/><stop offset=".7" stop-color="#deac70"/><stop offset="1" stop-color="#c38a52"/></radialGradient>
+    </defs>
+    <ellipse cx="${w / 2}" cy="${h + 5}" rx="${w * 0.46}" ry="6" fill="#000" fill-opacity=".35"/>
+    <path d="M${capRx},0 H${w - capRx} V${h} H${capRx} A${capRx} ${r} 0 0 1 ${capRx},0 Z" fill="url(#rvBark${seed})"/>
+    ${grain.join('')}
+    <ellipse cx="${kx}" cy="${ky}" rx="7" ry="4.5" fill="#3d2414"/><ellipse cx="${kx}" cy="${ky}" rx="4" ry="2.4" fill="none" stroke="#b07a46" stroke-opacity=".6"/>
+    <path d="M${capRx},2 H${w - capRx}" stroke="#d6a070" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+    <ellipse cx="${w - capRx}" cy="${r}" rx="${capRx}" ry="${r}" fill="url(#rvCut${seed})" stroke="#3a2212" stroke-width="3"/>
+    ${rings}
+    <circle cx="${w - capRx}" cy="${r}" r="1.8" fill="#8a5a32"/>
+  </svg>`
+}
+
+function playLog(c: Ctx) {
+  const { run } = c
+  const short = c.nth > 10
+  const cat = rect(c.cat)
+  const card = rect(c.card)
+  const h = Math.max(56, Math.min(72, card.height + 4))
+  const w = card.width
+  const L = { x: card.left, y: card.top + (card.height - h) / 2 }
+  const scs = getComputedStyle(c.source)
+
+  // 1 · дело становится поленом: карточка «деревенеет», слова остаются на нём светлой резьбой
+  const log = document.createElement('div')
+  Object.assign(log.style, { position: 'absolute', left: `${L.x}px`, top: `${L.y}px`, width: `${w}px`, height: `${h}px`, transformOrigin: '50% 100%' })
+  log.innerHTML = logSvg(w, h, 7)
+  const carve = document.createElement('p')
+  carve.textContent = c.source.textContent
+  Object.assign(carve.style, {
+    position: 'absolute', left: `${h * 0.3 + 10}px`, right: `${h * 0.6 + 6}px`, top: '50%', transform: 'translateY(-50%)', margin: '0',
+    font: scs.font, color: '#ffe9cc', textShadow: '0 1px 0 rgba(0,0,0,.55), 0 -1px 0 rgba(255,210,150,.15)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+  })
+  log.appendChild(carve)
+  c.layer.appendChild(log)
+  const t0 = short ? 0 : 0.0
+  const tLog = short ? 0.04 : 0.14
+  const tImp = short ? 0.12 : 0.32
+  run(log, [
+    { opacity: 0, transform: 'scale(.92, .6)' },
+    { opacity: 1, transform: 'scale(1.03, 1.08)', offset: 0.6 },
+    { opacity: 1, transform: 'scale(1)' },
+  ], t0, tLog, { easing: SPRING })
+  run(c.card, [{ opacity: 1 }, { opacity: 0 }], tLog * 0.6, tLog * 0.6 + 0.001)
+  run(c.source, [{ opacity: 1 }, { opacity: 0 }], tLog * 0.6, tLog * 0.6 + 0.001)
+
+  // 2 · кот готовится и хлопает лапой сверху по середине полена
+  const hit = { x: L.x + w * 0.5, y: L.y + 4 }
+  const pw = Math.min(80, cat.width * 0.6)
+  run(c.cat, [
+    { transform: 'none' },
+    { transform: 'translateY(5px) scale(1.05,.92)', offset: 0.5 },
+    { transform: 'translateY(-4px) scale(.97,1.05)', offset: 0.85 },
+    { transform: 'none' },
+  ], short ? 0 : 0.08, tImp + 0.06, { easing: 'ease-in-out' })
+  const paw = document.createElement('img')
+  paw.src = PAW
+  paw.alt = ''
+  Object.assign(paw.style, { position: 'absolute', left: '0', top: '0', width: `${pw}px`, willChange: 'transform' })
+  c.layer.appendChild(paw)
+  const from = { x: cat.left + cat.width * 0.6, y: cat.bottom - pw * 0.4 }
+  const lift = { x: hit.x + 6, y: hit.y - pw * 1.15 }
+  const P = (p: { x: number; y: number }, rot: number, s: number, o = 1): Keyframe => ({ transform: `translate(${p.x - pw / 2}px, ${p.y - pw / 2}px) rotate(${rot}deg) scale(${s})`, opacity: o })
+  const tUp = short ? 0.02 : 0.16
+  run(paw, [P(from, -30, 0.5, 0), { ...P({ x: (from.x + lift.x) / 2 + 30, y: Math.min(from.y, lift.y) - 20 }, -10, 0.85), offset: 0.55 }, P(lift, 8, 1)], tUp, tImp - 0.05, { easing: 'cubic-bezier(.3,0,.3,1)' })
+  // замах: на миг зависает выше, потом резко вниз
+  run(paw, [P(lift, 8, 1), { ...P({ x: lift.x, y: lift.y - 10 }, 12, 1.04), offset: 0.35 }, P({ x: hit.x, y: hit.y - pw * 0.28 }, 0, 1.12)], tImp - 0.05, tImp, { easing: 'cubic-bezier(.7,0,.9,.5)' })
+  run(paw, [
+    P({ x: hit.x, y: hit.y - pw * 0.28 }, 0, 1.12),
+    { ...P({ x: hit.x, y: hit.y - pw * 0.22 }, 0, 1.18), offset: 0.2 },
+    P(from, -30, 0.5, 0),
+  ], tImp, tImp + 0.14, { easing: 'cubic-bezier(.4,0,.6,1)' })
+
+  // 3 · удар: полено подпрыгивает и сплющивается, щепки, пыль, светящиеся трещины по местам будущих кусков
+  c.onImpact()
+  run(log, [
+    { transform: 'scale(1)' },
+    { transform: 'translateY(3px) scale(1.04,.86)', offset: 0.25 },
+    { transform: 'translateY(-5px) scale(.98,1.05)', offset: 0.6 },
+    { transform: 'scale(1)' },
+  ], tImp, tImp + 0.1, { easing: 'ease-out' })
+  const dust = document.createElement('div')
+  Object.assign(dust.style, { position: 'absolute', left: `${hit.x - 60}px`, top: `${L.y + h - 30}px`, width: '120px', height: '60px', borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(230,200,160,.45), transparent)' })
+  c.layer.insertBefore(dust, log)
+  run(dust, [{ transform: 'scale(.3,.2)', opacity: 0.9 }, { transform: 'scale(2.2,1)', opacity: 0 }], tImp, tImp + 0.18, { easing: OUT })
+  for (let k = 0; k < 16; k++) {
+    const chip = document.createElement('div')
+    const bark = k % 3 === 0
+    const sz = 4 + (k % 4) * 2
+    Object.assign(chip.style, {
+      position: 'absolute', left: `${hit.x - sz / 2}px`, top: `${hit.y + h * 0.3}px`, width: `${sz}px`, height: `${sz * 0.55}px`,
+      background: bark ? '#5a3620' : k % 2 ? '#e2b27a' : '#c98f58', borderRadius: '1px', clipPath: 'polygon(0 30%, 70% 0, 100% 60%, 30% 100%)',
+    })
+    c.layer.appendChild(chip)
+    const a = -Math.PI / 2 + ((k / 15) - 0.5) * 2.6
+    const v = 50 + (k * 37) % 70
+    const dx = Math.cos(a) * v * 1.4
+    const dy = Math.sin(a) * v
+    const kf: Keyframe[] = []
+    for (let s = 0; s <= 6; s++) {
+      const u = s / 6
+      kf.push({ transform: `translate(${dx * u}px, ${dy * u + 220 * u * u}px) rotate(${(k % 2 ? 1 : -1) * 540 * u}deg)`, opacity: u > 0.75 ? 1 - (u - 0.75) * 4 : 1 })
+    }
+    run(chip, kf, tImp, tImp + 0.26 + (k % 3) * 0.03, { easing: 'linear' })
+  }
+
+  const targets: HTMLElement[] = [c.card, ...c.texts.slice(1).map((t) => t.parentElement as HTMLElement)]
+  if (c.more) targets.push(c.more)
+  const N = targets.length
+  // трещины: зигзаг поперёк полена на границах кусков; общий для двух соседних кусков, чтобы куски сходились без щели
+  const zig: number[][] = []
+  for (let k = 1; k < N; k++) {
+    const x = (w * k) / N
+    const pts: number[] = []
+    for (let s = 0; s <= 5; s++) pts.push(x + (s % 2 ? 5 : -5) + ((k * 13 + s * 7) % 5) - 2)
+    zig.push(pts)
+  }
+  const cracks = svgEl('g', {})
+  c.svg.appendChild(cracks)
+  zig.forEach((pts, i) => {
+    const d = pts.map((x, s) => `${s ? 'L' : 'M'}${L.x + x},${L.y + (h * s) / 5}`).join(' ')
+    const glow = svgEl('path', { d, fill: 'none', stroke: '#ff9a3c', 'stroke-width': 7, 'stroke-opacity': 0.35, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+    const core = svgEl('path', { d, fill: 'none', stroke: '#ffe2a8', 'stroke-width': 2.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+    cracks.append(glow, core)
+    const len = h * 1.3
+    // трещины расходятся от места удара наружу
+    const order = Math.abs(i + 1 - N / 2)
+    const tc = tImp + 0.01 + order * 0.025
+    for (const p of [glow, core]) {
+      p.setAttribute('stroke-dasharray', `${len} ${len}`)
+      run(p, [{ strokeDashoffset: len }, { strokeDashoffset: 0 }], tc, tc + 0.06, { easing: 'ease-out' })
+    }
+    // сигнал «сейчас развалится»: свечение трещин разгорается
+    run(glow, [{ strokeOpacity: 0.35, strokeWidth: 7 }, { strokeOpacity: 0.85, strokeWidth: 12 }], tc + 0.06, short ? 0.24 : 0.46, { easing: 'ease-in' })
+  })
+  // угольки поднимаются из трещин
+  zig.forEach((pts, i) => {
+    for (let e = 0; e < 3; e++) {
+      const em = document.createElement('div')
+      Object.assign(em.style, { position: 'absolute', left: `${L.x + pts[2] - 2}px`, top: `${L.y + h * 0.4}px`, width: '4px', height: '4px', borderRadius: '50%', background: '#ffcf70', boxShadow: '0 0 6px 2px rgba(255,150,50,.7)' })
+      c.layer.appendChild(em)
+      const te = tImp + 0.05 + e * 0.04 + i * 0.02
+      run(em, [{ transform: 'translate(0,0) scale(1)', opacity: 0 }, { opacity: 1, offset: 0.15 }, { transform: `translate(${(e - 1) * 14}px, ${-40 - e * 18}px) scale(.3)`, opacity: 0 }], te, te + 0.3, { easing: 'ease-out' })
+    }
+  })
+  run(cracks, [{ opacity: 1 }, { opacity: 0 }], short ? 0.24 : 0.46, short ? 0.25 : 0.47)
+  run(log, [{ opacity: 1 }, { opacity: 0 }], short ? 0.24 : 0.46, short ? 0.241 : 0.461)
+
+  // 4 · полено раскалывается: каждый кусок (с кусочком тех же слов) отскакивает, потом летит на место своего шага
+  const tSplit = short ? 0.24 : 0.46
+  const tFly = short ? 0.32 : 0.56
+  for (let k = 0; k < N; k++) {
+    const left = k ? zig[k - 1] : null
+    const right = k < N - 1 ? zig[k] : null
+    const poly: string[] = []
+    if (left) for (let s = 0; s <= 5; s++) poly.push(`${left[s]}px ${(h * s) / 5}px`)
+    else poly.push(`-20px -10px`, `-20px ${h + 10}px`)
+    if (right) for (let s = 5; s >= 0; s--) poly.push(`${right[s]}px ${(h * s) / 5}px`)
+    else poly.push(`${w + 20}px ${h + 10}px`, `${w + 20}px -10px`)
+    // порядок: левый край сверху вниз, правый снизу вверх — замкнутый контур куска
+    const ordered = left ? poly : [poly[0], poly[1], ...poly.slice(2)]
+    const piece = document.createElement('div')
+    Object.assign(piece.style, { position: 'absolute', left: `${L.x}px`, top: `${L.y}px`, width: `${w}px`, height: `${h}px`, clipPath: `polygon(${ordered.join(',')})` })
+    piece.innerHTML = log.innerHTML
+    c.layer.appendChild(piece)
+    const xl = left ? left[2] : 0
+    const xr = right ? right[2] : w
+    const cx = (xl + xr) / 2
+    piece.style.transformOrigin = `${cx}px ${h / 2}px`
+    const mid = (N - 1) / 2
+    const sep = `translate(${(k - mid) * 7}px, ${-10 - Math.abs(k - mid) * 3}px) rotate(${(k - mid) * 4}deg)`
+    run(piece, [{ opacity: 0 }, { opacity: 1 }], tSplit, tSplit + 0.001)
+    run(piece, [{ transform: 'none' }, { transform: sep }], tSplit, tFly, { easing: SPRING })
+    const to = rect(targets[k])
+    const tx = to.left + to.width / 2 - (L.x + cx)
+    const ty = to.top + to.height / 2 - (L.y + h / 2)
+    const sx = Math.min(1.6, Math.max(0.45, to.width / Math.max(30, xr - xl)))
+    const sy = Math.min(1.2, Math.max(0.35, to.height / h))
+    const tk = tFly + k * 0.035
+    const tArr = tk + 0.2
+    run(piece, [
+      { transform: sep, opacity: 1 },
+      { transform: `translate(${tx * 0.55}px, ${ty * 0.55 - 26}px) rotate(${(k - mid) * -8}deg) scale(${(1 + sx) / 2}, ${(1 + sy) / 2})`, opacity: 1, offset: 0.55 },
+      // к месту кусок долетает уже растворяясь — выжигаемые буквы шага не прячутся под деревом
+      { transform: `translate(${tx * 0.88}px, ${ty * 0.88}px) rotate(0deg) scale(${sx * 0.95}, ${sy})`, opacity: 0.85, offset: 0.8 },
+      { transform: `translate(${tx}px, ${ty}px) rotate(0deg) scale(${sx}, ${sy})`, opacity: 0 },
+    ], tk, tArr, { easing: 'cubic-bezier(.3,0,.25,1)' })
+    // 5 · на месте кусок «выжигает» шаг: буквы загораются угольком слева направо и остывают в обычный текст
+    if (k === 0) run(c.card, [{ opacity: 0 }, { opacity: 1 }], tArr - 0.02, tArr + 0.04, { easing: OUT })
+    if (targets[k] === c.more) {
+      run(c.more!, [{ opacity: 0 }, { opacity: 1 }], tArr - 0.02, tArr + 0.06, { easing: OUT })
+      continue
+    }
+    if (k > 0) run(c.bullets[k - 1], [{ opacity: 0, transform: 'scale(0)' }, { opacity: 1, transform: 'scale(1)' }], tArr - 0.02, tArr + 0.06, { easing: SPRING })
+    burnIn(c, c.texts[k], tArr - 0.02, Math.min(0.12, 0.004 * (c.texts[k].textContent?.length ?? 10)), 0.14)
+  }
+
+  // отпечаток лапы остался на месте удара — он и есть подаренный первый штамп
+  const print = document.createElement('div')
+  const ps = 30
+  Object.assign(print.style, {
+    position: 'absolute', left: `${hit.x - ps / 2}px`, top: `${L.y + h / 2 - ps / 2}px`, width: `${ps}px`, height: `${(ps * 91) / 100}px`,
+    background: '#a0ec2a', WebkitMaskImage: `url(${PRINT})`, maskImage: `url(${PRINT})`, WebkitMaskSize: '100% 100%', maskSize: '100% 100%',
+  })
+  c.layer.appendChild(print)
+  run(print, [{ transform: 'scale(1.8) rotate(-30deg)', opacity: 0 }, { transform: 'scale(1) rotate(-12deg)', opacity: 0.95 }], tImp, tImp + 0.05, { easing: 'cubic-bezier(.6,0,.4,1)' })
+  const s0 = rect(c.stamp0)
+  const tS = 0.8
+  const dx = s0.left + s0.width / 2 - hit.x
+  const dy = s0.top + s0.height / 2 - (L.y + h / 2)
+  run(print, [
+    { transform: 'scale(1) rotate(-12deg)', opacity: 0.95 },
+    { transform: `translate(${dx * 0.5 + 30}px, ${dy * 0.5 - 30}px) scale(1.4) rotate(-40deg)`, offset: 0.5 },
+    { transform: `translate(${dx}px, ${dy}px) scale(.62) rotate(-12deg)`, opacity: 1 },
+  ], tS - 0.14, tS + 0.08, { easing: 'cubic-bezier(.5,0,.4,1)' })
+  run(print, [{ opacity: 1 }, { opacity: 0 }], tS + 0.08, tS + 0.081)
+}
+
+/** Буквы шага загораются на своём месте угольком (свечение) и остывают до обычного цвета текста */
+function burnIn(c: Ctx, el: HTMLElement, t0: number, span: number, dur: number) {
+  const cs = getComputedStyle(el)
+  const boxes = charBoxes(el)
+  const step = boxes.length > 1 ? span / (boxes.length - 1) : 0
+  boxes.forEach((b, j) => {
+    const g = ghostLetter(c.layer, b, cs.font, cs.color)
+    const tj = t0 + step * j
+    c.run(g, [
+      { opacity: 0, color: '#fff4c2', textShadow: '0 0 10px rgba(255,170,60,1), 0 0 2px #fff', transform: 'translateY(3px) scale(1.25)' },
+      { opacity: 1, color: '#ffc46b', textShadow: '0 0 8px rgba(255,140,40,.9)', transform: 'translateY(-1px) scale(1.08)', offset: 0.35 },
+      { opacity: 1, color: cs.color, textShadow: '0 0 0 rgba(255,140,40,0)', transform: 'none' },
+    ], tj, tj + dur, { easing: 'ease-out' })
+    c.run(g, [{ opacity: 1 }, { opacity: 0 }], t0 + span + dur, t0 + span + dur + 0.001)
+  })
+  c.run(el, [{ opacity: 0 }, { opacity: 1 }], t0 + span + dur, t0 + span + dur + 0.001)
+}
+
 /* ───────────────────────────── сцена ───────────────────────────── */
 
 type Phase = 'pre' | 'playing' | 'done'
@@ -651,7 +913,7 @@ export function BreakReveal({
       const ctx: Ctx = {
         T, nth, layer: layerRef.current, svg: svgRef.current, cat: catRef.current, card: cardRef.current, source: sourceRef.current,
         texts, bullets, more: moreRef.current, stamp0: stamp0Ref.current!, anims: list, at, run,
-        onImpact: () => window.setTimeout(hapticReaction, at(variant === 'paw' ? (nth > 10 ? 0.14 : 0.3) : 0.3)),
+        onImpact: () => window.setTimeout(hapticReaction, at(variant === 'yarn' ? 0.3 : variant === 'log' ? (nth > 10 ? 0.12 : 0.32) : nth > 10 ? 0.14 : 0.3)),
       }
       // всё, что появляется только в конце: подпись, карта штампов, кнопка — снизу, мягко, с пружиной
       const lateEls = [...root0.querySelectorAll<HTMLElement>('[data-rv-late]')]
@@ -660,6 +922,7 @@ export function BreakReveal({
       if (stamp0Ref.current) run(stamp0Ref.current, [{ transform: 'scale(2) rotate(-35deg)', opacity: 0 }, { transform: 'scale(.9) rotate(-8deg)', opacity: 1, offset: 0.7 }, { transform: 'scale(1) rotate(-12deg)', opacity: 1 }], 0.9, 1, { easing: 'cubic-bezier(.6,0,.4,1)' })
       if (ringRef.current) run(ringRef.current, [{ strokeDashoffset: '62.8' }, { strokeDashoffset: '31.4' }], 0.94, 1.06, { easing: OUT })
       if (variant === 'yarn') playYarn(ctx)
+      else if (variant === 'log') playLog(ctx)
       else playPaw(ctx)
       anims.current = list
       setPhase('playing')
@@ -673,8 +936,8 @@ export function BreakReveal({
   }, [reduced])
 
   const receipt = `Разломал на ${steps.length} ${plural(steps.length, 'шаг', 'шага', 'шагов')}. ${first?.minutes ? `Первый — на ${first.minutes} ${plural(first.minutes, 'минуту', 'минуты', 'минут')}.` : 'Первый — совсем маленький.'}`
-  const line = phase === 'done' ? receipt : variant === 'yarn' ? 'Распутываю твоё дело…' : 'Сейчас как разломаю!'
-  const expression: MascotExpression = phase === 'done' ? (cheer ? 'excited' : 'happy') : variant === 'paw' ? 'excited' : 'focused'
+  const line = phase === 'done' ? receipt : variant === 'yarn' ? 'Распутываю твоё дело…' : variant === 'log' ? 'Сейчас расколю!' : 'Сейчас как разломаю!'
+  const expression: MascotExpression = phase === 'done' ? (cheer ? 'excited' : 'happy') : variant === 'yarn' ? 'focused' : 'excited'
   const action: MascotAction = cheer ? 'celebrate' : phase === 'done' ? 'idle' : 'think'
 
   return (

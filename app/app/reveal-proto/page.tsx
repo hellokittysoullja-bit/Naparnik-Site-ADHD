@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { readyPlan } from '@/lib/ai/agents/breakdown'
 import { RevealProto } from './proto'
+import { FocusScene } from '@/components/focus-scene'
 
 /** Стенд раскрытия разбивки для согласования с владельцем (16.11): не в меню, не индексируется. */
 export const metadata: Metadata = { title: 'Раскрытие разбивки — стенд', robots: { index: false } }
@@ -19,6 +20,7 @@ export default function Page() {
   })
   return (
     <main className="flex min-h-dvh flex-col pb-16">
+      <FocusScene />
       <RevealProto plans={plans} />
     </main>
   )
