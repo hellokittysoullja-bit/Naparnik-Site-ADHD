@@ -98,7 +98,6 @@ function pluralFinds(n: number): string {
 }
 
 // Готовые шаги: пустое поле для СДВГ — стена. Нажал чип — поехали.
-const stepChips = ['Открыть документ', 'Убрать одну вещь', 'Ответить на одно сообщение']
 
 const HIDE_DIGITS_KEY = 'naparnik:hideDigits'
 
@@ -1097,32 +1096,6 @@ export function FocusSession() {
             </div>
           ) : (
           <label className="flex flex-col gap-2">
-            <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
-              Первый шаг
-            </span>
-            {/* готовые шаги — только когда дела ещё нет: с делом с Дома второй список шагов был лишним выбором */}
-            {!prefilledStep && (
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Готовые шаги">
-              {stepChips.map((chip) => (
-                <button
-                  key={chip}
-                  type="button"
-                  onClick={() => {
-                    if (task !== chip) hapticThreshold()
-                    setTask(chip)
-                  }}
-                  aria-pressed={task === chip}
-                  className={`inline-flex min-h-11 items-center rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    task === chip
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'glass text-muted-foreground transition-[filter] duration-150 hover:text-foreground hover:brightness-125'
-                  }`}
-                >
-                  {chip}
-                </button>
-              ))}
-            </div>
-            )}
             <input
               value={task}
               maxLength={STEP_MAX}
@@ -1136,6 +1109,7 @@ export function FocusSession() {
                   void start()
                 }
               }}
+              aria-label="Первый шаг"
               autoFocus={!prefilledStep}
               enterKeyHint="go"
               placeholder="Открыть файл презентации"
@@ -1147,25 +1121,28 @@ export function FocusSession() {
 
           {!brokenSteps && (
             <div className="flex flex-wrap gap-2">
-              {breakable(task) && !stepChips.includes(task) && (
-                <button
-                  type="button"
-                  onClick={() => void requestBreak()}
-                  disabled={busy}
-                  className="glass glass-interactive press inline-flex min-h-11 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-foreground disabled:opacity-60"
-                >
+              {/* «Раздробить» на экране всегда (владелец 16.11); дело, которое нечем разламывать, — просьба кота в пузыре */}
+              <button
+                type="button"
+                onClick={() => void requestBreak()}
+                disabled={busy}
+                className="btn-chunky btn-chunky-dark select-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+              >
+                <span className="btn-face inline-flex min-h-11 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold">
                   <Sparkles className="size-4 shrink-0 text-primary" aria-hidden="true" />
                   {busy ? 'Дроблю…' : 'Раздробить'}
-                </button>
-              )}
+                </span>
+              </button>
               {/* готовые разбивки бытовых дел: шаги без ожидания ИИ (lib/templates.ts) */}
               <button
                 type="button"
                 onClick={() => setTemplatesOpen(true)}
-                className="glass glass-interactive press inline-flex min-h-11 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-foreground"
+                className="btn-chunky btn-chunky-dark select-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <LayoutList className="size-4 shrink-0 text-primary" aria-hidden="true" />
-                Готовые дела
+                <span className="btn-face inline-flex min-h-11 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold">
+                  <LayoutList className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                  Готовые шаги
+                </span>
               </button>
             </div>
           )}
