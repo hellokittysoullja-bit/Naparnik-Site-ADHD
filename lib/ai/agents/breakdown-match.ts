@@ -58,6 +58,12 @@ export function distance(a: string, b: string, max: number): number {
 
 const allowed = (w: string) => (w.length >= 9 ? 2 : w.length >= 4 ? 1 : 0)
 
+/**
+ * Слова, в которые опечатку НЕ исправляем — только дословно. Короткие глаголы отличаются от них одной буквой:
+ * «поспать» и «пожрать» превращались в «Посрать» (16.11). Интимное и туалетное узнаём только как написано.
+ */
+const EXACT_ONLY = new Set(['посрать', 'поссать', 'покакать', 'пописать', 'подрочить', 'потрахаться', 'трахнуться', 'переспать'])
+
 export type Matcher<T> = { find: (text: string) => { title: string; value: T; corrected: boolean } | null }
 
 /**
@@ -76,7 +82,8 @@ export function buildMatcher<T>(entries: [string, T][]): Matcher<T> {
   // одно и то же дело может прийти из двух источников — в указатель «по набору слов» идут уже без повторов
   for (const e of exact.values()) {
     const b = [...e.ws].sort().join(' ')
-    bag.set(b, bag.has(b) ? null : e)
+    const prev = bag.get(b)
+    bag.set(b, prev === undefined || prev?.value === e.value ? (prev ?? e) : null)
   }
   const vocab = [...new Set(list.flatMap((e) => e.ws))]
   const known = new Set(vocab)
@@ -95,7 +102,7 @@ export function buildMatcher<T>(entries: [string, T][]): Matcher<T> {
     let best = max + 1
     let out: string[] = []
     for (const v of vocab) {
-      if (Math.abs(v.length - w.length) > max) continue
+      if (EXACT_ONLY.has(v) || Math.abs(v.length - w.length) > max) continue
       const d = distance(w, v, max)
       if (d < best) [best, out] = [d, [v]]
       else if (d === best) out.push(v)
@@ -120,8 +127,9 @@ export function buildMatcher<T>(entries: [string, T][]): Matcher<T> {
       for (const o of opts[i]) walk(i + 1, [...acc, o])
     }
     walk(0, [])
-    // два разных дела одинаково близко — не угадываем, пусть разбивает модель
-    return found.size === 1 ? [...found][0] : null
+    // два разных дела одинаково близко — не угадываем, пусть разбивает модель; дело и его синоним — одно дело
+    const plans = new Set([...found].map((e) => e.value))
+    return plans.size === 1 ? [...found][0] : null
   }
 
   return {
