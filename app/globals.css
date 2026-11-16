@@ -2296,3 +2296,19 @@ html:has(.app-scroll) body {
 .ptr-cat[data-ready] .ptr-cat-img { animation: ptr-pop 260ms cubic-bezier(0.22, 1.4, 0.36, 1); }
 .ptr-cat[data-refreshing] .ptr-cat-img { animation: ptr-hop 520ms cubic-bezier(0.45, 0, 0.55, 1) infinite; }
 @media (prefers-reduced-motion: reduce) { .ptr-cat .ptr-cat-img { animation: none !important; } }
+
+/* Раскрытие разбивки (components/break-reveal): до и во время сцены итог скрыт — его по одному проявляют анимации
+   (WAAPI перекрывает эти правила), после сцены анимации снимаются и остаётся итог. Дело, каким его написал
+   человек, видно только до превращения. */
+.break-reveal:is([data-rv='pre'], [data-rv='playing']) :is(.rv-final, [data-rv-late], .rv-print) {
+  opacity: 0;
+}
+.break-reveal[data-rv='done'] .rv-source {
+  visibility: hidden;
+}
+.rv-print {
+  background: var(--primary);
+  -webkit-mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
+  mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
+  transform: rotate(-12deg);
+}
