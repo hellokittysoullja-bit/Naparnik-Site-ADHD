@@ -4,6 +4,7 @@ import { NoMemory, prefetchWithin, type MemoryProvider } from '../memory/provide
 import { memoryWords, renderTaskMemory } from '../memory/render'
 import { runTurn } from '../core/run-turn'
 import { examplesBlock } from './breakdown-examples'
+import { goblinPlan } from './breakdown-goblin'
 
 /**
  * Разбивка дела на шаги до самого конца, как у goblin.tools (владелец 16.11: «он что угодно правильно разбивает»).
@@ -139,7 +140,7 @@ export function parseSteps(text: string): string[] | null {
 }
 
 export type BreakdownResult =
-  | { kind: 'steps'; steps: string[]; minutes?: (number | undefined)[]; wait?: boolean[]; source: 'model' | 'fallback' }
+  | { kind: 'steps'; steps: string[]; minutes?: (number | undefined)[]; wait?: boolean[]; source: 'model' | 'fallback' | 'library' }
   | { kind: 'care'; reply: string }
   /** модель не поняла дело (набор букв): экран честно просит написать словами вместо общих шагов «для любого дела» */
   | { kind: 'unclear' }
@@ -173,6 +174,11 @@ export async function breakdown(input: {
   timeoutMs?: number
   signal?: AbortSignal
 }): Promise<BreakdownResult> {
+  // дело написано ровно как в готовых разбивках goblin.tools (владелец 16.11) — план сразу, без модели. Только обычная
+  // разбивка: «мельче», «мало сил» и шаг внутри дела меняют план, их пишет модель
+  const c = input.context
+  const ready = c?.['Это часть дела'] || c?.['Силы сейчас'] || c?.['Размер шагов'] ? null : goblinPlan(input.task)
+  if (ready) return { kind: 'steps', steps: [...ready], source: 'library' }
   const ctx = input.ctx ?? newTurn({ task: 'breakdown' })
   const snapshot = await prefetchWithin(input.memory ?? NoMemory, ctx)
   const { value, outcome } = await runTurn<BreakdownResult>({

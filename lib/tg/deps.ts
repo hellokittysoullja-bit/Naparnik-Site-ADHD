@@ -70,7 +70,7 @@ export function liveDeps(site: string): Deps {
     // то же дробление, что на сайте, через обвязку (lib/ai): проверки входа и вывода, страховка моделей, заготовка
     breakdown: async (task) => {
       const r = await breakdown({ task, ctx: newTurn({ task: 'breakdown', channel: 'telegram' }) })
-      if (r.kind === 'steps') return { steps: r.steps, fallback: r.source !== 'model' }
+      if (r.kind === 'steps') return { steps: r.steps, fallback: r.source === 'fallback' }
       // не понял дело — та же честная просьба, что на сайте (lib/break-task.ts), без звёздочек выделения
       if (r.kind === 'unclear') return { steps: [], fallback: true, care: BREAK_UNCLEAR.replace(/\*/g, '') }
       return { steps: [], fallback: true, care: r.reply }

@@ -24,7 +24,7 @@ export async function firstStepFor(
     const data = (await res.json()) as { steps?: string[] | null; reply?: string; source?: string }
     if (typeof data.reply === 'string') return { kind: 'care', reply: data.reply }
     // заготовка обвязки («Открыть то, что нужно для дела») хуже подсказки сферы — экран возьмёт свою
-    if (data.source !== 'model' || !Array.isArray(data.steps) || typeof data.steps[0] !== 'string') return null
+    if ((data.source !== 'model' && data.source !== 'library') || !Array.isArray(data.steps) || typeof data.steps[0] !== 'string') return null
     return { kind: 'step', step: data.steps[0].slice(0, 80) }
   } catch {
     return null
