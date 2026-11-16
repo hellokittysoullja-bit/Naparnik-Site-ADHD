@@ -22,37 +22,9 @@ const tabs = [
   { href: "/app/world", label: "Мир", icon: Sprout, exact: false },
 ];
 
-type PillComponent = () => React.JSX.Element;
 
 export function AppNav() {
   const pathname = usePathname();
-  // Пружинная пилюля (motion/react, ~42 КБ) грузится отдельно, после загрузки страницы (или по первому касанию): до этого на её месте
-  // такая же неподвижная пилюля. Дом, кроме неё, библиотеку анимаций не использует — без этого она ехала в первом
-  // пакете кода Дома и разбиралась до того, как экран оживал (14.11, оптимизация скорости).
-  const [Pill, setPill] = useState<PillComponent | null>(null);
-  useEffect(() => {
-    let alive = true;
-    let started = false;
-    const load = () => {
-      if (started) return;
-      started = true;
-      void import("@/components/nav-pill").then((m) => {
-        if (alive) setPill(() => m.NavPill);
-      });
-    };
-    // после загрузки страницы и в простое — не спорит за сеть с котом первого экрана; касание меню — сразу
-    const idle = () => (typeof window.requestIdleCallback === "function" ? window.requestIdleCallback(load, { timeout: 2000 }) : setTimeout(load, 200));
-    if (document.readyState === "complete") idle();
-    else window.addEventListener("load", idle, { once: true });
-    window.addEventListener("pointerdown", load, { once: true, capture: true });
-    window.addEventListener("keydown", load, { once: true, capture: true });
-    return () => {
-      alive = false;
-      window.removeEventListener("load", idle);
-      window.removeEventListener("pointerdown", load, { capture: true });
-      window.removeEventListener("keydown", load, { capture: true });
-    };
-  }, []);
   // null / undefined — память ещё не прочитана (первый кадр при обновлении): точку и минуты тогда показывает CSS по
   // атрибутам скрипта первого кадра (lib/app-prepaint.ts), а не прячет до ответа памяти
   const [worldUnseen, setWorldUnseen] = useState<boolean | null>(null);
@@ -125,17 +97,10 @@ export function AppNav() {
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {/* Светящаяся пилюля активного таба перетекает между табами
-                  пружиной (shared layoutId — паттерн iOS 17 / Arc): экран
-                  ОТВЕЧАЕТ на навигацию телом, а не сменой цвета текста.
-                  Активное место подсвечено светом очага — единый свет сцены. */}
-              {active && (
-                Pill ? (
-                  <Pill />
-                ) : (
-                  <span className={NAV_PILL_CLASS} style={NAV_PILL_STYLE} aria-hidden="true" />
-                )
-              )}
+              {/* Подсветка активного таба — сразу на новом месте, в том же кадре, что и цвет подписи. Раньше она перетекала
+                  пружиной (motion/react): на слабом телефоне кадры, где «Дом» уже горит, а подсветка ещё под «Миром»,
+                  читались как две выбранные вкладки (16.11, покадровая съёмка владельцу) */}
+              {active && <span className={NAV_PILL_CLASS} style={NAV_PILL_STYLE} aria-hidden="true" />}
               <span className="relative">
                 <Icon
                   className="size-5"
