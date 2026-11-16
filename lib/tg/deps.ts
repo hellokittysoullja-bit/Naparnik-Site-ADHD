@@ -1,3 +1,4 @@
+import { BREAK_UNCLEAR } from '@/lib/break-task'
 import type { ModelMessage, TextStreamPart, ToolSet } from 'ai'
 import { breakdown } from '@/lib/ai/agents/breakdown'
 import { chatTurn } from '@/lib/ai/agents/chat'
@@ -69,7 +70,10 @@ export function liveDeps(site: string): Deps {
     // то же дробление, что на сайте, через обвязку (lib/ai): проверки входа и вывода, страховка моделей, заготовка
     breakdown: async (task) => {
       const r = await breakdown({ task, ctx: newTurn({ task: 'breakdown', channel: 'telegram' }) })
-      return r.kind === 'steps' ? { steps: r.steps, fallback: r.source !== 'model' } : { steps: [], fallback: true, care: r.reply }
+      if (r.kind === 'steps') return { steps: r.steps, fallback: r.source !== 'model' }
+      // не понял дело — та же честная просьба, что на сайте (lib/break-task.ts), без звёздочек выделения
+      if (r.kind === 'unclear') return { steps: [], fallback: true, care: BREAK_UNCLEAR.replace(/\*/g, '') }
+      return { steps: [], fallback: true, care: r.reply }
     },
     converse,
     sign,

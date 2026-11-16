@@ -17,6 +17,7 @@ export const BREAKDOWN_SYSTEM = `Режим: ДРОБЛЕНИЕ ЗАДАЧИ. Ч
 - В конце каждой строки через вертикальную черту поставь честную оценку в минутах числом: «Открыть документ | 1»
 - Если в данных есть «Силы сейчас: мало», шаги совсем лёгкие: открыть, посмотреть, достать, по 1-2 минуты, без решений и без письма с нуля. Если «много», шаги могут быть по 5 минут и содержательнее
 - Если в данных есть «Размер шагов: мельче», дроби до одного движения рукой («Открыть ноутбук»); если «крупнее», шаг может занимать до 10 минут
+- Если «Дело» не похоже на дело (набор букв, бессмыслица, непонятное сокращение вроде «Hhh» или «ааа»), не придумывай шаги: ответь ровно одним знаком «?». Короткое, но понятное дело («пол», «отчёт», «звонок маме») это дело, его дроби
 - Если перед делом есть блок ПАМЯТЬ О ЧЕЛОВЕКЕ, делай шаги под этого человека: его программы и места, то, с чего он уже начинал это дело, то, что ему мешает и помогает, и его просьбы «как говорить» (короче, буквально, без шуток). Саму память не пересказывай и не упоминай: в ответе только три шага`
 
 export const BREAKDOWN_FALLBACK = ['Открыть то, что нужно для дела', 'Сделать одно крошечное действие', 'Записать, что дальше']
@@ -94,6 +95,16 @@ export function parseSteps(text: string): string[] | null {
 export type BreakdownResult =
   | { kind: 'steps'; steps: string[]; minutes?: (number | undefined)[]; source: 'model' | 'fallback' }
   | { kind: 'care'; reply: string }
+  /** модель не поняла дело (набор букв): экран честно просит написать словами вместо общих шагов «для любого дела» */
+  | { kind: 'unclear' }
+
+/** Ответ модели → результат: «?» — дело не понято, три строки — шаги (с оценками, если есть), иначе негоден */
+export function parseBreakdownAnswer(text: string): BreakdownResult | null {
+  if (/^[\s«»"'*?]*\?[\s«»"'*?]*$/.test(text)) return { kind: 'unclear' }
+  const r = parseStepsWithMinutes(text)
+  // оценки нет ни у одного шага — поля нет вовсе (ответ тот же, что был до оценок)
+  return r ? { kind: 'steps', steps: r.steps, ...(r.minutes.some(Boolean) ? { minutes: r.minutes } : {}), source: 'model' } : null
+}
 
 export async function breakdown(input: {
   ctx?: TurnContext
@@ -120,11 +131,7 @@ export async function breakdown(input: {
     // токенов ушли на рассуждение, текста ноль). Платим за потраченное, запас бесплатен
     maxOutputTokens: 1000,
     maxChars: 340,
-    parse: (text) => {
-      const r = parseStepsWithMinutes(text)
-      // оценки нет ни у одного шага — поля нет вовсе (ответ тот же, что был до оценок)
-      return r ? { kind: 'steps', steps: r.steps, ...(r.minutes.some(Boolean) ? { minutes: r.minutes } : {}), source: 'model' } : null
-    },
+    parse: parseBreakdownAnswer,
     fallback: () => ({ kind: 'steps', steps: BREAKDOWN_FALLBACK, source: 'fallback' }),
     // кризисный текст вместо дела — не шаги, а бережный проверенный ответ (lib/ai/crisis.ts)
     onCrisis: (reply) => ({ kind: 'care', reply }),

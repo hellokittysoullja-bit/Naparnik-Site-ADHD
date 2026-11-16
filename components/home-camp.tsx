@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PawPrint, Sprout, Zap } from "lucide-react";
 import { splitDump, upsertDeal } from "@/lib/deals";
+import { BREAK_TOO_SHORT, breakable } from "@/lib/break-task";
 import { NightScene } from "@/components/landing/night-scene";
 import { Knoll, Moon } from "@/components/hero-scene";
 import { MascotDoll } from "@/components/mascot-doll";
@@ -51,6 +52,8 @@ export function HomeCamp() {
   // переход по табу — память читаем сразу; гидратация статического HTML — после монтирования (hooks/use-client-mount)
   const [data, setData] = useState<Data | null>(() => (clientMount ? readData() : null));
   const [text, setText] = useState("");
+  // «Разломать» с делом, которое нечем разламывать («Hh»): кот просит слова в строке над кнопкой, экран не меняется
+  const [tooShort, setTooShort] = useState(false);
   const [sphere, setSphere] = useState<Sphere | null>(() => (clientMount ? homeSphere(peekProfile()) : null));
 
   // своя сцена закрывает экран — общий фон /app под ней не рисуется (app/globals.css, «Дом «Привал»»)
@@ -90,6 +93,13 @@ export function HomeCamp() {
   const href = target ? breakHref(target) : "/app/session";
   const keepRest = () => {
     if (many) for (const d of dump.slice(1)) upsertDeal(d);
+  };
+  // пустое поле разламывает дело из ответов знакомства; написанное — только если его можно разламывать (lib/break-task.ts)
+  const canBreak = !text.trim() || breakable(target);
+  const go = () => {
+    if (!canBreak) return setTooShort(true);
+    keepRest();
+    router.push(href);
   };
 
   return (
@@ -133,8 +143,7 @@ export function HomeCamp() {
             className="mt-3"
             onSubmit={(e) => {
               e.preventDefault();
-              keepRest();
-              router.push(href);
+              go();
             }}
           >
             <label className="sr-only" htmlFor="home-task">
@@ -143,7 +152,10 @@ export function HomeCamp() {
             <input
               id="home-task"
               value={text}
-              onChange={(e) => setText(e.target.value.slice(0, 120))}
+              onChange={(e) => {
+                setText(e.target.value.slice(0, 120));
+                setTooShort(false);
+              }}
               placeholder={homeExample(sphere)}
               enterKeyHint="go"
               autoComplete="off"
@@ -171,7 +183,11 @@ export function HomeCamp() {
           {/* строка над кнопкой по двум ответам знакомства (25 вариантов, без ответов — общая); место под две строки
               занято всегда, поэтому строка любой длины не сдвигает ни кота, ни кнопки */}
           <div className="mt-2.5 flex h-11 items-center justify-center">
-            {many ? (
+            {tooShort ? (
+              <p role="status" className="mx-auto line-clamp-2 max-w-[34ch] text-balance text-[16px] font-bold leading-[22px] text-[oklch(0.93_0.04_90)]">
+                {BREAK_TOO_SHORT}
+              </p>
+            ) : many ? (
               <p className="mx-auto line-clamp-2 max-w-[34ch] text-balance text-[15px] font-bold leading-[21px] text-[oklch(0.93_0.04_90)]">
                 Возьму «{dump[0].slice(0, 24)}» сейчас, остальное ({dump.length - 1}) положу в Дела
               </p>
@@ -182,7 +198,13 @@ export function HomeCamp() {
 
           <Link
             href={href}
-            onClick={keepRest}
+            onClick={(e) => {
+              // переход делает сама ссылка (предзагрузка Фокуса остаётся); нечего разламывать — остаёмся на Доме
+              if (!canBreak) {
+                e.preventDefault();
+                setTooShort(true);
+              } else keepRest();
+            }}
             // iOS Safari включает :active только при наличии touch-слушателя
             onTouchStart={() => {}}
             className="btn-chunky mt-3 block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"

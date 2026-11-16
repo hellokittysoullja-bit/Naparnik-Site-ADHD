@@ -42,5 +42,8 @@ export const POST = handle(async (req) => {
     ctx: newTurn({ task: context ? 'onboarding-first-step' : 'breakdown' }),
     signal: req.signal,
   })
-  return Response.json(r.kind === 'care' ? { steps: null, reply: r.reply } : { steps: r.steps, minutes: r.minutes, source: r.source })
+  if (r.kind === 'care') return Response.json({ steps: null, reply: r.reply })
+  // дело не понято (набор букв): экран просит написать словами, а не показывает общие шаги
+  if (r.kind === 'unclear') return Response.json({ steps: null, unclear: true })
+  return Response.json({ steps: r.steps, minutes: r.minutes, source: r.source })
 })

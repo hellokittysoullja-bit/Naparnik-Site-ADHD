@@ -35,8 +35,6 @@ test('ничего не положено: «Что сейчас висит?», �
   await field.press('Enter')
   await expect(page).toHaveURL(/\/app\/session\?step=/)
   expect(new URL(page.url()).searchParams.get('step')).toBe('реферат по истории')
-  // перед первым дроблением кот спрашивает про силы; «не знаю» дробит как раньше
-  await page.getByRole('button', { name: 'Не знаю, просто разломай' }).click()
   await expect(page.getByText('Написать одну фразу')).toBeVisible()
 })
 
@@ -93,8 +91,6 @@ test('Фокус: дробление следующего шага не стир
   })
   await page.route('**/api/breakdown', (route) => route.fulfill({ json: { steps: ['Открыть папку', 'Найти файл', 'Открыть его'], source: 'model' } }))
   await page.goto('/app/session?step=' + encodeURIComponent('Найти файл курсовой') + '&break=1')
-  // перед первым дроблением кот спрашивает про силы; «не знаю» дробит как раньше
-  await page.getByRole('button', { name: 'Не знаю, просто разломай' }).click()
   // первый подшаг уже выбран и стоит крупно; очередь складывается в момент старта
   await expect(page.getByText('Открыть папку')).toBeVisible()
   await page.getByRole('button', { name: /Начали/ }).click()
@@ -112,28 +108,72 @@ test('Фокус: план из прошлых дней, начатый по п�
   }, today(-2))
   await page.route('**/api/breakdown', (route) => route.fulfill({ json: { steps: ['Открыть ноутбук', 'Найти таблицу', 'Открыть её'], source: 'model' } }))
   await page.goto('/app/session?step=' + encodeURIComponent('Открыть таблицу с отчётом') + '&break=1&plan=1')
-  // перед первым дроблением кот спрашивает про силы; «не знаю» дробит как раньше
-  await page.getByRole('button', { name: 'Не знаю, просто разломай' }).click()
   await expect(page.getByText('Открыть ноутбук')).toBeVisible()
   await page.getByRole('button', { name: /Начали/ }).click()
   await expect(page.getByRole('button', { name: 'Сделал' })).toBeVisible({ timeout: 10_000 })
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('naparnik:plan') ?? 'null')), { timeout: 5_000 }).toBeNull()
 })
 
-test('короткое дело с Дома не дробится с ошибкой сети — просто подставляется в поле', async ({ page }) => {
-  let calls = 0
+// 16.11, скриншот владельца: «Hh» + «Разломать на шаг» открывал обычный выбор шага с «Шаг уже выбран», ничего не
+// разламывая (у Фокуса был свой порог 8 знаков). Теперь одно правило (lib/break-task.ts): понятное короткое дело
+// разламывается, а то, что разламывать нечем, оставляет человека на Доме с просьбой кота
+test('Дом: короткое понятное дело разламывается, «Hh» — кот просит слова и экран не меняется', async ({ page }) => {
+  const tasks: string[] = []
   await page.route('**/api/breakdown', (route) => {
-    calls++
-    return route.fulfill({ status: 400, body: '{}' })
+    tasks.push((route.request().postDataJSON() as { task: string }).task)
+    return route.fulfill({ json: { steps: ['Открыть почту', 'Найти одно письмо', 'Ответить одной фразой'], source: 'model' } })
   })
   await page.goto('/app')
   const field = page.getByLabel('Что сейчас висит')
-  await field.fill('почта')
+  await field.fill('Hh')
+  await page.getByRole('link', { name: 'Разломать на шаг' }).click()
+  await expect(page.getByRole('status')).toHaveText('Напиши хоть пару слов, что висит. Тогда разломаю')
   await field.press('Enter')
-  await expect(page).toHaveURL(/\/app\/session/)
-  await page.waitForTimeout(1200)
+  await page.waitForTimeout(500)
+  await expect(page).toHaveURL(/\/app$/)
+  expect(tasks).toHaveLength(0)
+  // начал печатать — просьба уходит, на её месте снова строка над кнопкой
+  await field.fill('почта')
+  await expect(page.getByRole('status')).toHaveCount(0)
+  await page.getByRole('link', { name: 'Разломать на шаг' }).click()
+  await expect(page.getByText('Найти одно письмо')).toBeVisible()
+  expect(tasks).toEqual(['почта'])
+  await expect(page.getByText(/Шаг уже выбран/)).toHaveCount(0)
+})
+
+test('Фокус по ссылке с делом, которое нечем разламывать: просьба кота вместо «Шаг уже выбран»', async ({ page }) => {
+  let calls = 0
+  await page.route('**/api/breakdown', (route) => {
+    calls++
+    return route.fulfill({ json: { steps: null } })
+  })
+  await page.goto('/app/session?step=Hh&break=1')
+  await expect(page.getByText('Напиши хоть пару слов, что висит. Тогда разломаю')).toBeVisible()
+  await expect(page.getByText(/Шаг уже выбран/)).toHaveCount(0)
   expect(calls).toBe(0)
+})
+
+test('кот не понял дело: честная просьба написать словами, без общих шагов', async ({ page }) => {
+  await page.route('**/api/breakdown', (route) => route.fulfill({ json: { steps: null, unclear: true } }))
+  await page.goto('/app/session?step=' + encodeURIComponent('ывпрол') + '&break=1')
+  await expect(page.getByText(/Не понял дело/)).toBeVisible()
   await expect(page.getByText(/сеть подвела/)).toHaveCount(0)
+  // исправил дело в поле — просьба уходит
+  await page.getByRole('textbox').first().fill('Помыть посуду после ужина')
+  await expect(page.getByText(/Не понял дело/)).toHaveCount(0)
+})
+
+test('«Разломать» с Дома, пока идёт сессия: новое дело не теряется, оно ждёт в Делах', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return
+    sessionStorage.setItem('seeded', '1')
+    localStorage.setItem('naparnik:activeSession', JSON.stringify({ task: 'Открыть таблицу', minutes: 25, startedAt: Date.now() - 60_000, startId: 's1' }))
+  })
+  await page.route('**/api/session-voice', (route) => route.fulfill({ json: { text: null } }))
+  await page.goto('/app/session?step=' + encodeURIComponent('Написать маме') + '&break=1')
+  await expect(page.getByRole('timer')).toBeVisible()
+  const deals = await page.evaluate(() => JSON.parse(localStorage.getItem('naparnik:deals') ?? '[]'))
+  expect(deals.map((d: { title: string }) => d.title)).toContain('Написать маме')
 })
 
 test('холодная загрузка: ничего не прыгает — кнопки и кот на своих местах с первого кадра', async ({ page }) => {
@@ -406,8 +446,6 @@ test('пустое поле: «Разломать на шаг» дробит д�
   await page.goto('/app')
   await page.getByRole('link', { name: 'Разломать на шаг' }).click()
   await expect(page).toHaveURL(/\/app\/session\?step=/)
-  // перед первым дроблением кот спрашивает про силы; «не знаю» дробит как раньше
-  await page.getByRole('button', { name: 'Не знаю, просто разломай' }).click()
   await expect(page.getByText('Найти файл')).toBeVisible()
   expect(asked.length).toBeGreaterThan(5)
 })
