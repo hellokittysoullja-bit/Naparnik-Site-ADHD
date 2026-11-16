@@ -47,6 +47,8 @@ export type StreamTurnInput = {
   totalTimeoutMs: number
   hedgeAfterMs: number
   maxOutputTokens: number
+  /** случайность ответа; не задана — по умолчанию модели (чат живее). Разовым задачам с точным форматом нужна низкая */
+  temperature?: number
   maxChars: number
   /**
    * Правило фиксации. По умолчанию — первое проверенное предложение (чат печатает по мере генерации).
@@ -267,6 +269,9 @@ class Attempt {
           this.truncated = true
           return { out, fail: 'length' }
         }
+        // фильтр поставщика оборвал ответ на середине («Раз», «На» последним шагом разбивки секса, прогон 16.11):
+        // обрывок не принимается, ход уходит следующей модели
+        if (part.finishReason === 'content-filter') return { out, fail: 'filtered' }
         return this.finishWhole(part)
       }
       return { out }
@@ -618,6 +623,7 @@ class Race {
         ...(this.toolChoice() ? { toolChoice: this.toolChoice() } : {}),
         ...(typeof this.toolChoice() === 'object' ? { activeTools: [this.req.requiredTool!] } : {}),
         maxOutputTokens: this.input.maxOutputTokens,
+        ...(this.input.temperature !== undefined ? { temperature: this.input.temperature } : {}),
         ...(a.step.options ? { providerOptions: a.step.options } : {}),
         maxRetries: 0,
         abortSignal: AbortSignal.any([this.all, a.ctrl.signal]),

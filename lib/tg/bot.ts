@@ -483,8 +483,9 @@ async function freeText(d: Deps, u: TgUser, text: string, isNew: boolean) {
   if (reply) return void (await catSays(d, u, text, reply))
   // модели не ответили или разговора нет: текст считаем делом и ломаем на шаги (у дробления своя заготовка)
   const task = text.slice(0, 120)
-  const { steps, care } = await d.breakdown(task)
-  if (care || steps.length === 0) {
+  const { steps, care, fallback } = await d.breakdown(task)
+  // заготовка («Открыть то, что нужно для дела») — не план: честно просим ещё раз, а не выдаём её за шаги
+  if (care || steps.length === 0 || fallback) {
     await d.store.saveUser(u)
     return void (await say(d, chat, care ?? T.aiDown))
   }

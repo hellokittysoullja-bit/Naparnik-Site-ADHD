@@ -22,6 +22,12 @@ export type TurnInput<T> = {
   bare?: boolean
   /** данные человека — уже собранные dataMessage(); в роли user только они (security-ai.md R16) */
   data: string
+  /**
+   * Без характера кота: инструкция задачи целиком своя, но все проверки ответа остаются (в отличие от bare).
+   * Нужно разбивке дела: общая инструкция кота про «помогать НАЧИНАТЬ» тянула план к одному старту, и большое
+   * дело обрывалось на первом кусочке (живые прогоны 16.11, research/27-breakdown)
+   */
+  noPersona?: boolean
   /** ярус 2: блок памяти о человеке под эту задачу (memory/render.ts renderTaskMemory); нет — запрос как раньше */
   memory?: string
   /** латинские слова из памяти, которые кот вправе повторить */
@@ -33,6 +39,7 @@ export type TurnInput<T> = {
   /** через сколько мс без годного ответа запускать следующую модель параллельно (страхующий запрос) */
   hedgeAfterMs?: number
   maxOutputTokens: number
+  temperature?: number
   /** потолок длины ответа для проверки выхода */
   maxChars: number
   /** разбор ответа задачей; null — ответ не годится (следующая модель) */
@@ -53,7 +60,7 @@ export async function runTurn<T>(input: TurnInput<T>): Promise<TurnResult<T>> {
   const messages: ModelMessage[] = [...(input.memory ? [{ role: 'user' as const, content: input.memory }] : []), { role: 'user', content: input.data }]
   const { stream, result } = raceTurn({
     ctx: input.ctx,
-    instructions: input.bare ? input.system : systemFor(input.system),
+    instructions: input.bare || input.noPersona ? input.system : systemFor(input.system),
     messages,
     userTexts: input.userTexts,
     echoExtra: input.echoExtra,
@@ -61,6 +68,7 @@ export async function runTurn<T>(input: TurnInput<T>): Promise<TurnResult<T>> {
     totalTimeoutMs: input.timeoutMs,
     hedgeAfterMs: input.hedgeAfterMs ?? DEFAULT_HEDGE_MS,
     maxOutputTokens: input.maxOutputTokens,
+    temperature: input.temperature,
     maxChars: input.maxChars,
     whole: { accept: (text) => input.parse(text) !== null, internal: input.bare },
     signal: input.signal,

@@ -338,6 +338,11 @@ export function FocusSession() {
         const data = (await res.json()) as { steps: string[] | null; minutes?: (number | null)[]; wait?: boolean[]; reply?: string; source?: string; unclear?: boolean }
         if (data.reply) setCareReply(data.reply)
         else if (data.unclear) setBreakNote(BREAK_UNCLEAR)
+        // модели не ответили, пришла заготовка «для любого дела» — это не план: честно «не вышло, ещё раз»
+        else if (data.source === 'fallback') {
+          if (finer) setFinerError(true)
+          else setBreakError(true)
+        }
         else if (data.steps && data.steps.length) {
           const fresh: BStep[] = data.steps.map((t, i) => ({ text: t, minutes: data.minutes?.[i] ?? undefined, ...(data.wait?.[i] ? { wait: true } : {}) }))
           const title = finer && dealTitle ? dealTitle : target
