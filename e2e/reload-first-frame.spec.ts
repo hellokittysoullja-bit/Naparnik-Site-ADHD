@@ -146,17 +146,21 @@ test('переписка: строка о весточках приходит в
   expect(new Set(tops).size).toBe(1)
 })
 
-test('Мир: на местах, где вырастут постройки, силуэтов в первом кадре нет', async ({ page }) => {
+test('Мир: с первого кадра весь остров стоит, ничего не прорастает заново', async ({ page }) => {
   test.setTimeout(120_000)
   await returning(page)
   await page.goto('/app/world')
   await record(
     page,
     String(() => {
-      const gs = [...document.querySelectorAll('svg[role="img"] > g, svg[role="img"] g[data-island-i]')].slice(0, 9)
-      if (!gs.length) return null
-      // силуэт на месте постройки = виден и не прорастает
-      return { ghosts: gs.filter((g) => getComputedStyle(g).visibility !== 'hidden' && !g.classList.contains('island-grow')).length }
+      const svg = document.querySelector('svg[role="img"][aria-label^="Остров"]')
+      if (!svg) return null
+      const pre = svg.hasAttribute('data-island-pre')
+      // постройки, видимые в кадре: до чтения памяти — варианты «постройка», после — первые count мест (count — из подписи)
+      const built = pre
+        ? [...svg.querySelectorAll('[data-island-real]')].filter((g) => getComputedStyle(g).display !== 'none').length
+        : Math.min(Number((svg.getAttribute('aria-label') ?? '').match(/(\d+) старт/)?.[1] ?? 0), 10)
+      return { built, growing: svg.querySelectorAll('.island-grow').length }
     }),
   )
   await slow(page)
@@ -164,7 +168,7 @@ test('Мир: на местах, где вырастут постройки, с�
   await page.waitForTimeout(3000)
   const all = await snaps(page)
   expect(all.length).toBeGreaterThan(0)
-  expect(all.filter((s) => (s.ghosts as number) > 0)).toEqual([])
+  for (const s of all) expect(s).toEqual({ built: 9, growing: 0 })
 })
 
 test('фон и меню: днём сразу дневное небо и гряда с ориентирами, у Мира сразу точка «есть новое»', async ({ page }) => {
@@ -195,4 +199,51 @@ test('фон и меню: днём сразу дневное небо и гря�
   const all = await snaps(page)
   expect(all.length).toBeGreaterThan(0)
   for (const s of all) expect(s).toEqual({ day: 1, night: 0, ridge: true, dot: true })
+})
+
+test('Дом: в HTML перед самим Домом нет тяжёлого скрытого фона (из-за него был кадр без Дома)', async ({ request }) => {
+  const html = await (await request.get('/app')).text()
+  const before = html.indexOf('<main') - html.indexOf('<body')
+  // скрипт первого кадра (~5 КБ) и пустой корень фона; до 16.11 здесь было ~21 КБ, и на слабом телефоне браузер успевал
+  // нарисовать кадр, где есть только фон
+  expect(before).toBeGreaterThan(0)
+  expect(before).toBeLessThan(9000)
+})
+
+test('переход по меню: новый экран сразу виден целиком, подсветка — под выбранной вкладкой в каждом кадре', async ({ page }) => {
+  test.setTimeout(120_000)
+  await returning(page)
+  await page.goto('/app')
+  await page.waitForTimeout(1500)
+  await slow(page)
+  for (const [tab, path] of [['Фокус', '/app/session'], ['Мир', '/app/world'], ['Дом', '/app']] as const) {
+    await page.evaluate(() => {
+      const w = window as unknown as { __nav: unknown[]; __navStop: boolean }
+      w.__nav = []
+      w.__navStop = false
+      const loop = () => {
+        const main = document.querySelector('main')
+        const cur = document.querySelector('nav a[aria-current="page"]')
+        const pills = [...document.querySelectorAll('nav a')].filter((a) => [...a.children].some((c) => c.tagName === 'SPAN' && c.getAttribute('aria-hidden') === 'true' && c.className.includes('rounded')))
+        w.__nav.push({
+          path: location.pathname,
+          opacity: main ? Number(getComputedStyle(main).opacity) : null,
+          pillOk: pills.length === 1 && pills[0] === cur,
+        })
+        if (!w.__navStop) requestAnimationFrame(loop)
+      }
+      requestAnimationFrame(loop)
+    })
+    await page.getByRole('navigation').getByRole('link', { name: tab }).click()
+    await page.waitForURL(`**${path}`)
+    await page.waitForTimeout(1200)
+    const frames = await page.evaluate(() => {
+      const w = window as unknown as { __nav: { path: string; opacity: number | null; pillOk: boolean }[]; __navStop: boolean }
+      w.__navStop = true
+      return w.__nav
+    })
+    const after = frames.filter((f) => f.path === path)
+    expect(after.length).toBeGreaterThan(0)
+    for (const f of after) expect(f).toEqual({ path, opacity: 1, pillOk: true })
+  }
 })

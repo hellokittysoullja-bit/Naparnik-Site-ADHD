@@ -117,9 +117,16 @@ function svPulse(lo: number, hi: number, dur: number, begin = 0): CSSProperties 
 /** см. «первый кадр при обновлении» у острова ниже: по числу стартов из <html data-island> */
 const ISLAND_PREPAINT_CSS = [
   `html:not([data-island="${LANDMARK_COUNT}"]) [data-island-pre] [data-island-haze]{display:none}`,
+  // до чтения памяти у каждого места два варианта — постройка и силуэт; виден тот, что будет и после чтения
+  `html:is(:not([data-island]),[data-island="0"]) [data-island-pre] [data-island-real]{display:none}`,
   ...Array.from({ length: LANDMARK_COUNT }, (_, k) => {
     const c = k + 1
-    return `html[data-island="${c}"] [data-island-pre] :is(${Array.from({ length: c }, (_, j) => `[data-island-i="${j}"]`).join(",")}){visibility:hidden}`
+    const sel = (from: number, to: number, kind: string) =>
+      Array.from({ length: to - from }, (_, j) => `[data-island-i="${from + j}"]>[data-island-${kind}]`).join(",")
+    return [
+      `html[data-island="${c}"] [data-island-pre] :is(${sel(0, c, "ghost")}){display:none}`,
+      c < LANDMARK_COUNT ? `html[data-island="${c}"] [data-island-pre] :is(${sel(c, LANDMARK_COUNT, "real")}){display:none}` : "",
+    ].join("")
   }),
 ].join("")
 
@@ -271,9 +278,8 @@ export function Island() {
           className="block w-full"
           data-island-pre={starts === null ? "" : undefined}
         >
-          {/* первый кадр при обновлении: до чтения памяти силуэты стояли на всех местах, и настоящие постройки потом
-              вырастали поверх «пропавших» силуэтов (бледный остров → пустой → рост, 16.11). Число стартов уже знает
-              скрипт первого кадра (lib/app-prepaint.ts): места, где сейчас вырастет постройка, сразу пустые */}
+          {/* первый кадр при обновлении: до чтения памяти на всех местах стояли силуэты, потом их сменяли постройки
+              (16.11). Число стартов уже знает скрипт первого кадра (lib/app-prepaint.ts): сразу видны настоящие постройки */}
           <style>{ISLAND_PREPAINT_CSS}</style>
           <defs>
             {/* Ночное небо: глубина сверху, тёплая дымка у горизонта */}
@@ -349,14 +355,19 @@ export function Island() {
             <g
               key={landmark.key}
               data-island-i={i}
-              className={
-                i < count
-                  ? `island-grow${i === newLandmarkIndex ? ' island-new-element' : ''}`
-                  : undefined
-              }
-              style={i < count ? { animationDelay: `${Math.min(i, 11) * 0.06}s` } : undefined}
+              // прорастает только новое, заработанное сегодня (CLAUDE.md §4 «одна прорисовка роста — один раз»); остальное
+              // стоит сразу: раньше при каждом входе в Мир весь остров 0,7 с вырастал из пустого (16.11, владелец)
+              className={i < count && i === newLandmarkIndex ? 'island-grow island-new-element' : undefined}
             >
-              {landmark.render(i < count, i === count)}
+              {starts === null ? (
+                // первый кадр при обновлении: постройка или силуэт — по числу стартов (ISLAND_PREPAINT_CSS)
+                <>
+                  <g data-island-real="">{landmark.render(true, false)}</g>
+                  <g data-island-ghost="">{landmark.render(false, false)}</g>
+                </>
+              ) : (
+                landmark.render(i < count, i === count)
+              )}
             </g>
           ))}
           {finds.map((find, i) => {
@@ -370,10 +381,7 @@ export function Island() {
               // translate/scale находки теряется (CLAUDE.md §5.1) — тот же
               // паттерн, что уже используется у landmarks выше.
               <g key={find.startId} transform={`translate(${pos.x} ${pos.y}) scale(${pos.s})`}>
-                <g
-                  className={`island-grow${find.startId === newFindStartId ? ' island-new-element' : ''}`}
-                  style={{ animationDelay: `${Math.min(i + LANDMARK_COUNT, 14) * 0.05}s` }}
-                >
+                <g className={find.startId === newFindStartId ? 'island-grow island-new-element' : undefined}>
                   {/* Редкая находка светится золотом — тёплый жёлтый закреплён за rare */}
                   {find.rarity === 'rare' && (
                     <circle
