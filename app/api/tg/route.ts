@@ -3,7 +3,7 @@ import { liveDeps, siteOf } from '@/lib/tg/deps'
 import { sameSecret, webhookSecret } from '@/lib/tg/telegram'
 
 export const dynamic = 'force-dynamic'
-// ход кота — до 25 с (lib/ai/agents/chat.ts), запасное дробление — ещё до 9 с, плюс хранилище и Telegram
+// ход кота — до 25 с (lib/ai/agents/chat.ts), запасное дробление — ещё до 3 с, плюс хранилище и Telegram
 export const maxDuration = 60
 
 /**

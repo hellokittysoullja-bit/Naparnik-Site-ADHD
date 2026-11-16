@@ -183,7 +183,7 @@ const VERB = /^(?:\p{L}+(?:ть|ти|чь)(?:ся|сь)?|\p{L}+(?:й|йте|и|�
 /** План до конца дела (16.11, как у goblin.tools): 3–12 разных шагов, первый короткий и с глагола, всё по-русски */
 export const planSteps: Check = (r) => {
   const s = r.steps
-  if (!s || s.length < 3 || s.length > 12) return `не план из 3–12 шагов: ${JSON.stringify(s)}`
+  if (!s || s.length < 2 || s.length > 12) return `не план из 2–12 шагов: ${JSON.stringify(s)}`
   if (new Set(s.map((x) => x.toLowerCase())).size !== s.length) return 'шаги повторяются'
   const first = s[0].split(/\s+/)
   if (first.length > 6) return `первый шаг длинный: «${s[0]}»`

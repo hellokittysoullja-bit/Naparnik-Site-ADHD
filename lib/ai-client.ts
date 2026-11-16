@@ -10,9 +10,9 @@ export async function firstStepFor(
   context: { sphere?: string; blocker?: string },
   opts: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<FirstStepAnswer> {
-  // сервер даёт дроблению 9 с на обе модели (lib/ai/agents/breakdown.ts) — ждём чуть дольше, иначе годный ответ
+  // сервер даёт разбивке 3 с (lib/ai/agents/breakdown.ts) — ждём с запасом на сеть, иначе годный ответ
   // страхующей модели на 6–8-й секунде выбрасывался (аудит 12.11)
-  const timeout = AbortSignal.timeout(opts.timeoutMs ?? 10000)
+  const timeout = AbortSignal.timeout(opts.timeoutMs ?? 5000)
   try {
     const res = await fetch('/api/breakdown', {
       method: 'POST',

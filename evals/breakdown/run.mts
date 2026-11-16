@@ -77,7 +77,7 @@ async function one(c: (typeof BREAK_CASES)[number]) {
 async function main() {
   const out: Awaited<ReturnType<typeof one>>[] = []
   const queue = [...BREAK_CASES]
-  await Promise.all(Array.from({ length: 6 }, async () => {
+  await Promise.all(Array.from({ length: Number(process.env.CONC ?? 6) }, async () => {
     for (let c = queue.shift(); c; c = queue.shift()) out.push(await one(c))
   }))
   out.sort((a, b) => BREAK_CASES.findIndex((x) => x.task === a.task) - BREAK_CASES.findIndex((x) => x.task === b.task))

@@ -35,8 +35,9 @@ describe('цепочка поставщиков', () => {
   it('есть ключ Google: независимый поставщик добавляется последним звеном', () => {
     vi.stubEnv('ANYMODEL_API_KEY', 'k')
     vi.stubEnv('GOOGLE_GENERATIVE_AI_API_KEY', 'g')
-    const chain = modelChain('breakdown')
+    const chain = modelChain('chat')
     expect(chain.map((s) => s.provider)).toEqual(['anymodel', 'anymodel', 'anymodel', 'google'])
+    expect(modelChain('breakdown').map((s) => s.provider)).toEqual(['anymodel', 'anymodel', 'google'])
     expect(chain.at(-1)?.id).toBe('google/gemini-2.5-flash')
     expect(configuredProviders()).toEqual(['anymodel', 'google'])
   })
