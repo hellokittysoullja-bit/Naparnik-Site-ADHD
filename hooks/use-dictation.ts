@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 /*
  * #15 · ГОЛОСОВОЙ ВВОД.
@@ -47,11 +47,14 @@ function getRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null
 }
 
+const noopSubscribe = () => () => {}
+const hasRecognition = () => getRecognitionCtor() !== null
+
 export function useDictation(onFinalText: (text: string) => void) {
-  // supported считаем ПОСЛЕ монтирования: на сервере window нет, и если
-  // ветвить разметку по нему прямо в рендере — получим расхождение
-  // гидратации ровно того же класса, что уже ловили на стрелке отправки.
-  const [supported, setSupported] = useState(false)
+  // supported: на сервере window нет — серверный снимок false (разметка гидратации совпадает с HTML), на клиенте
+  // React перерисовывает с настоящим значением сразу после гидратации, без отдельного эффекта. Раньше было useEffect → setSupported:
+  // первый видимый кадр переписки показывал зелёную стрелку, а через кадр — микрофон (покадровая съёмка 16.11).
+  const supported = useSyncExternalStore(noopSubscribe, hasRecognition, () => false)
   const [listening, setListening] = useState(false)
   const [interim, setInterim] = useState('')
 
@@ -62,10 +65,6 @@ export function useDictation(onFinalText: (text: string) => void) {
   useEffect(() => {
     onFinalRef.current = onFinalText
   }, [onFinalText])
-
-  useEffect(() => {
-    setSupported(getRecognitionCtor() !== null)
-  }, [])
 
   const stop = useCallback(() => {
     recognitionRef.current?.stop()

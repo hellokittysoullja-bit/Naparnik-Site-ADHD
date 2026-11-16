@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useFirstFrameReady } from "@/lib/first-frame";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, BatteryLow, CloudFog, Mountain, RotateCcw, ShieldAlert, Wind, type LucideIcon } from "lucide-react";
@@ -132,6 +133,8 @@ const OPENER_KEY = "naparnik:stuckOpener";
 const EASE = [0.05, 0.7, 0.1, 1] as const;
 
 export function StuckWizard() {
+  // экран рисуется только на устройстве: первый показанный кадр — уже он (lib/first-frame.ts)
+  useFirstFrameReady(true);
   const params = useSearchParams();
   const router = useRouter();
   const reduce = useReducedMotion();

@@ -1,6 +1,7 @@
 import { BLOCKER_KEYS, MOTIVE_KEYS, findsLabel, homeExample, homeHint } from './home-step'
 import { LANDMARK_COUNT } from './island-elements'
 import { RIDGE } from './sky'
+import { HOLD_MS, HOLD_ROUTES } from './first-frame-routes'
 
 /**
  * Первый кадр /app при обновлении — сразу свой (владелец 16.11, запись экрана: Дом на миг показывал «курсовая» или
@@ -34,6 +35,9 @@ export type PrepaintData = {
   /** мест на гряде; стартов до луны */
   R: number
   LC: number
+  /** адреса, где страница скрыта до готовности экрана (lib/first-frame.ts), и предел ожидания */
+  HOLD: readonly string[]
+  HM: number
 }
 
 export function prepaintData(): PrepaintData {
@@ -42,7 +46,7 @@ export function prepaintData(): PrepaintData {
   const E: Record<string, string> = { '': homeExample(null) }
   for (const s of ['study', 'work', 'home', 'message'] as const) E[s] = homeExample(s)
   const word = (n: number) => findsLabel(n).replace(/^\d+ /, '')
-  return { H, E, B: BLOCKER_KEYS, M: MOTIVE_KEYS, W: [word(1), word(2), word(5)], R: RIDGE.length, LC: LANDMARK_COUNT }
+  return { H, E, B: BLOCKER_KEYS, M: MOTIVE_KEYS, W: [word(1), word(2), word(5)], R: RIDGE.length, LC: LANDMARK_COUNT, HOLD: HOLD_ROUTES, HM: HOLD_MS }
 }
 
 /* Без внешних ссылок и импортов: в HTML уходит её исходный текст (prepaintScript). */
@@ -78,6 +82,18 @@ export function prepaint(w: Window, d: Document, D: PrepaintData): void {
   function css(k: string, v: string | null) {
     if (v === null) h.style.removeProperty(k)
     else h.style.setProperty(k, JSON.stringify(v))
+  }
+  // экран с содержимым только на устройстве: страница скрыта, пока он не готов (lib/first-frame.ts); предел — HM
+  try {
+    const path = w.location ? w.location.pathname.replace(/\/$/, '') : ''
+    if (D.HOLD.indexOf(path) >= 0) {
+      h.setAttribute('data-hold', '')
+      const release = () => h.removeAttribute('data-hold')
+      ;(w as unknown as { __nfReady?: () => void }).__nfReady = release
+      w.setTimeout(release, D.HM)
+    }
+  } catch {
+    /* без запрета — как раньше */
   }
   try {
     // небо по часу (lib/sky.ts, phaseForHour)

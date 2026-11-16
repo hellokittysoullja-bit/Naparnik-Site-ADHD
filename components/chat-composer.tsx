@@ -78,6 +78,19 @@ export const ChatComposer = memo(function ChatComposer({
   // (тогда disabled-отправка — тот же фолбэк, что был всегда).
   const dictationActiveControl = dictation.supported && (dictation.listening || !input.trim())
 
+  // Смена «стрелка ↔ микрофон» анимируется, только когда её вызвал человек (набрал текст, начал диктовку). Узнав при
+  // загрузке, что диктовка есть, кнопка просто стоит микрофоном: раньше в первом видимом кадре переписки была стрелка,
+  // а через кадр микрофон «выпрыгивал» на её место (покадровая съёмка 16.11). Состояние из рендера — приём React
+  // «запомнить по прошлому рендеру», без лишнего кадра.
+  const [interacted, setInteracted] = useState(false)
+  if (!interacted && (input !== '' || dictation.listening)) setInteracted(true)
+  const swapIn = reduceMotion || !interacted ? false : { scale: 0.6, opacity: 0 }
+  const swapOut = !interacted
+    ? { opacity: 0, transition: { duration: 0 } }
+    : reduceMotion
+      ? { opacity: 0 }
+      : { scale: 0.6, opacity: 0 }
+
   function submit() {
     if (!input.trim() || !canSend) return
     // Диктовка активна — отправка её закрывает: иначе микрофон продолжает
@@ -203,9 +216,9 @@ export const ChatComposer = memo(function ChatComposer({
               <motion.button
                 key="mic"
                 type="button"
-                initial={reduceMotion ? false : { scale: 0.6, opacity: 0 }}
+                initial={swapIn}
                 animate={{ scale: 1, opacity: 1 }}
-                exit={reduceMotion ? { opacity: 0 } : { scale: 0.6, opacity: 0 }}
+                exit={swapOut}
                 transition={reduceMotion ? { duration: 0.1 } : SPRING_SNAPPY}
                 onClick={() => (dictation.listening ? dictation.stop() : dictation.start())}
                 aria-label={dictation.listening ? 'Остановить диктовку' : 'Диктовать голосом'}
@@ -230,9 +243,9 @@ export const ChatComposer = memo(function ChatComposer({
             ) : (
               <motion.span
                 key="send"
-                initial={reduceMotion ? false : { scale: 0.6, opacity: 0 }}
+                initial={swapIn}
                 animate={{ scale: 1, opacity: 1 }}
-                exit={reduceMotion ? { opacity: 0 } : { scale: 0.6, opacity: 0 }}
+                exit={swapOut}
                 transition={reduceMotion ? { duration: 0.1 } : SPRING_SNAPPY}
                 className="absolute inset-0"
               >

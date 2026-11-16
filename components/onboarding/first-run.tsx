@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useFirstFrameReady } from '@/lib/first-frame'
 import { useRouter } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import {
@@ -158,6 +159,8 @@ export function FirstRun() {
   // Шаг ещё не прочитан из адреса: пузырь и варианты не показываем. Иначе при открытии ссылки на середине (перезагрузка,
   // «Открыть в Safari») на миг мелькал первый вопрос и уезжал, уступая нужному
   const [ready, setReady] = useState(false)
+  // вопрос из адреса и памяти: страница видна сразу с нужным вопросом, без пустой сцены (lib/first-frame.ts)
+  useFirstFrameReady(ready)
   const [nudge, setNudge] = useState(false)
   const [custom, setCustom] = useState('')
   const [customOpen, setCustomOpen] = useState(false)

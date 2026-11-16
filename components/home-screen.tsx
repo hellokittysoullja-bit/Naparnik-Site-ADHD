@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useFirstFrameReady } from "@/lib/first-frame";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -353,6 +354,8 @@ export function HomeScreen() {
   });
   const [firstWord, setFirstWord] = useState<FirstWord | null>(initial?.firstWord ?? null);
   const [stats, setStats] = useState<Patterns | null>(initial?.stats ?? null);
+  // переписка и карточка из памяти устройства: страница видна сразу с ними, без кадра скелетона (lib/first-frame.ts)
+  useFirstFrameReady(stats !== null);
 
   // Endowment: названное существо становится «моим». Имя спрашиваем
   // после первого старта — когда ценность уже прожита, а не обещана.
@@ -655,14 +658,15 @@ export function HomeScreen() {
             {/*
               Greeting: iMessage pattern — появляется ТОЛЬКО когда данные загружены.
               Не на mount (иначе «…» fade-in = jank = negative prediction error).
-              AnimatePresence ждёт firstWord, потом slide-up 0.25s.
+              Без въезда (16.11): экран держится скрытым, пока реплика не готова (lib/first-frame.ts).
             */}
             <AnimatePresence>
               {firstWord ? (
                 <motion.div
                   key="greeting"
                   className="flex flex-col gap-1 pt-1"
-                  initial={reduceMotion ? false : { opacity: 0, y: 5 }}
+                  // без въезда: экран показывается, когда реплика уже есть (lib/first-frame.ts) — въезд сдвигал её на 5 px после показа
+                  initial={false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={
                     reduceMotion

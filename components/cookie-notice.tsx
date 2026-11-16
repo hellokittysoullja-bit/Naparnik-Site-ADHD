@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { giveCookieConsent, hasCookieConsent } from '@/lib/cookie-consent'
@@ -13,17 +13,42 @@ import { giveCookieConsent, hasCookieConsent } from '@/lib/cookie-consent'
  * Где: на входных страницах (лендинг, первый экран теста, каталог, документы). На экранах приложения (/app) и на
  * шагах теста (?step=…, кроме первого экрана intro) её нет: наверху там «Назад», внизу главная кнопка и меню — плашка закрыла бы их. Место — над сценой, а не внизу:
  * внизу лендинга и теста стоит главная кнопка, плашка не должна её закрывать.
- * Рисуется только после монтирования (согласие лежит на устройстве) и лежит поверх страницы — вёрстку не сдвигает.
+ * Лежит поверх страницы — вёрстку не сдвигает.
  */
-export function CookieNotice() {
+// До первой отрисовки: согласие уже дано или открыт шаг теста — плашку прячем атрибутом на <html> (правило в globals.css).
+// Раньше плашка рисовалась только после загрузки кода и всплывала поверх готовой страницы, а на тесте ещё и исчезала и
+// появлялась заново (16.11, покадровый аудит). Теперь она в HTML с первого кадра, а кому не нужна — не видят её ни на кадр.
+const PREPAINT = `try{var h=document.documentElement;if(localStorage.getItem('naparnik:cookies')==='1')h.setAttribute('data-cookies-ok','');var s=new URLSearchParams(location.search).get('step');if(location.pathname==='/sdvg-test'&&s&&s!=='intro')h.setAttribute('data-test-step','')}catch(e){}`
+
+/** шаг теста меняется без перезагрузки (history.pushState) — держим атрибут на <html> в курсе; Suspense нужен только ему */
+function StepWatcher() {
   const path = usePathname()
   const step = useSearchParams()?.get('step')
-  const [show, setShow] = useState(false)
+  useEffect(() => {
+    if (path === '/sdvg-test' && step && step !== 'intro') document.documentElement.setAttribute('data-test-step', '')
+    else document.documentElement.removeAttribute('data-test-step')
+  }, [path, step])
+  return null
+}
+
+export function CookieNotice() {
+  const path = usePathname()
+  // в HTML плашка есть всегда (кроме /app); после загрузки кода — только пока нет согласия
+  const [show, setShow] = useState(true)
   useEffect(() => {
     setShow(!hasCookieConsent())
   }, [])
-  if (!show || path?.startsWith('/app') || (path === '/sdvg-test' && step && step !== 'intro')) return null
+  if (path?.startsWith('/app')) return null
+  const watcher = (
+    <Suspense fallback={null}>
+      <StepWatcher />
+    </Suspense>
+  )
+  if (!show) return watcher
   return (
+    <>
+      <script dangerouslySetInnerHTML={{ __html: PREPAINT }} />
+      {watcher}
     <div
       role="region"
       aria-label="Cookie"
@@ -42,6 +67,7 @@ export function CookieNotice() {
         type="button"
         onClick={() => {
           giveCookieConsent()
+          document.documentElement.setAttribute('data-cookies-ok', '')
           setShow(false)
         }}
         className="h-11 w-full shrink-0 rounded-[14px] bg-white/12 px-6 text-[15px] font-semibold text-foreground"
@@ -49,5 +75,6 @@ export function CookieNotice() {
         Разрешить и закрыть
       </button>
     </div>
+    </>
   )
 }

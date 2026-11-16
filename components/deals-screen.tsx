@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useFirstFrameReady } from "@/lib/first-frame";
+import { useClientMount } from "@/hooks/use-client-mount";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { ChevronDown, Clock3, LayoutList, Moon, Play, Plus, SlidersHorizontal, Sparkles, Sun, Sunrise, X } from "lucide-react";
@@ -189,10 +191,14 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
 const CARD_HUE = [88, 205, 320];
 
 export function DealsScreen() {
-  const [deals, setDeals] = useState<Deal[] | null>(null);
-  const [thoughts, setThoughts] = useState<Thought[]>([]);
-  const [cards, setCards] = useState<WinCard[]>([]);
-  const [lit, setLit] = useState<Set<string>>(new Set());
+  // переход по меню — дела из памяти в первом же кадре (hooks/use-client-mount.ts); раньше список появлялся кадром позже экрана
+  const clientMount = useClientMount();
+  const [deals, setDeals] = useState<Deal[] | null>(() => (clientMount ? getDeals() : null));
+  // при обновлении страница видна сразу с делами (lib/first-frame.ts)
+  useFirstFrameReady(deals !== null);
+  const [thoughts, setThoughts] = useState<Thought[]>(() => (clientMount ? getThoughts() : []));
+  const [cards, setCards] = useState<WinCard[]>(() => (clientMount ? getCards() : []));
+  const [lit, setLit] = useState<Set<string>>(() => (clientMount ? new Set(peekStarts().map((s) => s.date)) : new Set()));
   const [dump, setDump] = useState("");
   const [templates, setTemplates] = useState(false);
   const [prefs, setPrefs] = useState(false);

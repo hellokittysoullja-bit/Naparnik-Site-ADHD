@@ -390,29 +390,8 @@
   animation: hero-word-in 0.28s ease-out forwards;
 }
 
-/* Старт с 0.01, а не с 0: глазу разницы нет (1 % цвета текста на тёмном фоне — меньше 2/255), а Chrome не считает
-   элемент с opacity: 0 отрисованным — LCP заголовка героя ждал конца проявления, и Lighthouse (lantern) тянул за ним
-   в цепочку весь JS страницы: LCP 6,2 с при настоящих 0,36 с. С 0.01 заголовок засчитан в первом же кадре. */
-@keyframes hero-rise-in {
-  from {
-    opacity: 0.01;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.hero-rise {
-  opacity: 0.01;
-  animation: hero-rise-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  animation-delay: var(--rise-delay, 0s);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .hero-word,
-  .hero-rise {
+  .hero-word {
     animation-duration: 0.01s;
     animation-delay: 0s;
   }
@@ -448,7 +427,7 @@
 }
 
 /* === App page-in transition (выключен 16.11, см. .app-page-enter ниже) === */
-/* 0.01 вместо 0 — та же причина, что у hero-rise-in выше: с нуля Chrome не считал экран отрисованным, и LCP всех
+/* 0.01 вместо 0 — с нуля Chrome не считал экран отрисованным, и LCP всех
    экранов /app ждал конца въезда вместе со всем JS страницы. Глазу разницы нет. */
 @keyframes app-page-in {
   from {
@@ -1544,15 +1523,15 @@ body[data-companion-speaking] .app-hearth {
   }
 }
 
-/* components/landing/hero-gate.tsx: пока HTML сцены героя не получен целиком, она не рисуется — иначе в кадр попадала
-   верхняя половина колонки, и кот стоял посередине экрана, а потом прыгал на место. Фон страницы виден как раньше. */
-html.hero-wait .grain-hero {
+/* components/landing/hero-gate.tsx: пока сцена героя не готова (вшитые шрифты разобраны, заставка декодирована), страница
+   не рисуется ВСЯ — 16.11: раньше пряталась только сцена, и первый кадр был плашкой cookie на пустом фоне. Первый
+   видимый кадр — готовый лендинг целиком. Страховка 1,5 с — в hero-gate.tsx. */
+html.hero-wait body {
   visibility: hidden;
 }
-/* хореография появления (≤ 1,2 с) стартует, когда сцену показали, а не пока она скрыта — иначе на медленной сети
-   человек видел уже доигранные въезды */
-html.hero-wait .grain-hero *,
-html.hero-wait .grain-hero *::after {
+/* редкие украшения поверх готовой сцены (блик кнопки, тёплый отсвет заголовка) идут от показа, а не пока скрыто */
+html.hero-wait body *,
+html.hero-wait body *::after {
   animation-play-state: paused !important;
 }
 
@@ -1851,6 +1830,19 @@ body[data-focus-immersive] {
 /* На Доме своя ночная сцена закрывает экран целиком: общий фон /app под ней не рисуем вовсе. display: none снимает
    отрисовку и CSS-анимации неба, гряды и очага; редкие JS-таймеры фона (падающая звезда, светлячок — раз в минуты)
    продолжают тикать, это копейки. Метку «свой» (markHome) фон ставит по-прежнему */
+/* Экран с содержимым только на устройстве: страница скрыта, пока он не готов (lib/first-frame.ts). Без видимого
+   содержимого браузер держит прежний кадр; первый показанный — готовый экран. Предел ожидания снимает скрипт сам. */
+html[data-hold] body {
+  visibility: hidden;
+}
+
+/* Плашка cookie: в HTML всегда, прячется до первой отрисовки, если согласие уже есть или открыт шаг теста
+   (components/cookie-notice.tsx) */
+html[data-cookies-ok] .cookie-notice,
+html[data-test-step] .cookie-notice {
+  display: none;
+}
+
 /* Первый кадр /app при обновлении (16.11, запись экрана владельца). До загрузки кода память читает скрипт первого кадра
    (lib/app-prepaint.ts) и ставит атрибуты и переменные на <html>; здесь — как они выглядят. Правила действуют, только
    пока компонент не прочитал память сам ([data-pre], *-pre, пустая #home-hint): дальше всё рисует React, ровно так же.

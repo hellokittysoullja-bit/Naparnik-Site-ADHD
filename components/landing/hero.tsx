@@ -62,44 +62,17 @@ type SceneStep = {
   replyKey?: ReplyKey;
 };
 
-function WordReveal({
-  text,
-  startDelay = 0.55,
-  step = 0.085,
-  className,
-}: {
-  text: string;
-  startDelay?: number;
-  step?: number;
-  className?: string;
-}) {
-  const words = text.split(" ");
-  return (
-    <p className={className}>
-      <span className="sr-only">{text}</span>
-      <span aria-hidden="true">
-        {words.map((word, i) => (
-          <span key={i}>
-            <span
-              className="hero-word"
-              style={{
-                animationDelay: `${(startDelay + i * step).toFixed(2)}s`,
-              }}
-            >
-              {word}
-            </span>{" "}
-          </span>
-        ))}
-      </span>
-    </p>
-  );
+/** Первая реплика кота — сразу целиком (16.11, владелец: «с первой миллисекунды то, что нужно»). До этого слова
+ * проявлялись по одному 0,25–1,2 с после показа сцены, и первые кадры лендинга были пузырём без текста. */
+function OpeningLine({ text, className }: { text: string; className?: string }) {
+  return <p className={className}>{text}</p>;
 }
 
 /**
  * Реплика кота в чате. Раньше дописывалась посимвольно (`text.slice(0,
  * shown)`) — пузырь физически рос вместе с текстом 1.7с, и рукописная
  * пометка под ним ехала вниз следом (layout reflow на каждый символ).
- * Тот же приём, что уже верно сделан в WordReveal выше: весь текст сразу
+ * Весь текст сразу
  * в разметке (пузырь с первого кадра нужной высоты), проявляются только
  * слова через opacity — реflow ноль, ощущение «печатает» остаётся за
  * счёт последовательного появления слов, а не за счёт роста контейнера.
@@ -390,7 +363,7 @@ export function Hero({ headline = DEFAULT_HEADLINE }: { headline?: EntryHeadline
           {/* Промис голосом персонажа: первая фраза — боль, вторая —
             обещание от первого лица. Каракуля — под словом обещания */}
           <h1
-            className="hero-rise relative z-10 order-2 mt-2 text-[clamp(1.75rem,min(10vw,5.4dvh),3rem)] font-bold leading-[1.08] tracking-tight [@media(max-height:700px)]:mt-0 md:text-5xl lg:order-none lg:mt-0 lg:text-[clamp(56px,4.6vw,68px)] lg:leading-[1.02] lg:tracking-[-0.025em]"
+            className="relative z-10 order-2 mt-2 text-[clamp(1.75rem,min(10vw,5.4dvh),3rem)] font-bold leading-[1.08] tracking-tight [@media(max-height:700px)]:mt-0 md:text-5xl lg:order-none lg:mt-0 lg:text-[clamp(56px,4.6vw,68px)] lg:leading-[1.02] lg:tracking-[-0.025em]"
             style={{ "--rise-delay": "0.08s" } as CSSProperties}
           >
             {/* Тёплый «прогрев» слов остывает до резкого текста ровно к
@@ -401,7 +374,7 @@ export function Hero({ headline = DEFAULT_HEADLINE }: { headline?: EntryHeadline
               <br />
               {headline.before}
               <span
-                className="scribble-underline scribble-draw text-primary"
+                className="scribble-underline text-primary"
                 style={{ "--scribble-delay": "0.45s" } as CSSProperties}
               >
                 {headline.accent}
@@ -547,7 +520,7 @@ export function Hero({ headline = DEFAULT_HEADLINE }: { headline?: EntryHeadline
 
           {/* Живой чат-вход: он здоровается, ты отвечаешь — премиальная реплика */}
           <div
-            className="hero-rise relative z-10 order-4 mt-3 flex w-full flex-col gap-2.5 [@media(max-height:700px)]:mt-1 [@media(max-height:700px)]:gap-1.5 lg:order-none lg:mt-1"
+            className="relative z-10 order-4 mt-3 flex w-full flex-col gap-2.5 [@media(max-height:700px)]:mt-1 [@media(max-height:700px)]:gap-1.5 lg:order-none lg:mt-1"
             style={{ "--rise-delay": "0.18s" } as CSSProperties}
             aria-live="polite"
           >
@@ -576,10 +549,8 @@ export function Hero({ headline = DEFAULT_HEADLINE }: { headline?: EntryHeadline
                     strokeLinecap="round"
                   />
                 </svg>
-                <WordReveal
+                <OpeningLine
                   text={OPENING_LINE}
-                  startDelay={0.25}
-                  step={0.03}
                   className="font-hand text-[clamp(18px,3.1dvh,22px)] font-medium leading-snug text-balance text-secondary-foreground md:text-2xl"
                 />
               </div>
