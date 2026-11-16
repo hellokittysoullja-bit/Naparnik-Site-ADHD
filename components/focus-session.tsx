@@ -307,7 +307,9 @@ export function FocusSession() {
   async function requestBreak() {
     if (!breakable(task)) return setBreakNote(BREAK_TOO_SHORT)
     // список готовых дел подгружается только здесь (он не нужен, пока человек ничего не дробит)
-    const tpl = await import('@/lib/templates').then((m) => m.findTemplate(task)).catch(() => null)
+    // дело из разбивок goblin.tools (дословно) важнее нашего шаблона с тем же названием (владелец 16.11): его отдаёт сервер сразу
+    const goblin = await import('@/lib/ai/agents/breakdown-goblin').then((m) => m.goblinPlan(task) !== null).catch(() => false)
+    const tpl = goblin ? null : await import('@/lib/templates').then((m) => m.findTemplate(task)).catch(() => null)
     if (tpl) applyTemplate(tpl)
     else void breakDown()
   }

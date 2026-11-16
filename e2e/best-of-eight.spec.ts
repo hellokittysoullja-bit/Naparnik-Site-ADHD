@@ -60,8 +60,9 @@ test('готовое дело: шаги появляются без запрос
 
 test('дело из поля, совпавшее с готовым, не ходит к ИИ', async ({ page }) => {
   const seen = await mockAi(page)
-  await page.goto('/app/session?step=' + encodeURIComponent('помыть посуду') + '&break=1')
-  await expect(page.getByText('Включить воду и музыку')).toBeVisible()
+  // «помыть посуду» теперь из разбивок goblin.tools (тест ниже), поэтому здесь дело, которого у гоблина нет
+  await page.goto('/app/session?step=' + encodeURIComponent('убрать ванную') + '&break=1')
+  await expect(page.getByText('Достать средство и губку').first()).toBeVisible()
   expect(seen).toHaveLength(0)
 })
 
@@ -210,4 +211,10 @@ test('каталог «боль → приём»: вкладки, кнопка �
   const src = await page.locator('.phone-frame img').first().getAttribute('src')
   expect(src).toMatch(/^\/pomogaet\/\w+\.webp\?v=[0-9a-f]+$/)
   expect((await request.get(src!)).headers()['cache-control']).toContain('immutable')
+})
+
+test('дело из разбивок goblin.tools: план гоблина сразу, а не наш шаблон с тем же названием (владелец 16.11)', async ({ page }) => {
+  await page.goto('/app/session?step=' + encodeURIComponent('Помыть посуду') + '&break=1')
+  await expect(page.getByText('Собрать всю грязную посуду').first()).toBeVisible()
+  await expect(page.getByText('Включить воду и музыку')).toHaveCount(0)
 })
