@@ -12,4 +12,4 @@ export const OPERATOR = {
 }
 
 /** Дата редакции документов — меняется при каждой правке текста */
-export const LEGAL_UPDATED = '8 ноября 2026'
+export const LEGAL_UPDATED = '16 ноября 2026'

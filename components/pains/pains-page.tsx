@@ -4,6 +4,7 @@ import { asset } from '@/lib/asset-versions'
 import { DOUBT, PAINS, type Pain } from '@/content/pains.ru'
 import { PainPanel } from './pain-panel'
 import { PainTabs } from './pain-tabs'
+import { LegalLinks } from '@/components/legal-links'
 
 /** Общая страница каталога (все боли вкладками) и страница одной боли (под ролик или поиск) — один каркас */
 export function PainsPage({ only }: { only?: Pain }) {
@@ -89,6 +90,7 @@ export function PainsPage({ only }: { only?: Pain }) {
         </ul>
       </nav>
       </div>
+      <LegalLinks className="mt-12" />
     </main>
   )
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Island } from '@/components/island'
+import { LegalLinks } from '@/components/legal-links'
 import { preloadFonts } from '@/lib/font-preload'
 
 export const metadata: Metadata = {
@@ -12,6 +13,8 @@ export default function WorldPage() {
   return (
     <main className="app-page-enter relative flex min-h-dvh flex-col pb-20">
       <Island />
+      {/* документы в один клик и из приложения (чек-лист РКН 2026, раздел 2): внизу Мира, над меню */}
+      <LegalLinks className="mt-auto pt-8" />
     </main>
   )
 }
