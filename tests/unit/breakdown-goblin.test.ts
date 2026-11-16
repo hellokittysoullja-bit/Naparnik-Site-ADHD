@@ -13,10 +13,10 @@ describe('готовые разбивки goblin.tools (дословно, вла
     expect(goblinPlan('посуда')).toBeNull()
     expect(goblinPlan('помыть посду')).toBeNull()
   })
-  it('каждый план — 3–8 непустых шагов без точки в конце (владелец 16.11)', () => {
+  it('каждый план — от 2 до 18 непустых шагов без точки в конце (владелец 16.11: «точных мерок нет, по логике дела»)', () => {
     for (const [task, steps] of Object.entries(GOBLIN_PLANS)) {
-      expect(steps.length, task).toBeGreaterThanOrEqual(3)
-      expect(steps.length, task).toBeLessThanOrEqual(8)
+      expect(steps.length, task).toBeGreaterThanOrEqual(2)
+      expect(steps.length, task).toBeLessThanOrEqual(18)
       for (const s of steps) expect(s.trim() && !s.endsWith('.'), `${task}: ${s}`).toBeTruthy()
     }
   })
