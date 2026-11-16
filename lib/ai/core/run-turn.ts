@@ -30,6 +30,11 @@ export type TurnInput<T> = {
   noPersona?: boolean
   /** ярус 2: блок памяти о человеке под эту задачу (memory/render.ts renderTaskMemory); нет — запрос как раньше */
   memory?: string
+  /**
+   * образцы под задачу (разбивка: 2 правильных плана похожих дел, breakdown-examples.ts) — отдельным сообщением между
+   * памятью и данными, не в системной части: системная часть стабильна и кэшируется, а образцы свои на каждое дело
+   */
+  examples?: string
   /** латинские слова из памяти, которые кот вправе повторить */
   echoExtra?: readonly string[]
   /** тексты человека для проверки входа (кризис, взлом промпта) */
@@ -57,7 +62,11 @@ export const DEFAULT_HEDGE_MS = 1500
 
 export async function runTurn<T>(input: TurnInput<T>): Promise<TurnResult<T>> {
   // память (меняется редко) перед данными задачи (меняются каждый вызов): тот же порядок ярусов, что у чата
-  const messages: ModelMessage[] = [...(input.memory ? [{ role: 'user' as const, content: input.memory }] : []), { role: 'user', content: input.data }]
+  const messages: ModelMessage[] = [
+    ...(input.memory ? [{ role: 'user' as const, content: input.memory }] : []),
+    ...(input.examples ? [{ role: 'user' as const, content: input.examples }] : []),
+    { role: 'user', content: input.data },
+  ]
   const { stream, result } = raceTurn({
     ctx: input.ctx,
     instructions: input.bare || input.noPersona ? input.system : systemFor(input.system),

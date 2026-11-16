@@ -2,7 +2,10 @@
 import { writeFileSync } from 'node:fs'
 import { BREAKDOWN_FALLBACK, BREAKDOWN_SYSTEM, breakdown, parseBreakdownAnswer, type BreakdownResult } from '@/lib/ai/agents/breakdown'
 import { dataMessage } from '@/lib/ai/context'
-import { BREAK_CASES } from './tasks'
+import { BREAK_CASES as ALL, HOLDOUT_CASES } from './tasks'
+
+// SET=holdout — отложенный набор: дел нет ни в библиотеке эталонов, ни в основном наборе
+const BREAK_CASES = process.env.SET === 'holdout' ? HOLDOUT_CASES : ALL
 import { generateText } from 'ai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 
