@@ -53,8 +53,6 @@ test('плашка не закрывает «Назад» теста: она е�
 })
 
 for (const [path, viewport] of [
-  ['/?intro=1', { width: 360, height: 640 }],
-  ['/?intro=1', { width: 1280, height: 800 }],
   ['/pomogaet', { width: 390, height: 844 }],
   ['/app/world', { width: 390, height: 844 }],
 ] as const) {
@@ -76,13 +74,30 @@ for (const [path, viewport] of [
   })
 }
 
-test('лендинг 360×640: ссылки на документы не налезают на кота и кнопку', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('naparnik:cookies', '1'))
-  await page.setViewportSize({ width: 360, height: 640 })
-  await page.goto('/?intro=1')
-  await page.waitForTimeout(1500)
-  const docs = (await page.getByRole('navigation', { name: 'Документы' }).boundingBox())!
-  const cat = (await page.locator('#hero-cta').boundingBox())!
-  expect(docs.y + docs.height).toBeLessThanOrEqual(40)
-  expect(cat.y).toBeGreaterThan(docs.y + docs.height)
-})
+for (const viewport of [
+  { width: 360, height: 640 },
+  { width: 390, height: 844 },
+  { width: 1280, height: 800 },
+]) {
+  test(`лендинг ${viewport.width}×${viewport.height}: согласие с документами под «Давай», кнопка на прежнем месте`, async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('naparnik:cookies', '1'))
+    await page.setViewportSize(viewport)
+    await page.goto('/?intro=1')
+    await page.waitForTimeout(1500)
+    const cta = page.locator('#hero-cta')
+    const btn = (await cta.locator('a.btn-chunky').boundingBox())!
+    // место кнопки как до подписи (замер старой сборки 16.11): низ кнопки 18 px от края на телефоне
+    if (viewport.width < 1024) expect(Math.round(viewport.height - (btn.y + btn.height))).toBe(18)
+    else expect(Math.round(btn.y)).toBe(426)
+    await expect(cta.getByText('Нажимая, вы принимаете')).toBeVisible()
+    for (const [name, href] of [['условия', '/terms'], ['политику', '/privacy']] as const) {
+      const link = cta.getByRole('link', { name, exact: true })
+      const box = (await link.boundingBox())!
+      expect(box.y).toBeGreaterThanOrEqual(btn.y + btn.height - 0.5)
+      expect(box.y + box.height).toBeLessThanOrEqual(viewport.height)
+      expect(await link.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(12)
+      const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('a')?.getAttribute('href'), [box.x + box.width / 2, box.y + box.height / 2])
+      expect(hit).toBe(href)
+    }
+  })
+}

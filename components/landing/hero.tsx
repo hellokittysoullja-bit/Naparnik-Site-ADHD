@@ -482,6 +482,23 @@ export function Hero({ headline = DEFAULT_HEADLINE }: { headline?: EntryHeadline
                 </span>
               </Link>
             </motion.div>
+            {/* Согласие с документами под кнопкой (чек-лист РКН 2026, 16.11, вариант владельца): лежит поверх отступа под
+                «Давай», а не в потоке — кнопка не сдвигается ни на пиксель. На телефоне под ней 18 px (или safe-area): строка
+                12 px встаёт в 3 px под губой кнопки. Ссылки выше невидимого продления касания (.thumb-cta ::after): слова
+                открывают документ, остальной текст пропускает касание насквозь (pointer-events-none) — промах пальца ниже
+                кнопки по-прежнему попадает в «Давай» (e2e/first-visit: касание на 10 px ниже рисунка). */}
+            <p className="pointer-events-none relative z-10 -mt-2 h-0 w-full overflow-visible text-center text-[12px] font-medium leading-[12px] text-foreground/60 lg:text-left">
+              <span className="absolute inset-x-0 top-[3px] lg:top-2">
+                Нажимая, вы принимаете{" "}
+                <Link href="/terms" className="pointer-events-auto underline underline-offset-2">
+                  условия
+                </Link>{" "}
+                и{" "}
+                <Link href="/privacy" className="pointer-events-auto underline underline-offset-2">
+                  политику
+                </Link>
+              </span>
+            </p>
           </div>
         </div>
 
