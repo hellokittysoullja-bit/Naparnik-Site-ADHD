@@ -334,7 +334,7 @@ export function FocusSession() {
         }),
       })
       if (res.ok) {
-        const data = (await res.json()) as { steps: string[] | null; minutes?: (number | null)[]; wait?: boolean[]; reply?: string; source?: string; unclear?: boolean }
+        const data = (await res.json()) as { steps: string[] | null; minutes?: (number | null)[]; wait?: boolean[]; reply?: string; source?: string; unclear?: boolean; title?: string }
         if (data.reply) setCareReply(data.reply)
         else if (data.unclear) setBreakNote(BREAK_UNCLEAR)
         // модели не ответили, пришла заготовка «для любого дела» — это не план: честно «не вышло, ещё раз»
@@ -344,7 +344,8 @@ export function FocusSession() {
         }
         else if (data.steps && data.steps.length) {
           const fresh: BStep[] = data.steps.map((t, i) => ({ text: t, minutes: data.minutes?.[i] ?? undefined, ...(data.wait?.[i] ? { wait: true } : {}) }))
-          const title = finer && dealTitle ? dealTitle : target
+          // дело из базы готовых, написанное с опечаткой («сдклать презентацию»), записывается правильно
+          const title = finer && dealTitle ? dealTitle : (data.title ?? target)
           let list = fresh
           if (finer && brokenSteps) {
             const i = brokenSteps.findIndex((b) => b.text === target)

@@ -55,5 +55,5 @@ export const POST = handle(async (req) => {
   if (r.kind === 'care') return Response.json({ steps: null, reply: r.reply })
   // дело не понято (набор букв): экран просит написать словами, а не показывает общие шаги
   if (r.kind === 'unclear') return Response.json({ steps: null, unclear: true })
-  return Response.json({ steps: r.steps, minutes: r.minutes, wait: r.wait, source: r.source })
+  return Response.json({ steps: r.steps, minutes: r.minutes, wait: r.wait, source: r.source, title: r.title })
 })

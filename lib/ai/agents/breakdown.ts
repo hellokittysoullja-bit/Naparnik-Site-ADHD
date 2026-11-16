@@ -4,8 +4,22 @@ import { NoMemory, prefetchWithin, type MemoryProvider } from '../memory/provide
 import { memoryWords, renderTaskMemory } from '../memory/render'
 import { runTurn } from '../core/run-turn'
 import { examplesBlock } from './breakdown-examples'
-import { goblinPlan } from './breakdown-goblin'
-import { findTemplate } from '@/lib/templates'
+import { GOBLIN_PLANS } from './breakdown-goblin'
+import { buildMatcher } from './breakdown-match'
+import { ALL_TEMPLATES } from '@/lib/templates'
+
+type Ready = { steps: string[]; minutes?: number[]; wait?: boolean[] }
+/**
+ * Готовые разбивки: сначала goblin.tools (решение владельца 16.11), потом наши шаблоны из «Дел». Ищутся с опечатками,
+ * лишними словами, не той раскладкой и другим порядком слов (breakdown-match.ts); при совпадении дело записывается
+ * правильным названием
+ */
+const READY = buildMatcher<Ready>([
+  ...Object.entries(GOBLIN_PLANS).map(([t, s]): [string, Ready] => [t, { steps: [...s] }]),
+  ...ALL_TEMPLATES.map((t): [string, Ready] => [t.title, { steps: t.steps.map((s) => s.text), minutes: t.steps.map((s) => s.minutes), wait: t.steps.map((s) => !!s.wait) }]),
+])
+/** готовая разбивка дела, если оно есть в базе (с исправлением написания) */
+export const readyPlan = (task: string) => READY.find(task)
 
 /**
  * Разбивка дела на шаги до самого конца, как у goblin.tools (владелец 16.11: «он что угодно правильно разбивает»).
@@ -141,7 +155,7 @@ export function parseSteps(text: string): string[] | null {
 }
 
 export type BreakdownResult =
-  | { kind: 'steps'; steps: string[]; minutes?: (number | undefined)[]; wait?: boolean[]; source: 'model' | 'fallback' | 'library' }
+  | { kind: 'steps'; steps: string[]; minutes?: (number | undefined)[]; wait?: boolean[]; source: 'model' | 'fallback' | 'library'; /** правильное название дела из базы (человек написал с опечаткой) */ title?: string }
   | { kind: 'care'; reply: string }
   /** модель не поняла дело (набор букв): экран честно просит написать словами вместо общих шагов «для любого дела» */
   | { kind: 'unclear' }
@@ -179,11 +193,8 @@ export async function breakdown(input: {
   // разбивка: «мельче», «мало сил» и шаг внутри дела меняют план, их пишет модель
   const c = input.context
   if (!(c?.['Это часть дела'] || c?.['Силы сейчас'] || c?.['Размер шагов'])) {
-    const ready = goblinPlan(input.task)
-    if (ready) return { kind: 'steps', steps: [...ready], source: 'library' }
-    // наш шаблон из «Дел» с тем же названием (у гоблина такого дела нет): с минутами и «пока ждёшь»
-    const tpl = findTemplate(input.task)
-    if (tpl) return { kind: 'steps', steps: tpl.steps.map((s) => s.text), minutes: tpl.steps.map((s) => s.minutes), wait: tpl.steps.map((s) => !!s.wait), source: 'library' }
+    const hit = readyPlan(input.task)
+    if (hit) return { kind: 'steps', ...hit.value, steps: [...hit.value.steps], source: 'library', title: hit.title }
   }
   const ctx = input.ctx ?? newTurn({ task: 'breakdown' })
   const snapshot = await prefetchWithin(input.memory ?? NoMemory, ctx)
