@@ -14,13 +14,13 @@ test('метка посетителя и источник ставятся то�
   await page.goto('/?src=reel-where&utm_source=tiktok')
   const notice = page.getByRole('region', { name: 'Cookie' })
   await expect(notice).toBeVisible()
-  await expect(notice.getByRole('link', { name: 'Подробнее' })).toHaveAttribute('href', '/privacy')
+  await expect(notice.getByRole('link', { name: 'политикой конфиденциальности' })).toHaveAttribute('href', '/privacy')
   await page.waitForTimeout(1500)
   expect(visits).toBe(0)
   expect((await context.cookies()).map((c) => c.name)).not.toContain('nid')
 
   // ушёл читать политику (адрес уже без метки) и согласился там
-  await notice.getByRole('link', { name: 'Подробнее' }).click()
+  await notice.getByRole('link', { name: 'политикой конфиденциальности' }).click()
   await expect(page).toHaveURL(/\/privacy$/)
   const visit = page.waitForResponse((r) => r.url().endsWith('/api/visit'))
   await page.getByRole('button', { name: 'Разрешить и закрыть' }).click()
