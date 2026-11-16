@@ -6,7 +6,7 @@ import { seedStarts } from './helpers'
  * с явной кнопкой и без метки посетителя до неё.
  */
 
-test('метка посетителя и источник ставятся только после «Понятно»; источник не теряется при переходе', async ({ page, context }) => {
+test('метка посетителя и источник ставятся только после «Разрешить и закрыть»; источник не теряется при переходе', async ({ page, context }) => {
   let visits = 0
   page.on('request', (r) => {
     if (r.url().endsWith('/api/visit')) visits++
@@ -23,7 +23,7 @@ test('метка посетителя и источник ставятся то�
   await notice.getByRole('link', { name: 'Подробнее' }).click()
   await expect(page).toHaveURL(/\/privacy$/)
   const visit = page.waitForResponse((r) => r.url().endsWith('/api/visit'))
-  await page.getByRole('button', { name: 'Понятно' }).click()
+  await page.getByRole('button', { name: 'Разрешить и закрыть' }).click()
   expect((await visit).status()).toBe(204)
   await expect(notice).toHaveCount(0)
   const names = (await context.cookies()).map((c) => c.name)
