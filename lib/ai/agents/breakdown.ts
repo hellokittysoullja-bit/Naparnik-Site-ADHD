@@ -19,7 +19,9 @@ const READY_ENTRIES: [string, Ready][] = [
   ...Object.entries(GOBLIN_PLANS).map(([t, s]): [string, Ready] => [t, { steps: [...s] }]),
   ...ALL_TEMPLATES.map((t): [string, Ready] => [t.title, { steps: t.steps.map((s) => s.text), minutes: t.steps.map((s) => s.minutes), wait: t.steps.map((s) => !!s.wait) }]),
 ]
-const BY_TITLE = new Map(READY_ENTRIES)
+/** план дела по названию — тот же, что отдаёт поиск: при совпадении названий гоблин важнее шаблона (первый побеждает) */
+const BY_TITLE = new Map<string, Ready>()
+for (const [t, r] of READY_ENTRIES) if (!BY_TITLE.has(t)) BY_TITLE.set(t, r)
 /** синонимы — после основных дел: дословное основное дело всегда важнее совпавшего синонима */
 const READY = buildMatcher<Ready>([
   ...READY_ENTRIES,

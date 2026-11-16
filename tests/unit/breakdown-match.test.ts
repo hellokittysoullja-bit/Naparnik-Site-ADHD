@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { buildMatcher, distance } from '@/lib/ai/agents/breakdown-match'
 import { readyPlan } from '@/lib/ai/agents/breakdown'
+import { TASK_ALIASES } from '@/lib/ai/agents/breakdown-aliases'
+import { GOBLIN_PLANS } from '@/lib/ai/agents/breakdown-goblin'
 
 const t = (s: string) => readyPlan(s)?.title ?? null
 
@@ -35,8 +37,8 @@ describe('готовое дело узнаётся, как бы его ни на
     expect(t('позвонить тёте')).toBeNull()
     expect(t('помыть посуду после гостей')).toBeNull()
     expect(t('сходить в зол')).toBeNull()
-    expect(t('покакать')).toBeNull()
-    expect(t('написать курсач')).toBeNull()
+    // «покакать» — синоним туалетного дела, а не опечатка в «поплакать»
+    expect(t('покакать')).not.toBe('Поплакать')
     expect(t('Hh')).toBeNull()
     expect(t('')).toBeNull()
   })
@@ -67,5 +69,24 @@ describe('готовое дело узнаётся, как бы его ни на
     const t0 = performance.now()
     readyPlan('помыть посуду '.repeat(150))
     expect(performance.now() - t0).toBeLessThan(50)
+  })
+  it('синоним даёт план своего дела: «покушать» = «поесть», «помыться» = «сходить в душ», «сделать дз» = «сделать домашку» (16.11)', () => {
+    const plan = (s: string) => readyPlan(s)?.value.steps
+    expect(plan('покушать')).toEqual(plan('Поесть'))
+    expect(plan('помыться')).toEqual(plan('Сходить в душ'))
+    expect(plan('мыть посуду')).toEqual(plan('Помыть посуду'))
+    expect(plan('сделать дз')).toEqual(plan('Сделать домашку'))
+    expect(readyPlan('покушать')?.title).toBe('Покушать')
+  })
+  it('опечатки в синонимах тоже узнаются', () => {
+    expect(readyPlan('покущать')?.value.steps).toEqual(readyPlan('Поесть')?.value.steps)
+    expect(readyPlan('памыться')?.value.steps).toEqual(readyPlan('Сходить в душ')?.value.steps)
+  })
+  it('каждый синоним ведёт к плану своего дела, а каждое дело — к своему плану (синонимы не перехватывают дела)', () => {
+    for (const [title, steps] of Object.entries(GOBLIN_PLANS)) expect(readyPlan(title)?.value.steps, title).toEqual([...steps])
+    for (const [title, aliases] of Object.entries(TASK_ALIASES)) {
+      const own = readyPlan(title)?.value.steps
+      for (const a of aliases) expect(readyPlan(a)?.value.steps, `${a} → ${title}`).toEqual(own)
+    }
   })
 })
