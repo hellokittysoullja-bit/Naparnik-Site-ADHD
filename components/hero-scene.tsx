@@ -40,64 +40,62 @@ export function Knoll({ className }: { className?: string }) {
 }
 
 export function GroundPool({ className }: { className?: string }) {
+  // Тень под лапами дышит отдельным <svg> поверх пятна света (.scene-stack, .ground-shadow-breathe в globals.css):
+  // раньше SMIL менял rx размытого эллипса — главный поток перерисовывал размытие на каждом кадре. Теперь тот же
+  // эллипс сжимается по ширине 48 → 44,5 → 48 за 4,6 с на видеокарте (15.11).
   return (
-    <svg
-      viewBox="0 0 360 120"
-      width={360}
-      height={120}
-      className={className}
-      aria-hidden="true"
-    >
-      <defs>
-        <radialGradient id="gp-pool" cx="0.5" cy="0.4" r="0.62">
-          <stop offset="0%" stopColor="oklch(0.285 0.032 95)" />
-          <stop
-            offset="55%"
-            stopColor="oklch(0.23 0.016 130)"
-            stopOpacity="0.65"
-          />
-          <stop
-            offset="100%"
-            stopColor="oklch(0.2 0.012 130)"
-            stopOpacity="0"
-          />
-        </radialGradient>
-        <filter id="gp-soft" x="-40%" y="-40%" width="180%" height="180%">
-          <feGaussianBlur stdDeviation="2.4" />
-        </filter>
-      </defs>
-      <ellipse cx={180} cy={52} rx={176} ry={46} fill="url(#gp-pool)" />
-      <ellipse
-        cx={180}
-        cy={22}
-        rx={48}
-        ry={6.5}
-        fill="oklch(0.09 0.01 130)"
-        opacity={0.3}
-        filter="url(#gp-soft)"
-      >
-        <animate
-          attributeName="rx"
-          values="48;44.5;48"
-          dur="4.6s"
-          repeatCount="indefinite"
+    <span className={`scene-stack w-[360px] ${className ?? ""}`} aria-hidden="true">
+      <svg viewBox="0 0 360 120" width={360} height={120}>
+        <defs>
+          <radialGradient id="gp-pool" cx="0.5" cy="0.4" r="0.62">
+            <stop offset="0%" stopColor="oklch(0.285 0.032 95)" />
+            <stop
+              offset="55%"
+              stopColor="oklch(0.23 0.016 130)"
+              stopOpacity="0.65"
+            />
+            <stop
+              offset="100%"
+              stopColor="oklch(0.2 0.012 130)"
+              stopOpacity="0"
+            />
+          </radialGradient>
+        </defs>
+        <ellipse cx={180} cy={52} rx={176} ry={46} fill="url(#gp-pool)" />
+      </svg>
+      <svg viewBox="0 0 360 120" width={360} height={120} className="ground-shadow-breathe">
+        <defs>
+          <filter id="gp-soft" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="2.4" />
+          </filter>
+        </defs>
+        <ellipse
+          cx={180}
+          cy={22}
+          rx={48}
+          ry={6.5}
+          fill="oklch(0.09 0.01 130)"
+          opacity={0.3}
+          filter="url(#gp-soft)"
         />
-      </ellipse>
-      <g
-        stroke="oklch(0.38 0.045 132)"
-        strokeWidth={2.2}
-        strokeLinecap="round"
-        fill="none"
-        opacity={0.7}
-      >
-        <path d="M96 40 q2 -10 7 -13" />
-        <path d="M108 43 q1 -8 5 -11" />
-        <path d="M250 38 q2 -10 7 -13" />
-        <path d="M263 41 q1 -8 5 -11" />
-        <path d="M160 62 q2 -9 6 -12" />
-        <path d="M214 66 q-2 -9 -6 -12" />
-      </g>
-    </svg>
+      </svg>
+      <svg viewBox="0 0 360 120" width={360} height={120}>
+        <g
+          stroke="oklch(0.38 0.045 132)"
+          strokeWidth={2.2}
+          strokeLinecap="round"
+          fill="none"
+          opacity={0.7}
+        >
+          <path d="M96 40 q2 -10 7 -13" />
+          <path d="M108 43 q1 -8 5 -11" />
+          <path d="M250 38 q2 -10 7 -13" />
+          <path d="M263 41 q1 -8 5 -11" />
+          <path d="M160 62 q2 -9 6 -12" />
+          <path d="M214 66 q-2 -9 -6 -12" />
+        </g>
+      </svg>
+    </span>
   );
 }
 
@@ -108,29 +106,30 @@ export function GroundPool({ className }: { className?: string }) {
  * компактный SVG: гало дышит на SMIL, диск с кратерами тёплой кости.
  */
 export function Moon({ className }: { className?: string }) {
+  // Гало дышит отдельным <svg> под диском (.scene-stack, .moon-halo-breathe в globals.css): SMIL-анимация узла
+  // внутри SVG считалась в главном потоке и перерисовывала луну на каждом кадре (лендинг в покое, CPU ×6: ~1,7 с
+  // работы из 5 с вместе с тенью под котом), а целый <svg> видеокарта двигает сама. Ритм прежний: 0.85 → 1 → 0.85
+  // за 7 с, линейно (15.11).
   return (
-    <svg viewBox="0 0 120 120" className={className} aria-hidden="true">
-      <defs>
-        <radialGradient id="moon-halo" cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0%" stopColor="oklch(0.85 0.03 95)" stopOpacity="0.22" />
-          <stop offset="55%" stopColor="oklch(0.85 0.03 95)" stopOpacity="0.07" />
-          <stop offset="100%" stopColor="oklch(0.85 0.03 95)" stopOpacity="0" />
-        </radialGradient>
-      </defs>
-      <circle cx="60" cy="60" r="58" fill="url(#moon-halo)">
-        <animate
-          attributeName="opacity"
-          values="0.85;1;0.85"
-          dur="7s"
-          repeatCount="indefinite"
-        />
-      </circle>
-      <circle cx="60" cy="60" r="21" fill="oklch(0.84 0.035 95)" opacity="0.9" />
-      <g fill={INK} opacity="0.12">
-        <circle cx="53" cy="53" r="5" />
-        <circle cx="68" cy="66" r="3.4" />
-        <circle cx="57" cy="71" r="2.2" />
-      </g>
-    </svg>
+    <span className={`scene-stack ${className ?? ""}`} aria-hidden="true">
+      <svg viewBox="0 0 120 120" className="moon-halo-breathe">
+        <defs>
+          <radialGradient id="moon-halo" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0%" stopColor="oklch(0.85 0.03 95)" stopOpacity="0.22" />
+            <stop offset="55%" stopColor="oklch(0.85 0.03 95)" stopOpacity="0.07" />
+            <stop offset="100%" stopColor="oklch(0.85 0.03 95)" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <circle cx="60" cy="60" r="58" fill="url(#moon-halo)" />
+      </svg>
+      <svg viewBox="0 0 120 120">
+        <circle cx="60" cy="60" r="21" fill="oklch(0.84 0.035 95)" opacity="0.9" />
+        <g fill={INK} opacity="0.12">
+          <circle cx="53" cy="53" r="5" />
+          <circle cx="68" cy="66" r="3.4" />
+          <circle cx="57" cy="71" r="2.2" />
+        </g>
+      </svg>
+    </span>
   );
 }

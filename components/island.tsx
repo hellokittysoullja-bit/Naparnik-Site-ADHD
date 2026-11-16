@@ -108,11 +108,15 @@ type DiaryEntry = {
   isNewToday: boolean
 }
 
+/** Мерцание «lo;hi;lo» за dur секунд с задержкой begin — те же значения, что были у SMIL <animate> */
+function svPulse(lo: number, hi: number, dur: number, begin = 0): CSSProperties {
+  return { '--lo': lo, '--hi': hi, '--d': `${dur}s`, '--b': `${begin}s` } as CSSProperties
+}
+
 export function Island() {
-  // Мерцание звёзд/воды/ореола редкой находки — SVG SMIL <animate>, не CSS:
-  // ни один из @media (prefers-reduced-motion) блоков в globals.css его не
-  // трогает (SMIL — отдельная система анимации). Условный рендер — единственный
-  // способ отключить SMIL для reduced-motion.
+  // Мерцание звёзд/воды/ореола редкой находки — CSS (.sv-pulse), не SMIL: SMIL считается в главном потоке и
+  // перерисовывает весь остров на каждом шаге (15.11). При «уменьшении движения» класс просто не ставится — как
+  // раньше не рендерился <animate>.
   const reduceMotion = useReducedMotion()
   // переход по табу — остров из памяти в первом же кадре, без скелетона (hooks/use-client-mount.ts); бэкфилл
   // находок и отметка «увидел» — по-прежнему в эффекте
@@ -281,17 +285,16 @@ export function Island() {
             [168, 24, 1.0], [205, 44, 0.8], [242, 12, 1.2], [262, 56, 0.7],
             [292, 30, 1.0], [348, 20, 1.1], [362, 58, 0.8], [30, 66, 0.7],
           ].map(([x, y, r], i) => (
-            <circle key={i} cx={x} cy={y} r={r} fill="var(--color-muted-foreground)" opacity="0.5">
-              {!reduceMotion && (
-                <animate
-                  attributeName="opacity"
-                  values="0.25;0.75;0.25"
-                  dur={`${2.6 + (i % 5) * 0.9}s`}
-                  begin={`${(i % 7) * 0.5}s`}
-                  repeatCount="indefinite"
-                />
-              )}
-            </circle>
+            <circle
+              key={i}
+              cx={x}
+              cy={y}
+              r={r}
+              fill="var(--color-muted-foreground)"
+              opacity="0.5"
+              className={reduceMotion ? undefined : 'sv-pulse'}
+              style={reduceMotion ? undefined : svPulse(0.25, 0.75, 2.6 + (i % 5) * 0.9, (i % 7) * 0.5)}
+            />
           ))}
           {/* дымка вокруг луны-ориентира — появляется вместе с ней (10-й старт) */}
           {count >= LANDMARK_COUNT && <circle cx="320" cy="44" r="42" fill="url(#moonhaze)" />}
@@ -311,17 +314,9 @@ export function Island() {
               strokeWidth="1.4"
               strokeLinecap="round"
               opacity="0.25"
-            >
-              {!reduceMotion && (
-                <animate
-                  attributeName="opacity"
-                  values="0.1;0.35;0.1"
-                  dur={`${3.4 + i * 0.7}s`}
-                  begin={`${i * 0.8}s`}
-                  repeatCount="indefinite"
-                />
-              )}
-            </line>
+              className={reduceMotion ? undefined : 'sv-pulse'}
+              style={reduceMotion ? undefined : svPulse(0.1, 0.35, 3.4 + i * 0.7, i * 0.8)}
+            />
           ))}
 
           {/* остров: песчаная кромка, объёмный холм травы, тень берега */}
@@ -365,16 +360,15 @@ export function Island() {
                 >
                   {/* Редкая находка светится золотом — тёплый жёлтый закреплён за rare */}
                   {find.rarity === 'rare' && (
-                    <circle cx="0" cy="-10" r="20" fill="var(--color-reward)" opacity="0.16">
-                      {!reduceMotion && (
-                        <animate
-                          attributeName="opacity"
-                          values="0.08;0.2;0.08"
-                          dur="3.2s"
-                          repeatCount="indefinite"
-                        />
-                      )}
-                    </circle>
+                    <circle
+                      cx="0"
+                      cy="-10"
+                      r="20"
+                      fill="var(--color-reward)"
+                      opacity="0.16"
+                      className={reduceMotion ? undefined : 'sv-pulse'}
+                      style={reduceMotion ? undefined : svPulse(0.08, 0.2, 3.2)}
+                    />
                   )}
                   {sprite}
                 </g>

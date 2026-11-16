@@ -279,6 +279,97 @@
   }
 }
 
+/* Мерцание и покачивание на острове (15.11) — вместо SMIL <animate>: SMIL считается в главном потоке и на каждом
+   шаге перерисовывает весь SVG со стилями (Мир в покое, CPU ×6: 2,5 с работы из 5 с, с CSS — 1,5 с). Ритм тот же:
+   «a;b;a» за --d с задержкой --b, линейно, как calcMode="linear" у SMIL. «Уменьшение движения» решают компоненты
+   (класс не ставится там, где раньше не рендерился <animate>) — поведение прежнее. */
+@keyframes sv-pulse {
+  0%,
+  100% {
+    opacity: var(--lo);
+  }
+  50% {
+    opacity: var(--hi);
+  }
+}
+.sv-pulse {
+  animation: sv-pulse var(--d) linear var(--b, 0s) infinite;
+}
+/* ореол костра: радиус 15 → 19 → 15 как масштаб круга r=18 от его центра */
+@keyframes sv-glow {
+  0%,
+  100% {
+    opacity: var(--lo);
+    transform: scale(var(--s0));
+  }
+  50% {
+    opacity: var(--hi);
+    transform: scale(var(--s1));
+  }
+}
+.sv-glow {
+  transform-box: view-box;
+  animation: sv-glow var(--d) linear infinite;
+}
+/* rotate(угол cx cy) у SMIL = поворот вокруг той же точки в координатах рисунка */
+@keyframes sv-sway {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(var(--a));
+  }
+  75% {
+    transform: rotate(calc(var(--a) * -1));
+  }
+}
+.sv-sway {
+  transform-box: view-box;
+  animation: sv-sway var(--d) linear infinite;
+}
+
+/* Луна и тень под котом (components/hero-scene.tsx, 15.11): слои одного рисунка — отдельные <svg> в одной клетке
+   сетки, и дышит целый <svg> (opacity/transform — работа видеокарты), а не узел внутри SVG (SMIL — главный поток,
+   перерисовка на каждом кадре). inline-grid держит ту же базовую линию, что была у одиночного inline <svg>, —
+   место на экране прежнее. Ритм прежний, линейно, как у SMIL. */
+.scene-stack {
+  display: inline-grid;
+}
+.scene-stack > svg {
+  grid-area: 1 / 1;
+  display: block;
+  width: 100%;
+  height: auto;
+}
+@keyframes moon-halo-breathe {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.moon-halo-breathe {
+  animation: moon-halo-breathe 7s linear infinite;
+}
+/* rx 48 → 44,5 → 48 у эллипса с центром (180, 22) из 360 × 120 */
+@keyframes ground-shadow-breathe {
+  0%,
+  100% {
+    transform: scaleX(1);
+  }
+  50% {
+    transform: scaleX(0.9271);
+  }
+}
+.ground-shadow-breathe {
+  transform-origin: 50% 18.333%;
+  animation: ground-shadow-breathe 4.6s linear infinite;
+}
+
 /* Первый кадр «статика прежде скрипта»: весь контент уже в серверном HTML,
    появление хореографирует чистый CSS — работает даже с выключенным JS */
 /* Без filter: blur — анимируемый фильтр выносит каждое слово в свой слой (на iPhone такие слои терялись, §5.5) */
