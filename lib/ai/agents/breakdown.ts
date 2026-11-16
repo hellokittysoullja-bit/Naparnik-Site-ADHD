@@ -5,6 +5,7 @@ import { memoryWords, renderTaskMemory } from '../memory/render'
 import { runTurn } from '../core/run-turn'
 import { examplesBlock } from './breakdown-examples'
 import { GOBLIN_PLANS } from './breakdown-goblin'
+import { TASK_ALIASES } from './breakdown-aliases'
 import { buildMatcher } from './breakdown-match'
 import { ALL_TEMPLATES } from '@/lib/templates'
 
@@ -14,9 +15,20 @@ type Ready = { steps: string[]; minutes?: number[]; wait?: boolean[] }
  * лишними словами, не той раскладкой и другим порядком слов (breakdown-match.ts); при совпадении дело записывается
  * правильным названием
  */
-const READY = buildMatcher<Ready>([
+const READY_ENTRIES: [string, Ready][] = [
   ...Object.entries(GOBLIN_PLANS).map(([t, s]): [string, Ready] => [t, { steps: [...s] }]),
   ...ALL_TEMPLATES.map((t): [string, Ready] => [t.title, { steps: t.steps.map((s) => s.text), minutes: t.steps.map((s) => s.minutes), wait: t.steps.map((s) => !!s.wait) }]),
+]
+/** план дела по названию — тот же, что отдаёт поиск: при совпадении названий гоблин важнее шаблона (первый побеждает) */
+const BY_TITLE = new Map<string, Ready>()
+for (const [t, r] of READY_ENTRIES) if (!BY_TITLE.has(t)) BY_TITLE.set(t, r)
+/** синонимы — после основных дел: дословное основное дело всегда важнее совпавшего синонима */
+const READY = buildMatcher<Ready>([
+  ...READY_ENTRIES,
+  ...Object.entries(TASK_ALIASES).flatMap(([title, aliases]) => {
+    const plan = BY_TITLE.get(title)
+    return plan ? aliases.map((a): [string, Ready] => [a, plan]) : []
+  }),
 ])
 /** готовая разбивка дела, если оно есть в базе (с исправлением написания) */
 export const readyPlan = (task: string) => READY.find(task)
