@@ -5,6 +5,7 @@ import { memoryWords, renderTaskMemory } from '../memory/render'
 import { runTurn } from '../core/run-turn'
 import { examplesBlock } from './breakdown-examples'
 import { goblinPlan } from './breakdown-goblin'
+import { findTemplate } from '@/lib/templates'
 
 /**
  * Разбивка дела на шаги до самого конца, как у goblin.tools (владелец 16.11: «он что угодно правильно разбивает»).
@@ -177,8 +178,13 @@ export async function breakdown(input: {
   // дело написано ровно как в готовых разбивках goblin.tools (владелец 16.11) — план сразу, без модели. Только обычная
   // разбивка: «мельче», «мало сил» и шаг внутри дела меняют план, их пишет модель
   const c = input.context
-  const ready = c?.['Это часть дела'] || c?.['Силы сейчас'] || c?.['Размер шагов'] ? null : goblinPlan(input.task)
-  if (ready) return { kind: 'steps', steps: [...ready], source: 'library' }
+  if (!(c?.['Это часть дела'] || c?.['Силы сейчас'] || c?.['Размер шагов'])) {
+    const ready = goblinPlan(input.task)
+    if (ready) return { kind: 'steps', steps: [...ready], source: 'library' }
+    // наш шаблон из «Дел» с тем же названием (у гоблина такого дела нет): с минутами и «пока ждёшь»
+    const tpl = findTemplate(input.task)
+    if (tpl) return { kind: 'steps', steps: tpl.steps.map((s) => s.text), minutes: tpl.steps.map((s) => s.minutes), wait: tpl.steps.map((s) => !!s.wait), source: 'library' }
+  }
   const ctx = input.ctx ?? newTurn({ task: 'breakdown' })
   const snapshot = await prefetchWithin(input.memory ?? NoMemory, ctx)
   const { value, outcome } = await runTurn<BreakdownResult>({

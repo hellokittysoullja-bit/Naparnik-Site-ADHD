@@ -306,12 +306,9 @@ export function FocusSession() {
   /** Первое дробление дела: готовое дело — шаги сразу, иначе модель. Одно и то же с Дома, из «Дел», «Не могу начать» и кнопкой здесь */
   async function requestBreak() {
     if (!breakable(task)) return setBreakNote(BREAK_TOO_SHORT)
-    // список готовых дел подгружается только здесь (он не нужен, пока человек ничего не дробит)
-    // дело из разбивок goblin.tools (дословно) важнее нашего шаблона с тем же названием (владелец 16.11): его отдаёт сервер сразу
-    const goblin = await import('@/lib/ai/agents/breakdown-goblin').then((m) => m.goblinPlan(task) !== null).catch(() => false)
-    const tpl = goblin ? null : await import('@/lib/templates').then((m) => m.findTemplate(task)).catch(() => null)
-    if (tpl) applyTemplate(tpl)
-    else void breakDown()
+    // готовые разбивки (goblin.tools, затем наши шаблоны) сервер отдаёт сразу, без модели: база готовых дел живёт на
+    // сервере и в телефон не качается, сколько бы дел в ней ни было (владелец 16.11: «в будущем хоть 1000 дел»)
+    void breakDown()
   }
   async function breakDown(finer = false, e: Energy | null = energy) {
     const target = task.trim()

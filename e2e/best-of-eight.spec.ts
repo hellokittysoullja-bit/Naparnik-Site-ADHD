@@ -58,12 +58,12 @@ test('готовое дело: шаги появляются без запрос
   expect(deals[0].steps).toHaveLength(6)
 })
 
-test('дело из поля, совпавшее с готовым, не ходит к ИИ', async ({ page }) => {
-  const seen = await mockAi(page)
-  // «помыть посуду» теперь из разбивок goblin.tools (тест ниже), поэтому здесь дело, которого у гоблина нет
+test('дело из поля, совпавшее с готовым: сервер отдаёт наш шаблон сразу, с «пока ждёшь»', async ({ page }) => {
+  // готовые дела ищет сервер (база в телефон не качается); без модели — проверяет tests/unit/breakdown-goblin.test.ts
+  await page.route('**/api/session-voice', (route) => route.fulfill({ json: { text: null } }))
   await page.goto('/app/session?step=' + encodeURIComponent('убрать ванную') + '&break=1')
   await expect(page.getByText('Достать средство и губку').first()).toBeVisible()
-  expect(seen).toHaveLength(0)
+  await expect(page.getByText('пока ждёшь').first()).toBeVisible()
 })
 
 test('просьба к коту и размер шагов уходят в дробление', async ({ page }) => {

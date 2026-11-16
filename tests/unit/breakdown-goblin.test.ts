@@ -24,6 +24,15 @@ describe('готовые разбивки goblin.tools (дословно, вла
     const r = await breakdown({ task: 'Вынести мусор' })
     expect(r).toEqual({ kind: 'steps', steps: [...GOBLIN_PLANS['Вынести мусор']], source: 'library' })
   })
+  it('наш шаблон из «Дел» (у гоблина такого дела нет) — тоже сразу, с минутами и «пока ждёшь»', async () => {
+    const r = await breakdown({ task: 'убрать ванную' })
+    expect(r).toMatchObject({ kind: 'steps', source: 'library', steps: expect.arrayContaining(['Достать средство и губку']) })
+    expect(r.kind === 'steps' && r.wait?.some(Boolean)).toBe(true)
+  })
+  it('гоблин важнее шаблона с тем же названием (владелец 16.11)', async () => {
+    const r = await breakdown({ task: 'Помыть посуду' })
+    expect(r.kind === 'steps' && r.steps[0]).toBe(GOBLIN_PLANS['Помыть посуду'][0])
+  })
   it('«мельче», «мало сил» и шаг внутри дела — не готовый план, а модель', async () => {
     for (const context of [{ 'Размер шагов': 'мельче' }, { 'Силы сейчас': 'мало' }, { 'Это часть дела': 'Убраться в комнате' }]) {
       const r = await breakdown({ task: 'Вынести мусор', context, timeoutMs: 50 })
