@@ -1,5 +1,7 @@
 import { SiteAnalytics } from "@/components/analytics";
 import { VisitBeacon } from "@/components/visit-beacon";
+import { CookieNotice } from "@/components/cookie-notice";
+import { Suspense } from "react";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
@@ -63,6 +65,10 @@ export default function RootLayout({
       <body className="antialiased font-sans">
         {children}
         <VisitBeacon />
+        {/* Suspense: плашка читает адрес (шаг теста), статические страницы остаются статическими */}
+        <Suspense fallback={null}>
+          <CookieNotice />
+        </Suspense>
         {process.env.NODE_ENV === "production" && <SiteAnalytics />}
       </body>
     </html>

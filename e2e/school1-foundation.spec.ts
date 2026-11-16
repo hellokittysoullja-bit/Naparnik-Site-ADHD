@@ -14,8 +14,12 @@ test('первый визит — HTML без функции и без cookie; n
   const variant = await page.request.get('/?src=reel-phone', { maxRedirects: 0 })
   expect(variant.headers()['set-cookie']).toBeUndefined()
 
-  const visit = page.waitForResponse((r) => r.url().endsWith('/api/visit'))
+  // метка ставится только после «Разрешить и закрыть» в плашке cookie (чек-лист РКН 2026, 16.11)
   await page.goto('/')
+  await page.waitForTimeout(1500)
+  expect((await context.cookies()).find((c) => c.name === 'nid')).toBeUndefined()
+  const visit = page.waitForResponse((r) => r.url().endsWith('/api/visit'))
+  await page.getByRole('button', { name: 'Разрешить и закрыть' }).click()
   const res = await visit
   expect(res.status()).toBe(204)
   const set = (await res.headerValue('set-cookie')) ?? ''
@@ -40,8 +44,9 @@ test('заголовок под ролик: ?src= известного роли�
 })
 
 test('метка ролика доходит до знакомства и запоминается первым и последним входом', async ({ page, context }) => {
-  const visit = page.waitForResponse((r) => r.url().endsWith('/api/visit'))
   await page.goto('/?src=reel-where&utm_source=tiktok')
+  const visit = page.waitForResponse((r) => r.url().endsWith('/api/visit'))
+  await page.getByRole('button', { name: 'Разрешить и закрыть' }).click()
   await visit
   const cta = page.getByRole('link', { name: /Давай/ }).first()
   await expect(cta).toHaveAttribute('href', /\/app\/start\?utm_source=tiktok&src=reel-where/)

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Send } from 'lucide-react'
 import { beginTgLink, peekTgState, refreshTgState, type PlanForBot, type TgState } from '@/lib/tg-link'
 
@@ -42,22 +43,32 @@ export function TgRemind({ plan, current }: { plan: PlanForBot; current: boolean
       </span>
     )
   }
+  // Кнопка передаёт дело и шаг на сервер бота: под ней согласие на обработку со ссылкой на политику
+  // (16.11, чек-лист РКН 2026, раздел 3: «нажимая кнопку…» со ссылкой; галочек заранее не ставим)
   return (
-    <button
-      type="button"
-      disabled={busy}
-      className="mt-1 flex min-h-11 items-center gap-1.5 self-start rounded-xl px-1 text-sm font-semibold text-primary disabled:opacity-60"
-      onClick={async () => {
-        setBusy(true)
-        const url = await beginTgLink(plan)
-        setBusy(false)
-        // тот же таб: на телефоне ссылка открывает приложение Telegram, вкладка сайта остаётся на месте
-        if (url) window.location.href = url
-        else setState({ available: false, linked: false, active: false })
-      }}
-    >
-      <Send className="size-4 shrink-0" aria-hidden="true" />
-      {busy ? 'Открываю Telegram…' : 'Напоминать в Telegram'}
-    </button>
+    <div className="mt-1 flex flex-col items-start">
+      <button
+        type="button"
+        disabled={busy}
+        className="flex min-h-11 items-center gap-1.5 self-start rounded-xl px-1 text-sm font-semibold text-primary disabled:opacity-60"
+        onClick={async () => {
+          setBusy(true)
+          const url = await beginTgLink(plan)
+          setBusy(false)
+          // тот же таб: на телефоне ссылка открывает приложение Telegram, вкладка сайта остаётся на месте
+          if (url) window.location.href = url
+          else setState({ available: false, linked: false, active: false })
+        }}
+      >
+        <Send className="size-4 shrink-0" aria-hidden="true" />
+        {busy ? 'Открываю Telegram…' : 'Напоминать в Telegram'}
+      </button>
+      <p className="px-1 text-[12px] leading-snug text-muted-foreground">
+        Нажимая, вы соглашаетесь на обработку дела и шага по{' '}
+        <Link href="/privacy" className="underline underline-offset-2">
+          политике конфиденциальности
+        </Link>
+      </p>
+    </div>
   )
 }
