@@ -112,14 +112,15 @@ export function HomeCamp() {
       <div className="relative z-10 flex h-full flex-col pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
         {/* находки острова — тихая плашка, ведёт в Мир; у новичка её нет */}
         <div className="flex min-h-14 items-start justify-end px-5 pt-[max(1rem,env(safe-area-inset-top))] [@media(max-height:620px)]:min-h-10 [@media(max-height:620px)]:pt-2">
-          {data && data.finds > 0 && (
+          {/* до чтения памяти (обновление страницы) плашку и число показывает CSS по памяти из скрипта первого кадра (lib/app-prepaint.ts) */}
+          {(data ? data.finds > 0 : true) && (
             <Link
               href="/app/world"
               // зона касания 44 px при плашке ~32 px: невидимое продолжение вокруг
-              className="press relative flex items-center gap-1.5 rounded-full border border-white/10 bg-[oklch(0.2_0.02_130/0.55)] px-3 py-1.5 text-[13px] font-semibold after:absolute after:-inset-1.5 after:content-['']"
+              className={`press relative flex items-center gap-1.5 rounded-full border border-white/10 bg-[oklch(0.2_0.02_130/0.55)] px-3 py-1.5 text-[13px] font-semibold after:absolute after:-inset-1.5 after:content-['']${data ? "" : " home-finds-pre"}`}
             >
               <Sprout className="size-4 text-primary" aria-hidden="true" />
-              {findsLabel(data.finds)}
+              {data ? findsLabel(data.finds) : <span className="home-pre-finds" />}
             </Link>
           )}
         </div>
@@ -163,12 +164,14 @@ export function HomeCamp() {
               autoCapitalize="sentences"
             />
           </form>
-          <div className="mt-3 flex justify-center gap-2" role="group" aria-label="Сфера дела">
-            {homeChips(profile).map((c) => (
+          {/* до чтения памяти подсвеченную и третью сферу ставит CSS по атрибутам, которые выставил скрипт первого кадра */}
+          <div className="mt-3 flex justify-center gap-2" role="group" aria-label="Сфера дела" data-pre={data ? undefined : ""}>
+            {homeChips(profile).map((c, i) => (
               <button
                 key={c.sphere}
                 type="button"
                 aria-pressed={sphere === c.sphere}
+                data-chip={data || i < 2 ? c.sphere : "third"}
                 onClick={() => setSphere(sphere === c.sphere ? null : c.sphere)}
                 className={`press min-h-11 rounded-full border px-3.5 text-[13px] font-semibold transition-colors ${
                   sphere === c.sphere
@@ -176,13 +179,26 @@ export function HomeCamp() {
                     : "border-white/10 bg-[oklch(0.24_0.014_130/0.9)] text-foreground"
                 }`}
               >
-                <span aria-hidden="true">{c.icon}</span> {c.label}
+                {data || i < 2 ? (
+                  <>
+                    <span aria-hidden="true">{c.icon}</span> {c.label}
+                  </>
+                ) : (
+                  <>
+                    <span data-third="home">
+                      <span aria-hidden="true">🏠</span> Дом
+                    </span>
+                    <span data-third="message">
+                      <span aria-hidden="true">✉️</span> Написать
+                    </span>
+                  </>
+                )}
               </button>
             ))}
           </div>
           {/* строка над кнопкой по двум ответам знакомства (25 вариантов, без ответов — общая); место под две строки
               занято всегда, поэтому строка любой длины не сдвигает ни кота, ни кнопки */}
-          <div className="mt-2.5 flex h-11 items-center justify-center">
+          <div id="home-hint" className="mt-2.5 flex h-11 items-center justify-center">
             {tooShort ? (
               <p role="status" className="mx-auto line-clamp-2 max-w-[34ch] text-balance text-[16px] font-bold leading-[22px] text-[oklch(0.93_0.04_90)]">
                 {BREAK_TOO_SHORT}
@@ -241,6 +257,7 @@ export function HomeCamp() {
           </div>
           </div>
         </section>
+
         {/* сцена: кот по центру на холме, костёр слева от него */}
         <div className="relative flex min-h-0 flex-1 items-end justify-center">
           {/* луна, как на лендинге: справа вверху, отдельно от видео */}

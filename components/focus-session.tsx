@@ -35,6 +35,7 @@ import {
   clearPlan,
   consumeQueueStep,
   getActiveSession,
+  peekActiveSession,
   getFinds,
   getPlan,
   getStarts,
@@ -224,8 +225,13 @@ export function FocusSession() {
 
   // Автостарт из знакомства сразу открывается хореографией старта: раньше до ответа памяти (getActiveSession) на
   // ~0,15 с мелькал экран выбора шага с «Шаг уже выбран» — второй «точно?», которого быть не должно (02.11)
-  const [phase, setPhase] = useState<Phase>(autoStart ? 'starting' : 'setup')
-  const [task, setTask] = useState(prefilledStep)
+  // Идущая сессия — тоже до первого кадра: при обновлении страницы на ~0,1 с мелькал экран выбора шага («Погнали.
+  // Что в фокусе?», шаги, «25 мин»), и только потом — таймер (16.11, покадровая проверка). Фокус рисуется только на
+  // устройстве (см. ниже про useSearchParams), поэтому память доступна уже здесь; эффект восстановления ниже доделывает
+  // остальное (адрес, «Дела», голос) так же, как раньше
+  const [restored] = useState(() => (typeof window === 'undefined' ? null : peekActiveSession()))
+  const [phase, setPhase] = useState<Phase>(restored ? 'running' : autoStart ? 'starting' : 'setup')
+  const [task, setTask] = useState(restored ? restored.task : prefilledStep)
 
   // Имя и число прошлых сессий — тот же экран не должен объяснять
   // механику вечно: на 20-й сессии человек уже знает, что «первый шаг —
@@ -401,12 +407,14 @@ export function FocusSession() {
     setTask(text)
     setEstimate(null)
   }
-  const [minutes, setMinutes] = useState(initialMinutes)
+  const [minutes, setMinutes] = useState(restored ? restored.minutes : initialMinutes)
   // #7 · Default Effect: пока человек сам не тронул длительность, чип 25
   // мин помечен как рекомендованный, а не просто «уже выбранный системой».
   // Как только выбор стал осознанным — метка больше не нужна.
   const [durationTouched, setDurationTouched] = useState(Boolean(prefilledDuration))
-  const [secondsLeft, setSecondsLeft] = useState(0)
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    restored ? Math.max(0, Math.ceil(restored.minutes * 60 - (Date.now() - restored.startedAt) / 1000)) : 0,
+  )
   const [voice, setVoice] = useState(fallbackVoice.start)
   const [doneVoice, setDoneVoice] = useState<string | null>(null)
   const [endedEarly, setEndedEarly] = useState(false)
@@ -526,9 +534,9 @@ export function FocusSession() {
     if (!grownElement) setRestRevealed(true)
   }, [phase, grownElement])
 
-  const totalRef = useRef(0)
-  const startIdRef = useRef<string | null>(null)
-  const startedAtRef = useRef<number>(0)
+  const totalRef = useRef(restored ? restored.minutes * 60 : 0)
+  const startIdRef = useRef<string | null>(restored ? restored.startId : null)
+  const startedAtRef = useRef<number>(restored ? restored.startedAt : 0)
   const firedMomentsRef = useRef<Set<Moment>>(new Set())
 
   const speak = useCallback((moment: Moment, taskLabel: string) => {

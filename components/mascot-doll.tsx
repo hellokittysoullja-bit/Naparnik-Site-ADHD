@@ -285,9 +285,12 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
             <span className="cat-poster-inline" aria-hidden
               style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, pointerEvents: "none" }} />
           ) : null}
+          {/* постер у всех котов один файл: «lazy» ничего не экономил (качается один раз), а откладывал кота до первой
+              раскладки — при обновлении Дома и Фокуса кот пропадал на 2–3 кадра (16.11, покадровая съёмка). decoding="sync" — из кэша
+              постер раскодируется до кадра и стоит вместе со страницей, а не догоняет её */}
           {/* у героя внешний постер идёт обычным приоритетом картинки в кадре: первый кадр уже дал инлайн, а шрифты
               первого экрана вшиты в CSS (app/hero-fonts.css), уступать полосу ему больше некому */}
-          <img ref={posterImg} src={asset("/mascot/poster/neutral.webp")} alt="" draggable={false} loading={inlinePoster ? "eager" : "lazy"} decoding="async"
+          <img ref={posterImg} src={asset("/mascot/poster/neutral.webp")} alt="" draggable={false} loading="eager" decoding="sync"
             onLoad={() => setPosterShown(true)}
             style={{ position: "absolute", left: `${(48 / 1442) * 100}%`, width: `${(1347 / 1442) * 100}%`, top: `${(428 / 1442) * 100}%`, height: "auto", pointerEvents: "none" }} />
         </>

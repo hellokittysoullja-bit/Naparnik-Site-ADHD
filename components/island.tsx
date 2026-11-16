@@ -113,6 +113,16 @@ function svPulse(lo: number, hi: number, dur: number, begin = 0): CSSProperties 
   return { '--lo': lo, '--hi': hi, '--d': `${dur}s`, '--b': `${begin}s` } as CSSProperties
 }
 
+
+/** см. «первый кадр при обновлении» у острова ниже: по числу стартов из <html data-island> */
+const ISLAND_PREPAINT_CSS = [
+  `html:not([data-island="${LANDMARK_COUNT}"]) [data-island-pre] [data-island-haze]{display:none}`,
+  ...Array.from({ length: LANDMARK_COUNT }, (_, k) => {
+    const c = k + 1
+    return `html[data-island="${c}"] [data-island-pre] :is(${Array.from({ length: c }, (_, j) => `[data-island-i="${j}"]`).join(",")}){visibility:hidden}`
+  }),
+].join("")
+
 export function Island() {
   // Мерцание звёзд/воды/ореола редкой находки — CSS (.sv-pulse), не SMIL: SMIL считается в главном потоке и
   // перерисовывает весь остров на каждом шаге (15.11). При «уменьшении движения» класс просто не ставится — как
@@ -259,7 +269,12 @@ export function Island() {
           role="img"
           aria-label={`Остров напарника: ${count} стартов, ${finds.length} находок`}
           className="block w-full"
+          data-island-pre={starts === null ? "" : undefined}
         >
+          {/* первый кадр при обновлении: до чтения памяти силуэты стояли на всех местах, и настоящие постройки потом
+              вырастали поверх «пропавших» силуэтов (бледный остров → пустой → рост, 16.11). Число стартов уже знает
+              скрипт первого кадра (lib/app-prepaint.ts): места, где сейчас вырастет постройка, сразу пустые */}
+          <style>{ISLAND_PREPAINT_CSS}</style>
           <defs>
             {/* Ночное небо: глубина сверху, тёплая дымка у горизонта */}
             <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
@@ -297,7 +312,7 @@ export function Island() {
             />
           ))}
           {/* дымка вокруг луны-ориентира — появляется вместе с ней (10-й старт) */}
-          {count >= LANDMARK_COUNT && <circle cx="320" cy="44" r="42" fill="url(#moonhaze)" />}
+          {(starts === null || count >= LANDMARK_COUNT) && <circle data-island-haze="" cx="320" cy="44" r="42" fill="url(#moonhaze)" />}
 
           {/* вода */}
           <rect x="0" y="158" width="380" height="58" fill="url(#sea)" />
@@ -333,6 +348,7 @@ export function Island() {
           {landmarks.map((landmark, i) => (
             <g
               key={landmark.key}
+              data-island-i={i}
               className={
                 i < count
                   ? `island-grow${i === newLandmarkIndex ? ' island-new-element' : ''}`

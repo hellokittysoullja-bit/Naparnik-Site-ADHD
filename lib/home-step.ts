@@ -10,8 +10,8 @@ export type HomeProfile = { sphere?: string; blocker?: string; motive?: string }
 
 // ---------- строка над кнопкой: «что мешает» × «что изменится первым» (§12, 25 вариантов) ----------
 
-const BLOCKER_KEYS = ['where', 'phone', 'fear', 'boring', 'tired'] as const satisfies readonly Blocker[]
-const MOTIVE_KEYS = ['relief', 'people', 'safety', 'rest', 'proof'] as const satisfies readonly Motive[]
+export const BLOCKER_KEYS = ['where', 'phone', 'fear', 'boring', 'tired'] as const satisfies readonly Blocker[]
+export const MOTIVE_KEYS = ['relief', 'people', 'safety', 'rest', 'proof'] as const satisfies readonly Motive[]
 
 const HINTS: Record<Blocker, Record<Motive, string>> = {
   where: {
