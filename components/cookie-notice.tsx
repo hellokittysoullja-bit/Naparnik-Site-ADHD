@@ -44,7 +44,7 @@ export function CookieNotice() {
           giveCookieConsent()
           setShow(false)
         }}
-        className="h-10 shrink-0 rounded-full bg-white/12 px-6 text-[14px] font-semibold text-foreground"
+        className="h-11 w-full shrink-0 rounded-[14px] bg-white/12 px-6 text-[15px] font-semibold text-foreground"
       >
         Разрешить и закрыть
       </button>
