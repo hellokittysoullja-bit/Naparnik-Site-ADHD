@@ -371,7 +371,7 @@ export function StuckWizard() {
                 </svg>
                 <span role="timer" className="text-5xl font-bold tabular-nums">{left}</span>
               </div>
-              <p className="font-hand text-[22px] text-foreground/85">вдох, и медленно выдох</p>
+              <p className="font-medium text-[16.5px] text-foreground/85">вдох, и медленно выдох</p>
               <button type="button" onClick={() => setStage(2)} className="press mt-auto h-11 text-[14.5px] font-medium text-muted-foreground">
                 Уже можно дальше
               </button>

@@ -50,7 +50,7 @@ export function CatNotebook({
       <div className="mt-4 rounded-xl border border-border bg-card px-3 py-2">
         <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">{copy.cat.notesPage}</p>
         {notes.length > 0 && (
-          <ul className="mt-1 flex flex-wrap gap-x-3 font-hand text-[18px] leading-snug" aria-label={copy.notebook.title}>
+          <ul className="mt-1 flex flex-wrap gap-x-3 font-medium text-[13.5px] leading-snug" aria-label={copy.notebook.title}>
             {notes.map((n, i) => (
               <li key={`${i}-${n}`}>{n}</li>
             ))}

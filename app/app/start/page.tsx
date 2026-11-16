@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 export default function StartPage() {
-  preloadFonts("manrope-700-cyr", "caveat-500-cyr"); // жирный заголовок и рукописный вопрос на первом экране
+  preloadFonts("manrope-700-cyr"); // жирный заголовок на первом экране
   preloadCatPoster(); // кот стоит на первом экране
   // preloadDoll() здесь нет намеренно: экран знакомства рисуется только после кода, и слои кота отнимали у него сеть —
   // главный текст на 3G появлялся на 0,6 с позже (3,4 → 4,1 с, 14.11)

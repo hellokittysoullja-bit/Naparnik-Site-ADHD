@@ -18,7 +18,7 @@ export default function ErrorPage({
       <div className="relative flex flex-col items-center gap-6">
         <MascotSvg expression="sleepy" label="Напарник споткнулся" size={120} />
         <div className="flex flex-col gap-2">
-          <p className="font-hand text-3xl text-foreground">Ой. Я споткнулся.</p>
+          <p className="font-semibold text-2xl text-foreground">Ой. Я споткнулся.</p>
           <p className="text-sm leading-relaxed text-muted-foreground">
             Что-то пошло не так, но твой остров и старты целы. Попробуем ещё раз?
           </p>

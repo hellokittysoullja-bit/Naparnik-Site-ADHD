@@ -958,9 +958,9 @@ export function FocusSession() {
     return (
       <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-4 py-5">
         <h1 className="sr-only">Фокус-сессия: выбери первый шаг</h1>
-        {/* Сцена: существо в центре внимания, а не в углу формы */}
-        <div className="flex flex-1 flex-col items-center justify-center gap-3">
-          <MascotSvg expression="calm" action={busy ? 'think' : 'idle'} label={companionName ?? 'Напарник'} size={brokenSteps ? 120 : 150} />
+        {/* Сцена: реплика сверху, кот под ней — крупный и внизу, прямо над полем (владелец 16.11). Размер от высоты экрана:
+            на 360×640 кнопка старта не уходит под меню */}
+        <div className="flex flex-1 flex-col items-center justify-end gap-1">
           {/* Пузырь стоит на месте, меняется только реплика в нём (16.11, покадровая съёмка): раньше он целиком уходил и
               приходил заново (AnimatePresence mode="wait"), и между репликами ~0,25 с кот был без пузыря */}
           <p className="glass max-w-80 text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed">
@@ -981,6 +981,14 @@ export function FocusSession() {
               </button>
             )}
           </p>
+          <MascotSvg
+            expression="calm"
+            action={busy ? 'think' : 'idle'}
+            label={companionName ?? 'Напарник'}
+            // у куклы над ушами пустое поле рисунка — подтягиваем кота к пузырю; на низком экране кот меньше, чтобы старт не
+            // уходил под меню (360×640)
+            className={brokenSteps ? '-mt-3 size-[clamp(96px,calc(100dvh_-_600px),150px)]' : '-mt-5 size-[clamp(112px,calc(100dvh_-_570px),232px)] [@media(min-height:740px)]:-mt-12'}
+          />
         </div>
         {/* листы появляются в разметке (и в сети) только после первого открытия */}
         {sheetsUsed.templates && <TemplatesSheet open={templatesOpen} onClose={() => setTemplatesOpen(false)} onPick={applyTemplate} />}
