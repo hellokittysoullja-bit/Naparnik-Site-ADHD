@@ -22,7 +22,7 @@ describe('готовые разбивки goblin.tools (дословно, вла
   })
   it('breakdown отдаёт готовый план без модели', async () => {
     const r = await breakdown({ task: 'Вынести мусор' })
-    expect(r).toEqual({ kind: 'steps', steps: [...GOBLIN_PLANS['Вынести мусор']], source: 'library' })
+    expect(r).toEqual({ kind: 'steps', steps: [...GOBLIN_PLANS['Вынести мусор']], source: 'library', title: 'Вынести мусор' })
   })
   it('наш шаблон из «Дел» (у гоблина такого дела нет) — тоже сразу, с минутами и «пока ждёшь»', async () => {
     const r = await breakdown({ task: 'убрать ванную' })
