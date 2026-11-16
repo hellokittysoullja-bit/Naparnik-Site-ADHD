@@ -288,7 +288,7 @@ test('знакомство: шрифты карточки договора за�
   await page.waitForTimeout(1500)
   const ok = await page.evaluate(() => {
     const mono = getComputedStyle(document.documentElement).getPropertyValue('--font-jetbrains-mono').split(',')[0].trim()
-    return document.fonts.check(`600 11px ${mono}`, 'Твои') && document.fonts.check('400 19px Caveat', 'Тогда')
+    return document.fonts.check(`600 11px ${mono}`, 'Твои')
   })
   expect(ok).toBe(true)
 })

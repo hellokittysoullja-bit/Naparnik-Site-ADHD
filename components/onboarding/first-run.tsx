@@ -352,7 +352,6 @@ export function FirstRun() {
     const mono = getComputedStyle(document.documentElement).getPropertyValue('--font-jetbrains-mono').split(',')[0].trim()
     const sample = 'Твои первые минуты'
     if (mono) void fonts.load(`600 11px ${mono}`, sample).catch(() => {})
-    void fonts.load('400 19px Caveat', sample).catch(() => {})
   }, [])
   // экран старта загружаем заранее, пока человек читает договор: переход после удержания не ждёт сеть
   useEffect(() => {
@@ -989,7 +988,7 @@ export function CatAsks({
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.16 }}
             aria-live="polite"
-            className="font-hand text-[21px] font-medium leading-snug text-secondary-foreground"
+            className="text-[16px] font-medium leading-snug text-secondary-foreground"
           >
             <EmphasisText text={line} />
           </motion.p>
@@ -1141,7 +1140,7 @@ function PlanCard({ state, step }: { state: OnboardingState; step: string }) {
       </ul>
       {plan.future && (
         <p className="mt-3.5 border-t border-white/10 pt-3 text-[15px] leading-snug [@media(max-height:700px)]:mt-2.5 [@media(max-height:700px)]:pt-2">
-          <span className="font-semibold">Ты через 7 дней:</span> <span className="font-hand text-[19px]">«{plan.future}»</span>
+          <span className="font-semibold">Ты через 7 дней:</span> <span className="text-[14.5px]">«{plan.future}»</span>
         </p>
       )}
     </div>
@@ -1181,7 +1180,7 @@ function Commit({ label, ifThen, answers }: { label: string; ifThen: string | nu
         <p className="mt-2 line-clamp-3 break-words text-balance text-[clamp(24px,4.4dvh,32px)] font-bold leading-[1.1] tracking-tight">
           {label}
         </p>
-        {ifThen && <p className="mt-3 font-hand text-[19px] leading-snug text-secondary-foreground">{ifThen}</p>}
+        {ifThen && <p className="mt-3 font-medium text-[14.5px] leading-snug text-secondary-foreground">{ifThen}</p>}
         <ul className="mt-4 flex flex-col gap-2 text-left [@media(max-height:700px)]:hidden">
           {promises.map((p, i) => (
             // светлее muted: под карточкой ночной горизонт лендинга светлее фона приложения (на 1280×720 было 4,1:1)

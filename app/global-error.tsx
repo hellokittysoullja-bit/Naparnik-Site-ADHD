@@ -13,7 +13,7 @@ export default function GlobalError({ reset }: { error: Error & { digest?: strin
       <body className="antialiased font-sans">
         <main className="flex min-h-svh flex-col items-center justify-center gap-6 px-6 text-center">
           <div className="flex flex-col gap-2">
-            <p className="font-hand text-3xl text-foreground">Ой. Я споткнулся.</p>
+            <p className="font-semibold text-2xl text-foreground">Ой. Я споткнулся.</p>
             <p className="text-sm leading-relaxed text-muted-foreground">
               Что-то пошло не так, но твой остров и старты целы. Попробуем ещё раз?
             </p>

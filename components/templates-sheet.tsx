@@ -11,7 +11,7 @@ import { TEMPLATE_GROUPS, type Template } from '@/lib/templates'
  */
 export function TemplatesSheet({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: (t: Template) => void }) {
   return (
-    <Sheet open={open} onClose={onClose} title="Готовые дела" caption="Уже разломаны на шаги. Выбери дело, и первый шаг встанет на экран.">
+    <Sheet open={open} onClose={onClose} title="Готовые шаги" caption="Уже разломаны на шаги. Выбери дело, и первый шаг встанет на экран.">
       <div className="flex flex-col gap-4 pt-1">
         {TEMPLATE_GROUPS.map((g) => (
           <section key={g.key}>

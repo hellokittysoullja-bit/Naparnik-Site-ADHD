@@ -409,7 +409,7 @@ export function Island() {
       {lore && (
         <p
           aria-live="polite"
-          className="rounded-2xl bg-secondary px-4 py-2 text-center font-hand text-lg leading-snug"
+          className="rounded-2xl bg-secondary px-4 py-2 text-center font-medium text-[14px] leading-snug"
         >
           {lore}
         </p>

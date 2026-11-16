@@ -549,7 +549,7 @@ export function HomeScreen() {
       if (el) setGreetingOverflows(el.scrollHeight - el.clientHeight > 2);
     };
     measure();
-    // Рукописный Caveat на момент коммита мог ещё не примениться — высота
+    // Шрифт на момент коммита мог ещё не примениться — высота
     // была бы посчитана по подменному шрифту.
     let cancelled = false;
     document.fonts?.ready

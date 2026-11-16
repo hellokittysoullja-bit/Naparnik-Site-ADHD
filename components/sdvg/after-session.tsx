@@ -124,7 +124,7 @@ export function AfterSession() {
             {/* кнопка-обещание вместо «Дальше»; после неё — бронь в календарь, если выбрано время */}
             {agreed ? (
               <div className="flex flex-col gap-2">
-                <p className="font-hand text-[20px]" role="status">
+                <p className="font-medium text-[15px]" role="status">
                   {copy.after.agreed}
                 </p>
                 {/^\d{1,2}:\d{2}$/.test(chosenTime ?? '') && (

@@ -41,8 +41,8 @@ test('дробление без вопроса про силы: шаги сра�
 test('готовое дело: шаги появляются без запроса к ИИ, первый шаг на минуту, есть шаг «пока ждёшь»', async ({ page }) => {
   const seen = await mockAi(page)
   await page.goto('/app/session')
-  await page.getByRole('button', { name: 'Готовые дела' }).click()
-  const sheet = page.getByRole('dialog', { name: 'Готовые дела' })
+  await page.getByRole('button', { name: 'Готовые шаги' }).click()
+  const sheet = page.getByRole('dialog', { name: 'Готовые шаги' })
   await expect(sheet).toBeVisible()
   // лист поверх нижнего меню: в точке над нижним краем экрана — лист, а не меню
   const top = await page.evaluate(() => document.elementFromPoint(innerWidth / 2, innerHeight - 30)?.closest('[role="dialog"], nav')?.tagName)

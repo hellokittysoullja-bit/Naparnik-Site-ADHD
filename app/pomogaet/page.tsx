@@ -11,6 +11,6 @@ export const metadata: Metadata = {
 }
 
 export default function Page() {
-  preloadFonts('manrope-700-cyr', 'caveat-400-cyr')
+  preloadFonts('manrope-700-cyr')
   return <PainsPage />
 }

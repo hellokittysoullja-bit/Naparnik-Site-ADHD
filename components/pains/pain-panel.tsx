@@ -10,7 +10,7 @@ export function PainPanel({ pain, headingLevel = 2 }: { pain: Pain; headingLevel
     <article className="grid gap-6 md:grid-cols-[1fr_300px] md:items-start md:gap-10" style={{ ['--hue' as string]: pain.hue }}>
       <div>
         <H className="text-balance text-[26px] font-bold leading-[1.15] tracking-[-0.02em] md:text-[34px]">{pain.title}</H>
-        <p className="mt-3 font-hand text-[23px] leading-[1.25] text-[oklch(0.9_0.06_var(--hue))] md:text-[26px]">«{pain.lead}»</p>
+        <p className="mt-3 font-medium text-[17.5px] leading-[1.25] text-[oklch(0.9_0.06_var(--hue))] md:text-[20px]">«{pain.lead}»</p>
         <ul className="mt-5 flex flex-col gap-2.5">
           {pain.helps.map((h) => (
             <li key={h.name} className="deal-card flex gap-3 rounded-[18px] p-3.5">

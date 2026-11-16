@@ -28,9 +28,9 @@ const need = {
 };
 need["Manrope|700"] = need["Manrope|500"];
 const greet = (hero.match(/"(Привет[^"]*)"/) || [])[1];
-const note = (hero.match(/font-hand[^>]*>\s*([^<]+)<br\s*\/>\s*([^<]+)<\/p>/s) || []).slice(1, 3).join("");
-if (!greet || !note) throw new Error("check.mjs: не нашёл строки рукописи в hero.tsx — поправить извлечение и в build.py");
-need["Caveat|500"] = [...new Set([...(greet + note.replace(/&nbsp;/g, " ")), ...PUNCT])];
+// рукопись первого экрана — только приветствие (владелец 16.11: остальной рукописный шрифт убран из продукта)
+if (!greet) throw new Error("check.mjs: не нашёл приветствие в hero.tsx — поправить извлечение и в build.py");
+need["Caveat|500"] = [...new Set([...greet, ...PUNCT])];
 let bad = [];
 for (const [k, chars] of Object.entries(need)) {
   const [fam, w] = k.split("|");

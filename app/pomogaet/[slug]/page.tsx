@@ -21,6 +21,6 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   const { slug } = await params
   const pain = PAINS.find((p) => p.slug === slug)
   if (!pain) notFound()
-  preloadFonts('manrope-700-cyr', 'caveat-400-cyr')
+  preloadFonts('manrope-700-cyr')
   return <PainsPage only={pain} />
 }

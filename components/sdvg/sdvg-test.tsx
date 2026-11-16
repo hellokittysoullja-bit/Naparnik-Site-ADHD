@@ -249,7 +249,7 @@ export function SdvgTest() {
           <p className="mt-1 text-[20px] font-bold leading-snug">{copy.entry.question}</p>
           <p className="mt-4 text-[15px] leading-relaxed text-muted-foreground">{copy.entry.subtitle}</p>
           {/* на низких экранах (≤ 700 px) рукописная строка и пункт скрыты: иначе главная кнопка уходит под сгиб */}
-          <p className="mt-3 font-hand text-[20px] leading-snug [@media(max-height:700px)]:hidden">{copy.cat.intro}</p>
+          <p className="mt-3 font-medium text-[15px] leading-snug [@media(max-height:700px)]:hidden">{copy.cat.intro}</p>
           <ul className="mt-3 flex flex-col gap-1.5 text-[15px] [@media(max-height:700px)]:hidden">
             {copy.entry.points.map((p) => (
               <li key={p}>· {p}</li>
@@ -301,7 +301,7 @@ export function SdvgTest() {
       {step === 'pre' && (
         <Page foot={<Primary onClick={() => go({})}>{copy.preAsrs.button}</Primary>}>
           <Head cat={cat}>
-            <p className="rounded-2xl bg-card px-3 py-2 font-hand text-[18px] leading-snug">{copy.cat.pre}</p>
+            <p className="rounded-2xl bg-card px-3 py-2 font-medium text-[13.5px] leading-snug">{copy.cat.pre}</p>
           </Head>
           <p className="text-[17px] leading-relaxed">{copy.preAsrs.text}</p>
           <p className="text-[15px] leading-relaxed text-muted-foreground">{asrs.instruction}</p>
@@ -332,7 +332,7 @@ export function SdvgTest() {
         <Page foot={<Primary onClick={() => go({})}>{copy.separator.button}</Primary>}>
           <CatNotebook mode="tear" scribbles={state.asrs.length} />
           <Head cat={cat}>
-            <p className="font-hand text-[18px] leading-snug">
+            <p className="font-medium text-[13.5px] leading-snug">
               {copy.cat.sep} {copy.cat.sepSelf}
             </p>
           </Head>
@@ -411,7 +411,7 @@ export function SdvgTest() {
       {step === 'calc' && (
         <Screen>
           <Head cat={cat}>
-            <p className="font-hand text-[20px]">{copy.cat.calcTitle}</p>
+            <p className="font-medium text-[15px]">{copy.cat.calcTitle}</p>
           </Head>
           <ul className="flex flex-col gap-3 text-[17px]" aria-live="polite">
             {copy.calc.map((line, i) => (
@@ -523,7 +523,7 @@ function Result({
               </li>
             ))}
           </ul>
-          <ul className="flex flex-col gap-1 font-hand text-[20px] leading-snug">
+          <ul className="flex flex-col gap-1 font-medium text-[15px] leading-snug">
             {page.notes.map((note, i) => (
               <li key={`${i}-${note}`}>«{note}»</li>
             ))}
@@ -556,7 +556,7 @@ function Result({
             </div>
           )}
           {verdict === 'yes' && (
-            <p className="font-hand text-[20px]" role="status">
+            <p className="font-medium text-[15px]" role="status">
               {copy.notebook.yesDone}
             </p>
           )}
@@ -573,7 +573,7 @@ function Result({
                   }}
                 >
                   <span className="block font-semibold">{copy.types[x].title}</span>
-                  {second && <span className="block font-hand text-[18px]">«{quoteOf(x)}»</span>}
+                  {second && <span className="block font-medium text-[13.5px]">«{quoteOf(x)}»</span>}
                   <span className="block text-sm text-muted-foreground">{copy.types[x].mechanism}</span>
                 </Choice>
               ))}
@@ -632,7 +632,7 @@ function Result({
 
       <div className="flex flex-col gap-2">
         {/* самоубеждение: довод должен назвать сам человек, поэтому вопрос — с ответом, а не риторический */}
-        <p className="text-center font-hand text-[20px] leading-snug">{copy.cta.ask}</p>
+        <p className="text-center font-medium text-[15px] leading-snug">{copy.cta.ask}</p>
         {askPick === null ? (
           <div className="flex flex-wrap justify-center gap-2" role="radiogroup" aria-label={copy.cta.ask}>
             {copy.cta.askOptions.map((o, i) => (

@@ -174,7 +174,7 @@ export function AfterFirst() {
               />
             ))}
           {stage === 'how' && f && (
-            <p className="px-1 font-hand text-[21px] leading-snug text-secondary-foreground">Ты — человек, который начинает.</p>
+            <p className="px-1 font-medium text-[16px] leading-snug text-secondary-foreground">Ты — человек, который начинает.</p>
           )}
           {stage === 'save' && (
             <>

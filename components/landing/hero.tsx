@@ -645,7 +645,7 @@ export function Hero({ headline = DEFAULT_HEADLINE }: { headline?: EntryHeadline
                 больше не рвёт поток по центру и не тычет стрелкой в лес. */}
             <div className="flex flex-col items-start gap-3 pt-0.5 min-[360px]:flex-row min-[360px]:items-start">
               <div
-                className="flex min-w-0 flex-1 items-start gap-1.5 pl-1"
+                className="flex min-w-0 flex-1 items-start gap-1 pl-0.5 min-[380px]:flex-none min-[380px]:shrink-0"
                 style={{ color: "oklch(0.85 0.15 88 / 0.85)" }}
               >
                 <svg
@@ -668,7 +668,7 @@ export function Hero({ headline = DEFAULT_HEADLINE }: { headline?: EntryHeadline
                     strokeLinejoin="round"
                   />
                 </svg>
-                <p className="-rotate-2 text-left font-hand text-base font-medium leading-tight">
+                <p className="-rotate-2 text-left text-[12px] font-medium leading-tight min-[380px]:whitespace-nowrap">
                   даже если ты
                   <br />
                   пропал на&nbsp;неделю

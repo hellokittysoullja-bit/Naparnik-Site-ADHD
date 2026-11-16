@@ -64,10 +64,9 @@ def cut(font, unicodes=None, text=None):
 def hero_chars(fam):
     src = open(os.path.join(ROOT, "components", "landing", "hero.tsx"), encoding="utf-8").read()
     if fam == "Caveat":
-        # рукопись на первом экране — две фиксированные строки: приветствие (константа) и подпись-стрелка
-        parts = re.findall(r'"(Привет[^"]*)"', src) + re.findall(r'font-hand[^>]*>\s*([^<]+)<br\s*/>\s*([^<]+)</p>', src, re.S)
-        text = "".join("".join(p) if isinstance(p, tuple) else p for p in parts).replace("&nbsp;", " ")
-        assert "Напарник" in text and "неделю" in text, "не нашёл строки рукописи в hero.tsx"
+        # рукопись на первом экране — приветствие (константа); остальной рукописный шрифт владелец убрал 16.11
+        text = "".join(re.findall(r'"(Привет[^"]*)"', src))
+        assert "Напарник" in text, "не нашёл приветствие в hero.tsx"
         return "".join(sorted(set(text) | set(PUNCT)))
     # заголовки лендинга под ролики (content/entry-variants.ts) рисуются тем же Manrope 700 первого экрана
     src += open(os.path.join(ROOT, "content", "entry-variants.ts"), encoding="utf-8").read()
