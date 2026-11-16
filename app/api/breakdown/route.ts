@@ -5,7 +5,7 @@ import { ClientSnapshotMemory } from '@/lib/ai/memory/provider'
 import { handle, rateLimit, readJsonBody, sameOrigin } from '@/lib/api-guard'
 
 /**
- * «Раздроби мне задачу» — веб-адаптер задачи lib/ai/agents/breakdown.ts. Зовут Фокус («Раздроби») и знакомство
+ * Разбивка дела на шаги до конца — веб-адаптер задачи lib/ai/agents/breakdown.ts. Зовут Фокус («Раздроби») и знакомство
  * («Подскажи» со своим делом, lib/ai-client.ts) — у знакомства есть контекст: сфера и помеха (подписи ответов).
  */
 export const maxDuration = 15
@@ -23,6 +23,10 @@ const Body = z.object({
   // «сколько сил сейчас» и размер шагов — только ключи; подписи для модели подставляет сервер
   energy: z.enum(['low', 'mid', 'high']).optional().catch(undefined),
   fineness: z.enum(['fine', 'normal', 'coarse']).optional().catch(undefined),
+  // «Ещё мельче» для одного шага: всё дело и соседние шаги, чтобы подшаги были внутри дела и не повторяли план
+  // (у гоблина цепочка родителей — главное, что делает глубокое дробление осмысленным). Странное поле — без него
+  parent: z.string().trim().max(120).optional().catch(undefined),
+  siblings: z.array(z.string().trim().max(120)).max(12).optional().catch(undefined),
 })
 
 const ENERGY = { low: 'мало', mid: 'средне', high: 'много' } as const
@@ -33,17 +37,23 @@ export const POST = handle(async (req) => {
   rateLimit(req, 'breakdown', 10)
   const parsed = Body.safeParse(await readJsonBody(req, MAX_BODY))
   if (!parsed.success) return Response.json({ steps: null }, { status: 400 })
-  const { task, context, memory, energy, fineness } = parsed.data
-  const extra = { 'Силы сейчас': energy ? ENERGY[energy] : undefined, 'Размер шагов': fineness ? FINENESS[fineness] : undefined }
+  const { task, context, memory, energy, fineness, parent, siblings } = parsed.data
+  const extra = {
+    'Это часть дела': parent || undefined,
+    'Соседние шаги': parent && siblings?.length ? siblings.filter(Boolean).join('; ') : undefined,
+    'Силы сейчас': energy ? ENERGY[energy] : undefined,
+    'Размер шагов': fineness ? FINENESS[fineness] : undefined,
+  }
+  const hasExtra = Object.values(extra).some(Boolean)
   const r = await breakdown({
     task,
     memory: new ClientSnapshotMemory(memory),
-    context: context ? { Сфера: context.sphere, 'Что мешает': context.blocker, ...extra } : energy || fineness ? extra : undefined,
+    context: context ? { Сфера: context.sphere, 'Что мешает': context.blocker, ...extra } : hasExtra ? extra : undefined,
     ctx: newTurn({ task: context ? 'onboarding-first-step' : 'breakdown' }),
     signal: req.signal,
   })
   if (r.kind === 'care') return Response.json({ steps: null, reply: r.reply })
   // дело не понято (набор букв): экран просит написать словами, а не показывает общие шаги
   if (r.kind === 'unclear') return Response.json({ steps: null, unclear: true })
-  return Response.json({ steps: r.steps, minutes: r.minutes, source: r.source })
+  return Response.json({ steps: r.steps, minutes: r.minutes, wait: r.wait, source: r.source })
 })

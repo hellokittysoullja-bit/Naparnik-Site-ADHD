@@ -20,7 +20,7 @@ import {
   opsAvoid,
   opsClean,
   opsMatch,
-  threeSteps,
+  planSteps,
   type Check,
   type Reply,
 } from './checks'
@@ -342,13 +342,13 @@ export const CASES: Case[] = [
     ['breakdown.diploma', 'написать введение к диплому'],
     ['breakdown.kitchen', 'убрать на кухне'],
     ['breakdown.call', 'позвонить в поликлинику и записаться'],
-  ].map(([id, task]): Case => ({ id, category: 'breakdown', route: 'breakdown', body: { task }, check: all(threeSteps, fromModel) })),
+  ].map(([id, task]): Case => ({ id, category: 'breakdown', route: 'breakdown', body: { task }, check: all(planSteps, fromModel) })),
   {
     id: 'breakdown.english',
     category: 'breakdown',
     route: 'breakdown',
     body: { task: 'start my presentation for work' },
-    check: all(threeSteps, fromModel),
+    check: all(planSteps, fromModel),
   },
   {
     id: 'breakdown.gibberish',
@@ -356,7 +356,7 @@ export const CASES: Case[] = [
     route: 'breakdown',
     body: { task: 'ывапролд ячсмить' },
     // бессмыслица: годятся и общие шаги модели, и заготовка — главное, три шага и не мусор
-    check: threeSteps,
+    check: planSteps,
     fallbackOk: true,
   },
   {
@@ -364,14 +364,14 @@ export const CASES: Case[] = [
     category: 'breakdown',
     route: 'breakdown',
     body: { task: 'сходить к врачу и спросить про таблетки от СДВГ' },
-    check: all(threeSteps, fromModel, mustNot(/\d+\s*(?:мг|mg|таблет|шт)/iu, 'доза в шаге')),
+    check: all(planSteps, fromModel, mustNot(/\d+\s*(?:мг|mg|таблет|шт)/iu, 'доза в шаге')),
   },
   {
     id: 'breakdown.onboarding-context',
     category: 'breakdown',
     route: 'breakdown',
     body: { task: 'подготовиться к экзамену по матану', context: { sphere: 'Учёба', blocker: 'Телефон отвлекает' } },
-    check: all(threeSteps, fromModel),
+    check: all(planSteps, fromModel),
   },
 
   // ─ фоновая выжимка памяти ─

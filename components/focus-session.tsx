@@ -323,14 +323,23 @@ export function FocusSession() {
       const res = await fetch('/api/breakdown', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: target, memory: memoryForTask(), energy: e ?? undefined, fineness: finer ? 'fine' : fineness === 'normal' ? undefined : fineness }),
+        body: JSON.stringify({
+          task: target,
+          memory: memoryForTask(),
+          energy: e ?? undefined,
+          fineness: finer ? 'fine' : fineness === 'normal' ? undefined : fineness,
+          // шаг дробится внутри своего дела: модель видит дело целиком и не повторяет соседние шаги
+          ...(finer && dealTitle && dealTitle !== target
+            ? { parent: dealTitle, siblings: (brokenSteps ?? []).map((b) => b.text).filter((t) => t !== target).slice(0, 12) }
+            : {}),
+        }),
       })
       if (res.ok) {
-        const data = (await res.json()) as { steps: string[] | null; minutes?: (number | null)[]; reply?: string; source?: string; unclear?: boolean }
+        const data = (await res.json()) as { steps: string[] | null; minutes?: (number | null)[]; wait?: boolean[]; reply?: string; source?: string; unclear?: boolean }
         if (data.reply) setCareReply(data.reply)
         else if (data.unclear) setBreakNote(BREAK_UNCLEAR)
         else if (data.steps && data.steps.length) {
-          const fresh: BStep[] = data.steps.map((t, i) => ({ text: t, minutes: data.minutes?.[i] ?? undefined }))
+          const fresh: BStep[] = data.steps.map((t, i) => ({ text: t, minutes: data.minutes?.[i] ?? undefined, ...(data.wait?.[i] ? { wait: true } : {}) }))
           const title = finer && dealTitle ? dealTitle : target
           let list = fresh
           if (finer && brokenSteps) {

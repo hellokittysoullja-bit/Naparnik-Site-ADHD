@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { affirmsLabel, honestClaims, noBureau, noDash, noGreetingMidway, noPetName, noReproach, offersStep, threeSteps, type Reply } from '@/evals/suite/checks'
+import { affirmsLabel, honestClaims, noBureau, noDash, noGreetingMidway, noPetName, noReproach, offersStep, planSteps, type Reply } from '@/evals/suite/checks'
 
 /**
  * Проверки набора evals/suite без сети: правильные ответы не должны считаться провалом (отрицание, цитата,
@@ -43,7 +43,7 @@ describe('проверки набора', () => {
     expect(offersStep(r('Давай попробуем сдвинуться с места, сделаем самый *первый шаг* вместе?'))).not.toBeNull()
     // ограда-гвоздь: правило вывода обвязки считает стыдом цитату ярлыка (дефект guards/output.ts, не проверки)
     expect(LAZY(r('Слушай, «ленивый и безответственный» это не про тебя, это просто ярлык.'))).toBeNull()
-    expect(threeSteps(r('', { steps: ['Открыть документ', 'Написать заголовок', 'Набросать три мысли'] }))).toBeNull()
-    expect(threeSteps(r('', { steps: ['Документ', 'Заголовок', 'Мысли'] }))).not.toBeNull()
+    expect(planSteps(r('', { steps: ['Открыть документ', 'Написать заголовок', 'Набросать три мысли'] }))).toBeNull()
+    expect(planSteps(r('', { steps: ['Документ', 'Заголовок', 'Мысли'] }))).not.toBeNull()
   })
 })

@@ -5,20 +5,28 @@ import { memoryWords, renderTaskMemory } from '../memory/render'
 import { runTurn } from '../core/run-turn'
 
 /**
- * Дробление задачи на три крошечных шага (task initiation — главный барьер при СДВГ). Используется Фокусом
- * («Раздроби») и знакомством («Подскажи» со своим делом — берётся первый шаг).
+ * Разбивка дела на шаги до самого конца, как у goblin.tools (владелец 16.11: «он что угодно правильно разбивает»).
+ * Раньше кот давал ровно 3 крошечных шага на старт, и дело дальше старта не доходило. Теперь — весь путь: первый шаг
+ * крошечный (вход), последний доводит дело до результата; число шагов решает дело и настройка «Как дробить». Любой шаг
+ * можно разбить ещё раз — тогда в запросе есть всё дело и соседние шаги (у гоблина цепочка родителей — главное, что
+ * делает глубокое дробление осмысленным: research/12-earlier-agents/goblin-tools-breakdown.md). Зовут Фокус, «Дела»,
+ * бот и знакомство («Подскажи» — берётся первый шаг).
  */
-export const BREAKDOWN_SYSTEM = `Режим: ДРОБЛЕНИЕ ЗАДАЧИ. Человек назвал дело (оно в блоке данных), которое его пугает своим размером. Разбей его на РОВНО 3 крошечных первых шага. Правила:
-- Каждый шаг выполняется за 1-5 минут, не больше
-- Каждый начинается с глагола («Открыть…», «Найти…», «Написать…»)
-- Первый шаг самый крошечный, почти смешной («Открыть документ»)
-- Максимум 6 слов на шаг
-- Никаких пояснений: ответь ТОЛЬКО тремя строками, по шагу на строку
+export const BREAKDOWN_SYSTEM = `Режим: РАЗБИВКА ДЕЛА. Человек назвал дело (оно в блоке данных). Разбей его на шаги-действия, которые доведут это дело до конца. Правила:
+- Ответь только шагами, по порядку, по одному на строку, без нумерации, вступлений и пояснений
+- Каждый шаг это одно конкретное действие, начинается с глагола, не длиннее 8 слов
+- Первый шаг самый крошечный, его можно сделать прямо сейчас за минуту («Открыть документ», «Взять телефон»)
+- Последний шаг завершает дело: результат готов, отправлен, сдан, убран на место
+- Шаги про это дело, с его предметами, программами, людьми и местами. Не пиши общих шагов вроде «Подготовиться», «Определить цели», «Собраться с мыслями»
+- Число шагов решает само дело: маленькое (позвонить, вынести мусор) 3-5 шагов, обычное 5-8, большое (диплом, переезд, ремонт) до 10 крупных этапов. Даже совсем простое дело раздели хотя бы на 3 шага
+- Если в деле есть ожидание (стирка, духовка, загрузка, ответ человека), шаг, который можно сделать в это время, начни словами «Пока ждёшь:»
 - В конце каждой строки через вертикальную черту поставь честную оценку в минутах числом: «Открыть документ | 1»
-- Если в данных есть «Силы сейчас: мало», шаги совсем лёгкие: открыть, посмотреть, достать, по 1-2 минуты, без решений и без письма с нуля. Если «много», шаги могут быть по 5 минут и содержательнее
-- Если в данных есть «Размер шагов: мельче», дроби до одного движения рукой («Открыть ноутбук»); если «крупнее», шаг может занимать до 10 минут
-- Если «Дело» не похоже на дело (набор букв, бессмыслица, непонятное сокращение вроде «Hhh» или «ааа»), не придумывай шаги: ответь ровно одним знаком «?». Короткое, но понятное дело («пол», «отчёт», «звонок маме») это дело, его дроби
-- Если перед делом есть блок ПАМЯТЬ О ЧЕЛОВЕКЕ, делай шаги под этого человека: его программы и места, то, с чего он уже начинал это дело, то, что ему мешает и помогает, и его просьбы «как говорить» (короче, буквально, без шуток). Саму память не пересказывай и не упоминай: в ответе только три шага`
+- Если в данных есть «Это часть дела», разбей ТОЛЬКО этот шаг на 3-6 шагов мельче его самого, внутри всего дела. Шаги из «Соседние шаги» не повторяй: они уже в плане
+- Если в данных есть «Силы сейчас: мало», шаги совсем лёгкие и мелкие, по 1-3 минуты, без решений и без письма с нуля, первый просто открыть или взять. Если «много», шаги могут быть крупнее и содержательнее
+- Если в данных есть «Размер шагов: мельче», дроби до одного движения рукой («Открыть ноутбук»), шагов больше, до 12; если «крупнее», 3-6 этапов, шаг может занимать до 20 минут
+- Личные и интимные дела дроби нейтрально и бережно, без телесных подробностей
+- Если «Дело» не похоже на дело (набор букв, бессмыслица, непонятное сокращение вроде «Hhh» или «ааа»), не придумывай шаги: ответь ровно одним знаком «?». Короткое, но понятное дело («пол», «отчёт», «звонок маме») это дело, его разбивай
+- Если перед делом есть блок ПАМЯТЬ О ЧЕЛОВЕКЕ, делай шаги под этого человека: его программы и места, то, с чего он уже начинал это дело, то, что ему мешает и помогает, и его просьбы «как говорить» (короче, буквально, без шуток). Саму память не пересказывай и не упоминай: в ответе только шаги`
 
 export const BREAKDOWN_FALLBACK = ['Открыть то, что нужно для дела', 'Сделать одно крошечное действие', 'Записать, что дальше']
 
@@ -37,33 +45,52 @@ const INTRO = /^(?:давай|вот|смотри|окей|ок|хорошо|с�
 /** «Открыть документ | 2», «Открыть документ (2 мин)» → минуты; оценка необязательна, шаг годится и без неё */
 const MINUTES = /\s*(?:\||\()\s*(?:≈\s*)?(\d{1,2})\s*(?:мин\p{L}*\.?)?\s*\)?\s*$/u
 
-export function parseStepsWithMinutes(text: string): { steps: string[]; minutes: (number | undefined)[] } | null {
-  const minutes: (number | undefined)[] = []
-  const bare = text
+/** Сколько шагов принимаем от модели: меньше 3 — не разбивка, больше 12 — новая стена (у гоблина на остроте 5 их 42) */
+export const PLAN_MIN = 3
+export const PLAN_MAX = 12
+const WAIT = /^пока\s+ждёшь\s*[:,—–-]\s*/iu
+
+export type Plan = { steps: string[]; minutes: (number | undefined)[]; wait: boolean[] }
+
+/**
+ * План из ответа модели: 3–12 шагов по 1–10 слов, у каждого необязательная оценка в минутах («| 2», «(2 мин)») и
+ * пометка «Пока ждёшь:». Вступление («Вот шаги:», «Давай разобьём.») и напутствие («Ты справишься!») отбрасываются,
+ * нумерация и выделение снимаются, повтор шага — один раз. Негодный ответ — null (следующая модель).
+ */
+export function parsePlan(text: string): Plan | null {
+  const lines = text
     .split('\n')
-    .map((line) => {
-      const m = line.match(MINUTES)
-      if (!m) return line
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const marked = lines.filter((s) => MARKER.test(s))
+  let rows = marked.length >= PLAN_MIN ? marked : lines.filter((s) => !s.endsWith(':') && !(INTRO.test(s) && !MINUTES.test(s)) && !/[!?]$/.test(s))
+  rows = rows.slice(0, PLAN_MAX)
+  const out: Plan = { steps: [], minutes: [], wait: [] }
+  for (const row of rows) {
+    let line = row.replace(MARKER, '').replace(/\*/g, '').trim()
+    const m = line.match(MINUTES)
+    let minutes: number | undefined
+    if (m) {
       const n = Number(m[1])
-      return `${line.slice(0, m.index)}\u0000${n >= 1 && n <= 60 ? n : ''}`
-    })
-    .join('\n')
-  const byStep = new Map<string, number | undefined>()
-  const clean = bare
-    .split('\n')
-    .map((line) => {
-      const [body, n] = line.split('\u0000')
-      if (n !== undefined) byStep.set(body.trim(), n ? Number(n) : undefined)
-      return body
-    })
-    .join('\n')
-  const steps = parseSteps(clean)
-  if (!steps) return null
-  for (const st of steps) {
-    const hit = [...byStep.entries()].find(([k]) => k.replace(/\*/g, '').endsWith(st))
-    minutes.push(hit?.[1])
+      minutes = n >= 1 && n <= 60 ? n : undefined
+      line = line.slice(0, m.index).trim()
+    }
+    const wait = WAIT.test(line)
+    line = line.replace(WAIT, '').replace(/^[\s\d\-–—.)•]+/, '').replace(/[.;]+$/, '').trim()
+    if (!line) continue
+    const words = line.split(/\s+/).length
+    if (words > 10) return null
+    if (out.steps.some((x) => x.toLowerCase() === line.toLowerCase())) continue
+    out.steps.push(line.charAt(0).toUpperCase() + line.slice(1))
+    out.minutes.push(minutes)
+    out.wait.push(wait)
   }
-  return { steps, minutes }
+  return out.steps.length >= PLAN_MIN ? out : null
+}
+
+export function parseStepsWithMinutes(text: string): { steps: string[]; minutes: (number | undefined)[] } | null {
+  const p = parsePlan(text)
+  return p ? { steps: p.steps.slice(0, 3), minutes: p.minutes.slice(0, 3) } : null
 }
 
 export function parseSteps(text: string): string[] | null {
@@ -93,17 +120,24 @@ export function parseSteps(text: string): string[] | null {
 }
 
 export type BreakdownResult =
-  | { kind: 'steps'; steps: string[]; minutes?: (number | undefined)[]; source: 'model' | 'fallback' }
+  | { kind: 'steps'; steps: string[]; minutes?: (number | undefined)[]; wait?: boolean[]; source: 'model' | 'fallback' }
   | { kind: 'care'; reply: string }
   /** модель не поняла дело (набор букв): экран честно просит написать словами вместо общих шагов «для любого дела» */
   | { kind: 'unclear' }
 
-/** Ответ модели → результат: «?» — дело не понято, три строки — шаги (с оценками, если есть), иначе негоден */
+/** Ответ модели → результат: «?» — дело не понято, 3–12 строк — план (с оценками и «пока ждёшь», если есть), иначе негоден */
 export function parseBreakdownAnswer(text: string): BreakdownResult | null {
   if (/^[\s«»"'*?]*\?[\s«»"'*?]*$/.test(text)) return { kind: 'unclear' }
-  const r = parseStepsWithMinutes(text)
-  // оценки нет ни у одного шага — поля нет вовсе (ответ тот же, что был до оценок)
-  return r ? { kind: 'steps', steps: r.steps, ...(r.minutes.some(Boolean) ? { minutes: r.minutes } : {}), source: 'model' } : null
+  const p = parsePlan(text)
+  if (!p) return null
+  // поля без единого значения не отдаём вовсе
+  return {
+    kind: 'steps',
+    steps: p.steps,
+    ...(p.minutes.some(Boolean) ? { minutes: p.minutes } : {}),
+    ...(p.wait.some(Boolean) ? { wait: p.wait } : {}),
+    source: 'model',
+  }
 }
 
 export async function breakdown(input: {
@@ -125,12 +159,13 @@ export async function breakdown(input: {
     echoExtra: memoryWords(snapshot),
     data: dataMessage({ Дело: input.task, ...input.context }),
     userTexts: [input.task],
-    timeoutMs: input.timeoutMs ?? 8000,
-    hedgeAfterMs: 2000,
+    timeoutMs: input.timeoutMs ?? 9000,
+    // план длиннее трёх шагов: годный ответ приходит за 1–4 с, страховка не должна стартовать раньше
+    hedgeAfterMs: 3500,
     // Gemini через AnyModel иногда рассуждает скрыто, несмотря на reasoning_effort: none (набор задач 12.11: 160 из 160
     // токенов ушли на рассуждение, текста ноль). Платим за потраченное, запас бесплатен
-    maxOutputTokens: 1000,
-    maxChars: 340,
+    maxOutputTokens: 1500,
+    maxChars: 1100,
     parse: parseBreakdownAnswer,
     fallback: () => ({ kind: 'steps', steps: BREAKDOWN_FALLBACK, source: 'fallback' }),
     // кризисный текст вместо дела — не шаги, а бережный проверенный ответ (lib/ai/crisis.ts)
