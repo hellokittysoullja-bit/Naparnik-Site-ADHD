@@ -60,7 +60,7 @@ describe('блок памяти под задачу', () => {
           fact('task', 'Пишет диплом в Overleaf'),
         ],
       }),
-      'написать введение диплома',
+      'дописать раздел диплома про методику',
       'breakdown',
     )!
     expect(block).toContain('Overleaf')
@@ -136,7 +136,7 @@ describe('память доходит до модели в задачах Фок
   it('дробление: блок памяти стоит перед данными задачи, шаг с названием из памяти проходит проверку языка', async () => {
     chain.steps = [{ id: 'm1', model: model('Открыть Overleaf\nНайти введение\nНаписать одну фразу', sent) }]
     vi.stubEnv('BREAKDOWN_EXAMPLES', '1')
-    const r = await breakdown({ task: 'написать введение диплома', memory: memory({ facts: [fact('task', 'Пишет диплом в Overleaf')] }) }).finally(() => vi.unstubAllEnvs())
+    const r = await breakdown({ task: 'дописать раздел диплома про методику', memory: memory({ facts: [fact('task', 'Пишет диплом в Overleaf')] }) }).finally(() => vi.unstubAllEnvs())
     expect(r).toEqual({ kind: 'steps', steps: ['Открыть Overleaf', 'Найти введение', 'Написать одну фразу'], source: 'model' })
     // порядок: память (меняется редко) → образцы похожих дел (breakdown-examples.ts) → данные задачи
     const user = sent[0].filter((m) => m.role === 'user')
@@ -149,18 +149,18 @@ describe('память доходит до модели в задачах Фок
   })
   it('образцы похожих дел выключены, пока не прошли живой прогон: в запросе их нет', async () => {
     chain.steps = [{ id: 'm1', model: model('Открыть файл\nНайти введение\nНаписать одну фразу', sent) }]
-    await breakdown({ task: 'написать введение диплома' })
+    await breakdown({ task: 'дописать раздел диплома про методику' })
     expect(sent[0].some((m) => m.text.startsWith('ОБРАЗЦЫ'))).toBe(false)
   })
   it('дробление без памяти: без блока памяти, как раньше; чужое латинское слово по-прежнему брак', async () => {
     chain.steps = [{ id: 'm1', model: model('Открыть Overleaf\nНайти введение\nНаписать одну фразу', sent) }]
-    const r = await breakdown({ task: 'написать введение диплома' })
+    const r = await breakdown({ task: 'дописать раздел диплома про методику' })
     expect(sent[0].filter((m) => m.role === 'user' && !m.text.startsWith('ОБРАЗЦЫ'))).toHaveLength(1)
     expect(r).toMatchObject({ kind: 'steps', source: 'fallback' })
   })
   it('память с устройства в негодной форме: дробление без памяти, а не отказ', async () => {
     chain.steps = [{ id: 'm1', model: model('Открыть файл\nНайти введение\nНаписать одну фразу', sent) }]
-    const r = await breakdown({ task: 'написать введение диплома', memory: new ClientSnapshotMemory({ facts: 'не список' }) })
+    const r = await breakdown({ task: 'дописать раздел диплома про методику', memory: new ClientSnapshotMemory({ facts: 'не список' }) })
     expect(r).toMatchObject({ kind: 'steps', source: 'model' })
     expect(sent[0].filter((m) => m.role === 'user' && !m.text.startsWith('ОБРАЗЦЫ'))).toHaveLength(1)
   })
@@ -168,7 +168,7 @@ describe('память доходит до модели в задачах Фок
     chain.steps = [{ id: 'm1', model: model('Открыть файл\nНайти введение\nНаписать одну фразу', sent) }]
     const slow: MemoryProvider = { name: 'slow', prefetch: () => new Promise(() => {}) }
     vi.useFakeTimers()
-    const p = breakdown({ task: 'написать введение диплома', memory: slow })
+    const p = breakdown({ task: 'дописать раздел диплома про методику', memory: slow })
     await vi.advanceTimersByTimeAsync(1600)
     vi.useRealTimers()
     expect(await p).toMatchObject({ kind: 'steps', source: 'model' })
