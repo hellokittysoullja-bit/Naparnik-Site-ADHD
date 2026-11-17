@@ -75,6 +75,10 @@ type Ctx = {
   layer: HTMLElement
   svg: SVGSVGElement
   cat: HTMLElement
+  /** место карточки первого шага: в нём ждало полено и в нём оно колется */
+  slot: HTMLElement
+  /** полено уже ждало удара в разметке (дробление шло с сервера) — сцена встаёт на его место без проявления */
+  fromWait: boolean
   card: HTMLElement
   source: HTMLElement
   texts: HTMLElement[]
@@ -113,8 +117,9 @@ function logSvg(w: number, h: number, seed: number) {
     for (let x = x0; x < x1; x += 26) d += ` Q${(x + 13).toFixed(1)},${(y + (rand() - 0.5) * amp * 2).toFixed(1)} ${(x + 26).toFixed(1)},${(y + (rand() - 0.5) * amp).toFixed(1)}`
     grain.push(`<path d="${d}" fill="none" stroke="${i % 3 ? '#2a170b' : '#c08a5a'}" stroke-opacity="${i % 3 ? 0.45 : 0.28}" stroke-width="${i % 3 ? 1.4 : 1}" stroke-linecap="round"/>`)
   }
-  const kx = w * (0.22 + rand() * 0.15)
-  const ky = h * (0.3 + rand() * 0.15)
+  // сучок — ниже полосы с резьбой слов: раньше он стоял на буквах («Покушать» с пятном на «ь», владелец 17.11)
+  const kx = w * (0.3 + rand() * 0.2)
+  const ky = h * 0.84
   const rings = [0.82, 0.64, 0.47, 0.31, 0.16].map((k) => `<ellipse cx="${w - capRx}" cy="${r}" rx="${capRx * k}" ry="${r * k * 0.92}" fill="none" stroke="#b07a46" stroke-opacity=".75" stroke-width="1.2"/>`).join('')
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;overflow:visible">
     <defs>
@@ -134,38 +139,54 @@ function logSvg(w: number, h: number, seed: number) {
   </svg>`
 }
 
+/** Полено в элементе host: картинка коры + слова человека резьбой. Один рисунок для полена ожидания (в разметке Фокуса)
+ *  и для полена сцены — смена одного на другое незаметна. seed — свой у каждого куска: id градиентов в документе не
+ *  повторяются (иначе Safari брал градиент чужого, скрытого полена и красил кусок чёрным — «тёмный кусок», 17.11) */
+export function drawLog(host: HTMLElement, w: number, h: number, text: string, font: string, seed: number) {
+  host.innerHTML = logSvg(w, h, seed)
+  const carve = document.createElement('p')
+  carve.textContent = text
+  carve.dataset.rvCarve = ''
+  Object.assign(carve.style, {
+    position: 'absolute', left: `${h * 0.3 + 10}px`, right: `${h * 0.6 + 6}px`, top: '50%', transform: 'translateY(-50%)', margin: '0',
+    font, color: '#ffe9cc', textShadow: '0 1px 0 rgba(0,0,0,.55), 0 -1px 0 rgba(255,210,150,.15)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+  })
+  host.appendChild(carve)
+  return carve
+}
+
+/** высота полена под место карточки: тот же расчёт у полена ожидания и у сцены */
+export const logHeight = (slotH: number) => Math.max(56, Math.min(72, slotH + 4))
+
 function playLog(c: Ctx) {
   const { run } = c
   const short = c.nth > 10
   const cat = rect(c.cat)
-  const card = rect(c.card)
-  const h = Math.max(56, Math.min(72, card.height + 4))
-  const w = card.width
-  const L = { x: card.left, y: card.top + (card.height - h) / 2 }
+  const slot = rect(c.slot)
+  const h = logHeight(slot.height)
+  const w = slot.width
+  const L = { x: slot.left, y: slot.top + (slot.height - h) / 2 }
   const scs = getComputedStyle(c.source)
 
-  // 1 · дело становится поленом: карточка «деревенеет», слова остаются на нём светлой резьбой
+  // 1 · дело становится поленом. Если полено уже ждало удара в разметке (дробление шло с сервера), сцена берёт его
+  // место без проявления — та же картинка в той же точке; иначе (готовые шаги) полено вырастает из карточки
   const log = document.createElement('div')
   Object.assign(log.style, { position: 'absolute', left: `${L.x}px`, top: `${L.y}px`, width: `${w}px`, height: `${h}px`, transformOrigin: '50% 100%' })
-  log.innerHTML = logSvg(w, h, 7)
-  const carve = document.createElement('p')
-  carve.textContent = c.source.textContent
-  Object.assign(carve.style, {
-    position: 'absolute', left: `${h * 0.3 + 10}px`, right: `${h * 0.6 + 6}px`, top: '50%', transform: 'translateY(-50%)', margin: '0',
-    font: scs.font, color: '#ffe9cc', textShadow: '0 1px 0 rgba(0,0,0,.55), 0 -1px 0 rgba(255,210,150,.15)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-  })
-  log.appendChild(carve)
+  const carve = drawLog(log, w, h, c.source.textContent ?? '', scs.font, 7)
   c.layer.appendChild(log)
-  const t0 = short ? 0 : 0.0
-  const tLog = short ? 0.04 : 0.14
+  const fromWait = c.fromWait
+  const t0 = 0
+  const tLog = fromWait ? 0.001 : short ? 0.04 : 0.14
   const tImp = short ? 0.12 : 0.32
-  run(log, [
-    { opacity: 0, transform: 'scale(.92, .6)' },
-    { opacity: 1, transform: 'scale(1.03, 1.08)', offset: 0.6 },
-    { opacity: 1, transform: 'scale(1)' },
-  ], t0, tLog, { easing: SPRING })
-  run(c.card, [{ opacity: 1 }, { opacity: 0 }], tLog * 0.6, tLog * 0.6 + 0.001)
-  run(c.source, [{ opacity: 1 }, { opacity: 0 }], tLog * 0.6, tLog * 0.6 + 0.001)
+  if (fromWait) {
+    run(log, [{ opacity: 1 }, { opacity: 1 }], 0, 0.001)
+  } else {
+    run(log, [
+      { opacity: 0, transform: 'scale(.92, .6)' },
+      { opacity: 1, transform: 'scale(1.03, 1.08)', offset: 0.6 },
+      { opacity: 1, transform: 'scale(1)' },
+    ], t0, tLog, { easing: SPRING })
+  }
 
   // 2 · кот готовится и хлопает лапой сверху по середине полена
   const hit = { x: L.x + w * 0.5, y: L.y + 4 }
@@ -227,17 +248,32 @@ function playLog(c: Ctx) {
     run(chip, kf, tImp, tImp + 0.26 + (k % 3) * 0.03, { easing: 'linear' })
   }
 
-  const targets: HTMLElement[] = [c.card, ...c.texts.slice(1).map((t) => t.parentElement as HTMLElement)]
-  if (c.more) targets.push(c.more)
-  const N = targets.length
-  // трещины: зигзаг поперёк полена на границах кусков; общий для двух соседних кусков, чтобы куски сходились без щели
-  const zig: number[][] = []
+  // куски: первый — в карточку первого шага, остальные — на строки видимых шагов (на «ещё N» куска нет: это не шаг)
+  const N = 1 + c.texts.length - 1
+  // где на полене стоят буквы резьбы: трещина проходит МЕЖДУ буквами, слово колется ровно по ней (17.11: «Покуш» и «ать»
+  // налезали друг на друга, буквы резались пополам)
+  const lr = log.getBoundingClientRect()
+  const letters = charBoxes(carve).map((b) => ({ l: b.x - lr.left, r: b.x - lr.left + b.w }))
+  const gaps: number[] = []
+  for (let i = 1; i < letters.length; i++) gaps.push((letters[i - 1].r + letters[i].l) / 2)
+  const textL = letters.length ? letters[0].l : 0
+  const textR = letters.length ? letters[letters.length - 1].r : 0
+  const cuts: number[] = []
   for (let k = 1; k < N; k++) {
-    const x = (w * k) / N
-    const pts: number[] = []
-    for (let s = 0; s <= 5; s++) pts.push(x + (s % 2 ? 5 : -5) + ((k * 13 + s * 7) % 5) - 2)
-    zig.push(pts)
+    let x = (w * k) / N
+    if (letters.length && x > textL - 3 && x < textR + 3 && gaps.length) {
+      const prev = cuts.length ? cuts[cuts.length - 1] : 0
+      const best = gaps.filter((g) => g > prev + 28).sort((a, b) => Math.abs(a - x) - Math.abs(b - x))[0]
+      if (best !== undefined && Math.abs(best - x) < w / N / 2) x = best
+    }
+    cuts.push(x)
   }
+  // трещины: зигзаг сверху и снизу, а в полосе букв — ровно по разрезу; общий для двух соседних кусков, без щели
+  const zig: number[][] = cuts.map((x, k) => {
+    const pts: number[] = []
+    for (let s = 0; s <= 5; s++) pts.push(s === 2 || s === 3 ? x : x + (s % 2 ? 5 : -5) + (((k + 1) * 13 + s * 7) % 5) - 2)
+    return pts
+  })
   const cracks = svgEl('g', {})
   c.svg.appendChild(cracks)
   zig.forEach((pts, i) => {
@@ -284,38 +320,37 @@ function playLog(c: Ctx) {
     const ordered = left ? poly : [poly[0], poly[1], ...poly.slice(2)]
     const piece = document.createElement('div')
     Object.assign(piece.style, { position: 'absolute', left: `${L.x}px`, top: `${L.y}px`, width: `${w}px`, height: `${h}px`, clipPath: `polygon(${ordered.join(',')})` })
-    piece.innerHTML = log.innerHTML
+    drawLog(piece, w, h, carve.textContent ?? '', scs.font, 100 + k)
     c.layer.appendChild(piece)
     const xl = left ? left[2] : 0
     const xr = right ? right[2] : w
     const cx = (xl + xr) / 2
     piece.style.transformOrigin = `${cx}px ${h / 2}px`
     const mid = (N - 1) / 2
-    const sep = `translate(${(k - mid) * 7}px, ${-10 - Math.abs(k - mid) * 3}px) rotate(${(k - mid) * 4}deg)`
+    // раскол: куски расходятся на 16 px и чуть поворачиваются — соседние не налезают друг на друга
+    const sep = `translate(${(k - mid) * 16}px, ${-8 - Math.abs(k - mid) * 2}px) rotate(${(k - mid) * 2.5}deg)`
     run(piece, [{ opacity: 0 }, { opacity: 1 }], tSplit, tSplit + 0.001)
     run(piece, [{ transform: 'none' }, { transform: sep }], tSplit, tFly, { easing: SPRING })
-    const to = rect(targets[k])
+    // цель — сам текст шага (для первого — карточка): кусок ложится точно на строку и превращается в неё
+    const to = rect(k === 0 ? c.card : c.texts[k])
     const tx = to.left + to.width / 2 - (L.x + cx)
     const ty = to.top + to.height / 2 - (L.y + h / 2)
-    const sx = Math.min(1.6, Math.max(0.45, to.width / Math.max(30, xr - xl)))
-    const sy = Math.min(1.2, Math.max(0.35, to.height / h))
-    const tk = tFly + k * 0.035
+    const sx = Math.min(1.6, Math.max(0.3, to.width / Math.max(30, xr - xl)))
+    const sy = k === 0 ? Math.min(1.2, Math.max(0.35, to.height / h)) : Math.max(0.28, (to.height * 1.3) / h)
+    const tk = tFly + k * 0.04
     const tArr = tk + 0.2
     run(piece, [
       { transform: sep, opacity: 1 },
-      { transform: `translate(${tx * 0.55}px, ${ty * 0.55 - 26}px) rotate(${(k - mid) * -8}deg) scale(${(1 + sx) / 2}, ${(1 + sy) / 2})`, opacity: 1, offset: 0.55 },
-      // к месту кусок долетает уже растворяясь — выжигаемые буквы шага не прячутся под деревом
-      { transform: `translate(${tx * 0.88}px, ${ty * 0.88}px) rotate(0deg) scale(${sx * 0.95}, ${sy})`, opacity: 0.85, offset: 0.8 },
+      { transform: `translate(${tx * 0.5}px, ${ty * 0.5 - 22}px) rotate(${(k - mid) * -4}deg) scale(${(1 + sx) / 2}, ${(1 + sy) / 2})`, opacity: 1, offset: 0.5 },
+      // на строку кусок садится ровно, уже растворяясь: буквы шага загораются на его месте, не под деревом
+      { transform: `translate(${tx * 0.94}px, ${ty * 0.97}px) rotate(0deg) scale(${sx}, ${sy})`, opacity: 0.8, offset: 0.82 },
       { transform: `translate(${tx}px, ${ty}px) rotate(0deg) scale(${sx}, ${sy})`, opacity: 0 },
     ], tk, tArr, { easing: 'cubic-bezier(.3,0,.25,1)' })
     // 5 · на месте кусок «выжигает» шаг: буквы загораются угольком слева направо и остывают в обычный текст
     if (k === 0) run(c.card, [{ opacity: 0 }, { opacity: 1 }], tArr - 0.02, tArr + 0.04, { easing: OUT })
-    if (targets[k] === c.more) {
-      run(c.more!, [{ opacity: 0 }, { opacity: 1 }], tArr - 0.02, tArr + 0.06, { easing: OUT })
-      continue
-    }
-    if (k > 0) run(c.bullets[k - 1], [{ opacity: 0, transform: 'scale(0)' }, { opacity: 1, transform: 'scale(1)' }], tArr - 0.02, tArr + 0.06, { easing: SPRING })
+    if (k > 0 && c.bullets[k - 1]) run(c.bullets[k - 1], [{ opacity: 0, transform: 'scale(0)' }, { opacity: 1, transform: 'scale(1)' }], tArr - 0.02, tArr + 0.06, { easing: SPRING })
     burnIn(c, c.texts[k], tArr - 0.02, Math.min(0.12, 0.004 * (c.texts[k].textContent?.length ?? 10)), 0.14)
+    if (k === N - 1 && c.more) run(c.more, [{ opacity: 0 }, { opacity: 1 }], tArr + 0.04, tArr + 0.14, { easing: OUT })
   }
 
   // отпечаток лапы остался на месте удара — он и есть подаренный первый штамп
@@ -402,9 +437,10 @@ export function playLogReveal(refs: LogRevealRefs, nth: number, onImpact: () => 
 }
 
 /** Праздник как у Duolingo: кот приседает и высоко прыгает (тень остаётся на земле и сжимается), конфетти на весь экран */
-export function celebrateCat(cat: HTMLElement) {
+export function celebrateCat(cat: HTMLElement, avoid: (Element | null)[] = []) {
   const r = cat.getBoundingClientRect()
-  celebrate({ x: r.left + r.width / 2, y: r.top + r.height * 0.35 })
+  // конфетти летит ПОЗАДИ пузыря-квитанции: её читают ровно в этот момент (17.11 — рой бумажек закрывал текст)
+  celebrate({ x: r.left + r.width / 2, y: r.top + r.height * 0.35 }, avoid.filter(Boolean).map((e) => e!.getBoundingClientRect()))
   const sh = cat.querySelector('.cat-shadow') as HTMLElement | null
   const h = Math.max(36, Math.min(64, r.height * 0.3))
   cat.animate(
