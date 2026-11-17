@@ -86,10 +86,22 @@ for (const [w, h] of [[393, 664], [360, 640], [390, 844]] as const) {
     expect(await durOpacity()).toBe('0')
     await expect(page.getByRole('button', { name: 'Начали. Я рядом' })).toBeDisabled()
     expect(await startBox(page)).toEqual(plain)
-    // раскол и итог: кнопка там же, пиксель в пиксель, и не под меню
+    // раскол и итог: кнопка там же, пиксель в пиксель, на КАЖДОМ кадре (мгновенный рывок тоже ловится), и не под меню
+    await page.evaluate(() => {
+      const w = window as unknown as { __tops: number[] }
+      w.__tops = []
+      const btn = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Начали'))!
+      const tick = () => {
+        w.__tops.push(Math.round(btn.getBoundingClientRect().top))
+        if (w.__tops.length < 600) requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+    })
     await page.waitForSelector('[data-rv="playing"]')
-    expect(await startBox(page)).toEqual(plain)
     await expect(page.locator('[data-rv="playing"]')).toHaveCount(0, { timeout: 4000 })
+    const tops = await page.evaluate(() => (window as unknown as { __tops: number[] }).__tops)
+    expect(tops.length).toBeGreaterThan(10)
+    expect([...new Set(tops)]).toEqual([plain.top])
     await expect(page.getByRole('button', { name: 'Начали. Я рядом' })).toBeEnabled()
     await expect.poll(durOpacity).toBe('1')
     expect(await startBox(page)).toEqual(plain)

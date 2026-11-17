@@ -1093,8 +1093,10 @@ export function FocusSession() {
         <div className={deal ? 'flex flex-1 flex-col items-center justify-end gap-1 [@media(max-height:699px)]:flex-none [@media(max-height:699px)]:flex-row-reverse [@media(max-height:699px)]:items-end [@media(max-height:699px)]:gap-2' : 'flex flex-1 flex-col items-center justify-end gap-1'}>
           {/* Пузырь стоит на месте, меняется только реплика в нём (16.11, покадровая съёмка): раньше он целиком уходил и
               приходил заново (AnimatePresence mode="wait"), и между репликами ~0,25 с кот был без пузыря */}
-          <div className={deal ? 'flex min-h-[4.25rem] w-full items-end justify-center [@media(max-height:699px)]:min-w-0 [@media(max-height:699px)]:flex-1 [@media(max-height:699px)]:justify-start [@media(max-height:699px)]:pr-[3.75rem]' : 'contents'}>
-          <p data-rv-bubble className={`glass text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed ${deal ? 'max-w-[min(20rem,calc(100%-9rem))] [@media(max-height:699px)]:max-w-full [@media(max-height:699px)]:px-3 [@media(max-height:699px)]:text-left' : 'max-w-80'}`}>
+          {/* в деле пузырь стоит над своим местом (absolute): его высота не влияет на раскладку вообще — ни смена реплики,
+              ни лишняя строка (на медленном CI старая и новая реплика на миг стояли вместе и сдвигали экран) */}
+          <div className={deal ? 'relative h-[4.25rem] w-full [@media(max-height:699px)]:min-w-0 [@media(max-height:699px)]:flex-1' : 'contents'}>
+          <p data-rv-bubble className={`glass text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed ${deal ? 'absolute inset-x-0 bottom-0 mx-auto w-fit max-w-[min(20rem,calc(100%-9rem))] [@media(max-height:699px)]:right-[3.75rem] [@media(max-height:699px)]:mx-0 [@media(max-height:699px)]:max-w-none [@media(max-height:699px)]:px-3 [@media(max-height:699px)]:text-left' : 'max-w-80'}`}>
             {/* первая реплика — сразу, без проявления; следующие (ответ на действие) — короткое проявление поверх старой */}
             <AnimatePresence initial={false}>
               <motion.span
@@ -1175,14 +1177,14 @@ export function FocusSession() {
               </div>
               {/* место карточки первого шага: в нём полено ждёт удара и колется. Высота постоянная (заголовок до двух строк) —
                   карточка встаёт ровно на место полена. Между полем и поленом — один кадр-фильм (vt-task) */}
-              <div ref={slotRef} data-rv-slot className="vt-task relative min-h-[9.75rem]">
+              <div ref={slotRef} data-rv-slot className="vt-task relative h-[9.75rem]">
                 {/* дело словами человека: шрифт резьбы и текст полена; на экране не видно */}
                 <p ref={sourceRef} data-rv-source aria-hidden="true" className="pointer-events-none invisible absolute inset-x-4 top-3.5 text-pretty text-[1.15rem] font-bold leading-snug">
                   {reveal ? reveal.task : task}
                 </p>
                 {waiting && <WaitLog text={task} />}
                 {brokenSteps && (
-              <div data-rv-card className="glass relative flex min-h-[9.75rem] flex-col rounded-2xl border border-primary/40 px-4 pb-3 pt-3.5 [@media(max-width:380px)]:px-3">
+              <div data-rv-card className="glass relative flex h-[9.75rem] flex-col overflow-hidden rounded-2xl border border-primary/40 px-4 pb-3 pt-3.5 [@media(max-width:380px)]:px-3">
                 {editing ? (
                   <input
                     autoFocus
@@ -1216,30 +1218,31 @@ export function FocusSession() {
                   {!editing && brokenSteps[sel]?.wait && <span className="text-reward">пока ждёшь · </span>}
                   {!editing && estimate ? `≈ ${estimate} мин · уже поставил ниже` : ''}
                 </p>
-                <div className="mt-auto flex flex-wrap gap-1.5 pt-3 [@media(max-width:380px)]:gap-1">
+                {/* кнопки карточки — всегда в один ряд: перенос делал карточку выше (на CI шрифт приходил позже, и ряд переносился) */}
+                <div className="mt-auto flex flex-nowrap gap-1.5 pt-3 [@media(max-width:380px)]:gap-1">
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() => void breakDown(true)}
-                    className="press inline-flex min-h-11 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring gap-1.5 rounded-full bg-primary/15 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-semibold text-primary disabled:opacity-60"
+                    className="press inline-flex min-h-11 min-w-0 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring gap-1.5 rounded-full bg-primary/15 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-semibold text-primary disabled:opacity-60"
                   >
-                    <Sparkles className="size-3.5" aria-hidden="true" />
-                    {busy ? 'Дроблю…' : 'Ещё мельче'}
+                    <Sparkles className="size-3.5 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{busy ? 'Дроблю…' : 'Ещё мельче'}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setEditing(true)}
-                    className="press inline-flex min-h-11 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full border border-white/10 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-medium text-foreground/85"
+                    className="press inline-flex min-h-11 min-w-0 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full border border-white/10 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-medium text-foreground/85"
                   >
-                    Своими словами
+                    <span className="truncate">Своими словами</span>
                   </button>
                   {others.length > 0 && (
                     <button
                       type="button"
                       onClick={dropStep}
-                      className="press inline-flex min-h-11 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full border border-white/10 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-medium text-muted-foreground"
+                      className="press inline-flex min-h-11 min-w-0 shrink-0 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full border border-white/10 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-medium text-muted-foreground"
                     >
-                      Не то
+                      <span className="truncate">Не то</span>
                     </button>
                   )}
                 </div>
@@ -1247,7 +1250,7 @@ export function FocusSession() {
                 )}
               </div>
               {/* места шагов: высота постоянная (2 строки и «ещё N» на высоком экране, 1 и «ещё N» на низком) */}
-              <div className={`flex flex-col gap-2 ${rows === 2 ? 'min-h-[9.25rem]' : 'min-h-24'}`}>
+              <div className={`flex flex-col gap-2 ${showAll ? (rows === 2 ? 'min-h-[9.25rem]' : 'min-h-24') : rows === 2 ? 'h-[9.25rem]' : 'h-24'}`}>
               {/* развёрнутый список длинного дела прокручивается сам: кнопка старта не должна уезжать под меню */}
               <div className={showAll ? 'flex max-h-[9.5rem] flex-col gap-2 overflow-y-auto overscroll-contain pr-1' : 'contents'}>
               {(showAll ? others : others.slice(0, rows)).map((st, i) => (
