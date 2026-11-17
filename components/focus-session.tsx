@@ -1282,7 +1282,7 @@ export function FocusSession() {
                 ? `${CAT_STAGE} z-10 -mb-[14px] -mt-10`
                 : deal
                   ? `${tall ? 'size-[clamp(76px,calc(100dvh_-_684px),150px)]' : 'size-[clamp(64px,calc(100dvh_-_640px),150px)] [@media(max-height:699px)]:size-16'} -mt-3 [@media(max-height:699px)]:mt-0`
-                  : '-mt-5 mb-8 [@media(min-height:740px)]:-mt-12'
+                  : '-mt-5 mb-4 [@media(min-height:740px)]:-mt-12'
             }`}
           >
             {/* в «деле» тело кота — крупное (размер «ожидания») и уменьшено масштабом до места кота (cat-fit) */}
@@ -1294,7 +1294,7 @@ export function FocusSession() {
                 awake={!!reveal}
                 label={companionName ?? 'Напарник'}
                 // размер — от высоты экрана, чтобы старт всегда был над меню
-                className={deal ? CAT_STAGE : 'size-[clamp(124px,calc(100dvh_-_552px),248px)]'}
+                className={deal ? CAT_STAGE : 'size-[clamp(140px,calc(100dvh_-_536px),264px)]'}
               />
             </div>
           </div>
@@ -1387,13 +1387,14 @@ export function FocusSession() {
                   </AnimatePresence>
                 )}
                 {/* строка оценки — место есть всегда, даже пустое: карточка одной высоты */}
-                <p className="mt-1 min-h-4 font-mono text-[10.5px] font-semibold uppercase tracking-widest text-[#8a5a2b]">
+                <p className="mt-1 h-4 truncate font-mono text-[10.5px] font-semibold uppercase tracking-widest text-[#8a5a2b]">
                   {!editing && brokenSteps[sel]?.wait && <span className="text-reward">пока ждёшь · </span>}
                   {/* длительность может быть спрятана (шаги не влезли) — тогда говорим, сколько поставили, а не «ниже» */}
                   {!editing && estimate ? `≈ ${estimate} мин · ${compact ? `сессия ${minutes} мин` : 'уже поставил ниже'}` : ''}
                 </p>
-                {/* кнопки карточки — всегда в один ряд: перенос делал карточку выше (на CI шрифт приходил позже, и ряд переносился) */}
-                <div className="mt-auto flex flex-nowrap gap-1.5 pt-3 [@media(max-width:380px)]:gap-1">
+                {/* кнопки карточки — всегда в один ряд, прижаты к низу без верхнего отступа: при шаге в две строки отступ выталкивал
+                    их за строчку записки (iPhone владельца, 17.11) */}
+                <div className="mt-auto flex flex-nowrap gap-1.5 [@media(max-width:380px)]:gap-1">
                   <button
                     type="button"
                     disabled={busy}
