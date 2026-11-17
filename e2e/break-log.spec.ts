@@ -145,23 +145,30 @@ test('полено: каждое слово шага — деревянная т
   await slow(page, 300)
   await page.goto('/app/session?step=' + encodeURIComponent('Покушать') + '&break=1')
   await page.waitForSelector('[data-rv-card]')
-  // заморозить сцену у самого конца посадки и сравнить таблички-копии с настоящими
-  const worst = await page.evaluate(() => {
-    for (const a of document.getAnimations()) {
-      if (!a.id.startsWith('rv:')) continue
-      a.pause()
-      const end = Number(a.effect?.getComputedTiming().endTime ?? 0)
-      if (Number.isFinite(end)) a.currentTime = Math.max(0, end - 1)
-    }
-    const ghosts = [...document.querySelectorAll<HTMLElement>('body > div[aria-hidden="true"] div.wood-word')].map((g) => g.getBoundingClientRect())
-    const real = [...document.querySelectorAll<HTMLElement>('[data-rv-step] .wood-word')]
-      .map((r) => r.getBoundingClientRect())
-      .filter((r) => r.bottom <= document.querySelector('[data-rv-list]')!.getBoundingClientRect().bottom + 1)
-    return Math.max(...real.map((r) => Math.min(...ghosts.map((g) => Math.abs(g.left - r.left) + Math.abs(g.top - r.top)))))
-  })
-  expect(worst).toBeLessThan(2)
-  await page.evaluate(() => document.getAnimations().forEach((a) => a.id.startsWith('rv:') && a.play()))
+  // куда сцена посадит каждую табличку-копию (место контейнера куска без сдвига анимацией) — и где после сцены стоит
+  // настоящая табличка этого слова. Без перемотки анимаций: на медленной машине CI перемотка доходила не до всех кусков
+  const targets = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>('body > div[aria-hidden="true"] div.wood-word')].map((plate) => {
+      const box = plate.parentElement!.parentElement as HTMLElement
+      return { text: plate.textContent ?? '', x: parseFloat(box.style.left), y: parseFloat(box.style.top) }
+    }),
+  )
   await expect(page.locator('[data-rv="playing"]')).toHaveCount(0, { timeout: 4000 })
+  const real = await page.evaluate(() => {
+    const lb = document.querySelector('[data-rv-list]')!.getBoundingClientRect().bottom
+    return [...document.querySelectorAll<HTMLElement>('[data-rv-step] .wood-word')]
+      .map((e) => ({ text: e.textContent ?? '', r: e.getBoundingClientRect() }))
+      .filter(({ r }) => r.bottom <= lb + 1)
+      .map(({ text, r }) => ({ text, x: r.left, y: r.top }))
+  })
+  expect(real.length).toBeGreaterThan(5)
+  const off = real
+    .map((w) => {
+      const d = Math.min(...targets.filter((t) => t.text === w.text).map((t) => Math.abs(t.x - w.x) + Math.abs(t.y - w.y)))
+      return { ...w, d }
+    })
+    .filter((w) => !(w.d < 2))
+  expect(off, 'таблички, на которые кусок сел не туда').toEqual([])
   // таблички остаются, слов столько же, сколько в шагах; подписи «первый шаг · дело» нет
   expect(await page.locator('[data-rv-step]').first().locator('.wood-word').count()).toBe(4)
   await expect(page.getByText(/первый шаг ·/i)).toHaveCount(0)
