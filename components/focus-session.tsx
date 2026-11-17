@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
-import { canViewTransition } from '@/lib/view-transition'
 import { useFirstFrameReady } from '@/lib/first-frame'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -69,7 +68,7 @@ import {
 import { playStartSigh } from '@/lib/reward-sound'
 import { startAmbient, stopAmbient } from '@/lib/ambient'
 import { hapticDone, hapticReaction, hapticReward, hapticStart, hapticThreshold } from '@/lib/haptics'
-import { celebrateCat, drawLog, logHeight, nextBreakCount, playLogReveal, preloadReveal } from '@/components/break-reveal/log-reveal'
+import { catShade, celebrateCat, drawLog, nextBreakCount, playLogReveal, preloadReveal, wordCount } from '@/components/break-reveal/log-reveal'
 import { trimLabel } from '@/lib/utils'
 import { FIRST_MINUTES } from '@/lib/onboarding'
 import { trackEvent } from '@/lib/events'
@@ -188,16 +187,8 @@ function useMinHeight(px: number) {
   )
 }
 
-/** Смена состояния экрана одним кадром-фильмом (View Transitions): поле дела перетекает в полено и обратно, кот
- *  переезжает. Без API и при «уменьшить движение» — обычная смена */
-function morph(update: () => void) {
-  const d = document as Document & { startViewTransition?: (cb: () => void) => unknown }
-  if (!canViewTransition() || !d.startViewTransition) return update()
-  d.startViewTransition(() => flushSync(update))
-}
-
 /** Полено, которое ждёт удара, пока кот разламывает дело на сервере: та же картинка, что у сцены «Полено»
- *  (components/break-reveal/log-reveal.ts), на месте будущей карточки первого шага */
+ *  (components/break-reveal/log-reveal.ts), под котом — во всё место полена */
 function WaitLog({ text }: { text: string }) {
   const ref = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
@@ -208,10 +199,11 @@ function WaitLog({ text }: { text: string }) {
     const draw = () => {
       const r = slot.getBoundingClientRect()
       if (!r.width) return
-      const h = logHeight(r.height)
-      Object.assign(el.style, { width: `${r.width}px`, height: `${h}px`, top: `${(r.height - h) / 2}px` })
+      Object.assign(el.style, { width: `${r.width}px`, height: `${r.height}px`, top: '0' })
       const font = slot.querySelector('[data-rv-source]')
-      drawLog(el, r.width, h, text, font ? getComputedStyle(font).font : '700 18px sans-serif', 7)
+      // кот сидит над поленом (элемент перед местом полена): его тень падает на кору
+      const cat = slot.previousElementSibling
+      drawLog(el, r.width, r.height, text, font ? getComputedStyle(font).font : '700 18px sans-serif', 7, cat ? catShade(cat.getBoundingClientRect(), r) : undefined)
     }
     draw()
     const ro = new ResizeObserver(draw)
@@ -220,6 +212,19 @@ function WaitLog({ text }: { text: string }) {
   }, [text])
   return <div ref={ref} data-rv-waitlog aria-hidden="true" className="rv-wait pointer-events-none absolute left-0" />
 }
+
+/** Шаг дела — слова на деревянных табличках: в них превращаются куски полена, и таблички остаются (владелец 17.11).
+ *  Пробелы между табличками — обычные: текст читается и копируется как раньше */
+function WoodWords({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(\s+)/).filter(Boolean).map((p, i) => (/^\s+$/.test(p) ? ' ' : <span key={i} className="wood-word">{p}</span>))}
+    </>
+  )
+}
+
+/** Кот в «ожидании» (крупно над поленом) — и размер его тела в «деле», где оно уменьшено масштабом */
+const CAT_STAGE = 'size-[clamp(170px,calc(100dvh_-_470px),245px)]'
 
 export function FocusSession() {
   const reducedMotion = useReducedMotion()
@@ -306,6 +311,8 @@ export function FocusSession() {
   // nth — которая по счёту разбивка: первые три 1,3 с, до десятой 0,9 с, дальше 0,6 с (components/break-reveal/log-reveal.ts)
   // fromWait — полено уже ждало удара в разметке (дробление шло с сервера): сцена встаёт на его место
   const [reveal, setReveal] = useState<{ task: string; nth: number; fromWait: boolean } | null>(null)
+  // раскол случился: экран уже в раскладке «дело» (до него — кот крупно над поленом)
+  const [split, setSplit] = useState(false)
   const slotRef = useRef<HTMLDivElement>(null)
   const sourceRef = useRef<HTMLParagraphElement>(null)
   // высокий экран: под первым шагом видно ещё два, низкий — один (кнопка старта всегда над меню, владелец 17.11)
@@ -315,10 +322,23 @@ export function FocusSession() {
   const [cheer, setCheer] = useState(false)
   const setupRef = useRef<HTMLDivElement>(null)
   const catRef = useRef<HTMLDivElement>(null)
+  // шаги дела не влезают под карточкой — блок длительности прячется и отдаёт им место (владелец 17.11: шаги без прокрутки)
+  const [compact, setCompact] = useState(false)
+  // реплика кота уже показывалась на этом экране: следующие смены проявляются, первая — стоит сразу
+  const lineSeen = useRef(false)
+  useEffect(() => {
+    lineSeen.current = true
+  }, [])
+  // и даже так не влезают (большое дело, 9+ шагов на низком экране): показываем столько строк, сколько помещается целиком —
+  // полстроки у края выглядели бы поломкой; все шаги и так лежат в «Делах»
+  const [fitRows, setFitRows] = useState<number | null>(null)
+  const durRef = useRef<HTMLDivElement>(null)
+  const durSpace = useRef(0)
+  // тело кота: в «деле» всегда рисуется крупным и уменьшается масштабом — переезд с крупного места на маленькое без мыла
+  const catBodyRef = useRef<HTMLDivElement>(null)
   // дело целиком («Курсовая по логистике»): шаги дробления лежат в «Делах» под этим названием
   const [dealTitle, setDealTitle] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
-  const [showAll, setShowAll] = useState(false)
   // «Не то» без потери: убранный шаг можно вернуть одной кнопкой (research/24 C)
   const [dropped, setDropped] = useState<{ step: BStep; index: number } | null>(null)
   const [finerError, setFinerError] = useState(false)
@@ -372,7 +392,10 @@ export function FocusSession() {
     const word = n % 10 === 1 && n % 100 !== 11 ? 'шаг' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'шага' : 'шагов'
     // квитанция в две строки при любой ширине: «остальное — в Делах» и так видно строкой «ещё N — ждут в Делах»
     setReceipt(`Разломал на ${n} ${word}. Начнём *с первого*!`)
-    if (!reducedMotion) setReveal({ task: source, nth: nextBreakCount(), fromWait })
+    if (!reducedMotion) {
+      setSplit(false)
+      setReveal({ task: source, nth: nextBreakCount(), fromWait })
+    }
   }
   /** Дробление: первый раз — всего дела; «Ещё мельче» — выбранного шага, его подшаги встают на его место */
   function applyTemplate(t: Template) {
@@ -385,7 +408,6 @@ export function FocusSession() {
     setDealTitle(t.title)
     startReveal(t.title, list)
     setBrokenSteps(list)
-    setShowAll(false)
     selectStep(list[0])
     upsertDeal(t.title, list)
   }
@@ -399,23 +421,19 @@ export function FocusSession() {
   async function breakDown(finer = false, e: Energy | null = energy) {
     const target = task.trim()
     if (!target || breaking) return
-    // первое дробление с экрана выбора шага: поле перетекает в полено (с Дома экран уже открывается поленом)
-    const enter = () => {
-      setBreaking(true)
-      setBreakPending(false)
-      setBreakError(false)
-      setFinerError(false)
-      setBreakNote(null)
-      setDropped(null)
-    }
-    if (!finer && !brokenSteps && !breakPending) morph(enter)
-    else enter()
-    // не вышло разломать — полено перетекает обратно в поле, кот объясняет в пузыре
+    // экран сразу в «ожидании» (кот над поленом), без промежуточных кадров (17.11, владелец)
+    setBreaking(true)
+    setBreakPending(false)
+    setBreakError(false)
+    setFinerError(false)
+    setBreakNote(null)
+    setDropped(null)
+    // не вышло разломать — снова поле, кот объясняет в пузыре
     let failed = false
     const fail = (f: () => void) => {
       failed = true
-      if (finer) f()
-      else morph(() => { f(); setBreaking(false) })
+      f()
+      if (!finer) setBreaking(false)
     }
     try {
       const res = await fetch('/api/breakdown', {
@@ -451,7 +469,6 @@ export function FocusSession() {
           if (!finer) startReveal(target, list, true)
           else setReceipt(null)
           setBrokenSteps(list)
-          setShowAll(false)
           selectStep(fresh[0])
           // сил почти нет, а оценки шага модель не дала — ставим 5 минут сами: «просто начать»
           if (e === 'low' && !fresh[0].minutes && !durationTouched) setMinutes(5)
@@ -499,20 +516,40 @@ export function FocusSession() {
   useLayoutEffect(() => {
     const root = setupRef.current
     const cat = catRef.current
-    if (!reveal || !root || !cat) return
+    const catBody = catBodyRef.current
+    if (!reveal || !root || !cat || !catBody) return
     const q = <T extends Element>(sel: string) => root.querySelector<T>(sel)
-    const card = q<HTMLElement>('[data-rv-card]')
     const slot = slotRef.current
     const source = sourceRef.current
-    const stamp0 = q<HTMLElement>('[data-rv-stamp]')
-    const texts = [...root.querySelectorAll<HTMLElement>('[data-rv-step]')]
-    if (!card || !slot || !source || !stamp0 || !texts.length) {
+    const bubble = q<HTMLElement>('[data-rv-bubble]')
+    const list = brokenSteps
+    if (!slot || !source || !bubble || !list?.length) {
       setReveal(null)
       return
     }
-    const bullets = [...root.querySelectorAll<HTMLElement>('[data-rv-bullet]')]
-    const more = q<HTMLElement>('[data-rv-more]')
-    const r = playLogReveal({ cat, slot, fromWait: reveal.fromWait, card, source, texts, bullets, more, stamp0 }, reveal.nth, hapticReaction)
+    // куски полена — по словам шагов, которые будут видны: выбранный шаг на карточке и строки под ним
+    const sel = Math.max(0, list.findIndex((b) => b.text === task))
+    const shown = [list[sel].text, ...list.filter((_, i) => i !== sel).map((b) => b.text)]
+    const r = playLogReveal(
+      { cat, catBody, bubble, slot, source, fromWait: reveal.fromWait },
+      reveal.nth,
+      {
+        pieces: wordCount(shown),
+        onImpact: hapticReaction,
+        // раскол: экран за один синхронный кадр встаёт в раскладку «дело»; сцена сразу меряет её и ведёт куски по местам
+        split: () => {
+          flushSync(() => setSplit(true))
+          return {
+            card: q<HTMLElement>('[data-rv-card]'),
+            texts: [...root.querySelectorAll<HTMLElement>('[data-rv-step]')],
+            bullets: [...root.querySelectorAll<HTMLElement>('[data-rv-bullet]')],
+            list: q<HTMLElement>('[data-rv-list]'),
+            stamp0: q<HTMLElement>('[data-rv-stamp]'),
+            labelRow: q<HTMLElement>('[data-rv-labelrow]'),
+          }
+        },
+      },
+    )
     // тап в любом месте — сразу итог; кнопка под пальцем при этом срабатывает как обычно
     const onDown = () => r.skip()
     document.addEventListener('pointerdown', onDown, true)
@@ -521,7 +558,12 @@ export function FocusSession() {
     void r.finished.then(() => {
       document.removeEventListener('pointerdown', onDown, true)
       if (!alive) return
-      setReveal(null)
+      // экран выходит из сцены в том же кадре, в котором убирается её слой: ни одного кадра со скрытой карточкой
+      flushSync(() => {
+        setReveal(null)
+        setSplit(false)
+      })
+      r.stop()
       // праздник как у Duolingo: кот прыгает, конфетти на весь экран, двойная мягкая вибрация
       hapticReward()
       setCheer(true)
@@ -532,9 +574,48 @@ export function FocusSession() {
       alive = false
       window.clearTimeout(cheerTimer)
       document.removeEventListener('pointerdown', onDown, true)
-      r.skip()
+      r.stop()
     }
+    // сцена — одна на разбивку: шаги и раскладка внутри неё меняются ею самой
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal])
+  // влезают ли шаги: список занимает свободную высоту; если строкам её мало — длительность прячется. Считаем после каждой
+  // отрисовки (до показа кадра): шагов стало меньше («Не то») — длительность возвращается. Зависит от вёрстки, а не от
+  // одного значения, поэтому без списка зависимостей; цикла нет — состояние меняется, только когда меняется ответ
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const list = setupRef.current?.querySelector<HTMLElement>('[data-rv-list]')
+    if (!list) {
+      if (compact) setCompact(false)
+      return
+    }
+    if (durRef.current) durSpace.current = durRef.current.offsetHeight + 16
+    const rowsEls = [...list.querySelectorAll<HTMLElement>(':scope > button')]
+    const rowH = rowsEls[0]?.offsetHeight || 32
+    const total = brokenSteps ? Math.max(0, brokenSteps.length - 1) : 0
+    const need = total * rowH
+    const have = list.clientHeight - (compact ? durSpace.current : 0)
+    const next = need > have + 1
+    if (next !== compact) return setCompact(next)
+    const fit = next && need > list.clientHeight + 1 ? Math.max(1, Math.floor(list.clientHeight / rowH)) : null
+    if (fit !== fitRows) setFitRows(fit)
+  })
+  // тело кота в «деле» нарисовано крупным (размер «ожидания») и уменьшено масштабом до места кота: переезд из
+  // «ожидания» в «дело» — только уменьшение, кот не мылится
+  useLayoutEffect(() => {
+    const box = catRef.current
+    const body = catBodyRef.current
+    if (!box || !body) return
+    const fit = () => {
+      const scaled = body.classList.contains('cat-fit')
+      body.style.transform = scaled && body.offsetWidth ? `scale(${box.offsetWidth / body.offsetWidth})` : ''
+    }
+    fit()
+    const ro = new ResizeObserver(fit)
+    ro.observe(box)
+    ro.observe(body)
+    return () => ro.disconnect()
+  }, [phase, brokenSteps, breaking, breakPending, reveal, split])
   const [minutes, setMinutes] = useState(restored ? restored.minutes : initialMinutes)
   // #7 · Default Effect: пока человек сам не тронул длительность, чип 25
   // мин помечен как рекомендованный, а не просто «уже выбранный системой».
@@ -1066,9 +1147,11 @@ export function FocusSession() {
     const deal = !!brokenSteps || busy
     // полено ждёт удара: шагов ещё нет
     const waiting = busy && !brokenSteps
+    // «ожидание»: реплика, кот крупно сидит на полене (владелец 17.11) — пока кот
+    // разламывает дело и пока бьёт лапой; с расколом экран встаёт в «дело»
+    const stage = waiting || (!!reveal && !split)
     // пока полено ждёт и колется, длительность и старт невидимы, но их место занято — в конце они проявляются на своих местах
     const staging = waiting || !!reveal
-    const rows = tall ? 2 : 1
     const line = breakNote
       ? breakNote
       : finerError
@@ -1083,31 +1166,32 @@ export function FocusSession() {
         ? 'Секунду, *разламываю*…'
         : buildSetupLine(prefilledStep, priorSessions, companionName)
     return (
-      <div ref={setupRef} data-rv={reveal ? 'playing' : undefined} data-vt-arrived="focus" className={`relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-5 ${deal ? 'pt-2' : 'pt-5'}`}>
+      <div ref={setupRef} data-rv={reveal ? 'playing' : undefined} data-stage={stage ? '' : undefined} data-vt-arrived="focus" className={`relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-5 ${deal ? 'pt-2' : 'pt-5'} ${deal && !stage ? 'max-h-[calc(100dvh-4.5rem-env(safe-area-inset-bottom))] min-h-0' : ''}`}>
         <h1 className="sr-only">Фокус-сессия: выбери первый шаг</h1>
         {/* Сцена: реплика сверху, кот под ней — крупный и внизу, прямо над полем (владелец 16.11). Размер от высоты экрана:
             на 360×640 кнопка старта не уходит под меню */}
         {/* В «деле» на низком экране (ниже 700 px — iPhone с панелями Safari) кот маленький и сбоку от пузыря, иначе — под ним:
             так весь экран дела с кнопкой старта помещается над меню (владелец 17.11). Место пузыря — на две строки всегда:
             смена реплики («Сейчас расколю!» → квитанция) ничего не сдвигает. Справа сверху луна — пузырь её не закрывает */}
-        <div className={deal ? 'flex flex-1 flex-col items-center justify-end gap-1 [@media(max-height:699px)]:flex-none [@media(max-height:699px)]:flex-row-reverse [@media(max-height:699px)]:items-end [@media(max-height:699px)]:gap-2' : 'flex flex-1 flex-col items-center justify-end gap-1'}>
+        <div className={stage ? 'flex flex-1 flex-col items-center justify-center pb-[117px]' : deal ? 'flex flex-none flex-col items-center justify-end gap-1 [@media(max-height:699px)]:flex-row-reverse [@media(max-height:699px)]:items-end [@media(max-height:699px)]:gap-2' : 'flex flex-1 flex-col items-center justify-end gap-1'}>
           {/* Пузырь стоит на месте, меняется только реплика в нём (16.11, покадровая съёмка): раньше он целиком уходил и
               приходил заново (AnimatePresence mode="wait"), и между репликами ~0,25 с кот был без пузыря */}
           {/* в деле пузырь стоит над своим местом (absolute): его высота не влияет на раскладку вообще — ни смена реплики,
               ни лишняя строка (на медленном CI старая и новая реплика на миг стояли вместе и сдвигали экран) */}
-          <div className={deal ? 'relative h-[4.25rem] w-full [@media(max-height:699px)]:min-w-0 [@media(max-height:699px)]:flex-1' : 'contents'}>
-          <p data-rv-bubble className={`glass text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed ${deal ? 'absolute inset-x-0 bottom-0 mx-auto w-fit max-w-[min(20rem,calc(100%-9rem))] [@media(max-height:699px)]:right-[3.75rem] [@media(max-height:699px)]:mx-0 [@media(max-height:699px)]:max-w-none [@media(max-height:699px)]:px-3 [@media(max-height:699px)]:text-left' : 'max-w-80'}`}>
-            {/* первая реплика — сразу, без проявления; следующие (ответ на действие) — короткое проявление поверх старой */}
-            <AnimatePresence initial={false}>
-              <motion.span
-                key={line}
-                initial={reducedMotion ? false : { opacity: 0.35 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.18, ease: [0.05, 0.7, 0.1, 1] }}
-              >
-                <EmphasisText text={line} />
-              </motion.span>
-            </AnimatePresence>
+          <div className={stage ? 'relative h-[4.25rem] w-full shrink-0' : deal ? 'relative h-[4.25rem] w-full [@media(max-height:699px)]:min-w-0 [@media(max-height:699px)]:flex-1' : 'contents'}>
+          <p data-rv-bubble className={`glass text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed ${stage ? 'absolute inset-x-0 bottom-1 mx-auto w-fit max-w-[min(20rem,calc(100%-2rem))]' : deal ? 'absolute inset-x-0 bottom-0 mx-auto w-fit max-w-[min(20rem,calc(100%-9rem))] [@media(max-height:699px)]:right-[3.75rem] [@media(max-height:699px)]:mx-0 [@media(max-height:699px)]:max-w-none [@media(max-height:699px)]:px-3 [@media(max-height:699px)]:text-left' : 'max-w-80'}`}>
+            {/* реплика сменяется на месте: новая сразу вместо старой и коротко проявляется. Раньше старая уходила через
+                AnimatePresence и на миг стояла вместе с новой — в пузыре было две реплики сразу (скриншот владельца 17.11) */}
+            <motion.span
+              key={line}
+              className="block"
+              // первая реплика экрана — сразу, без проявления (первый видимый кадр — готовый экран); проявляются только смены
+              initial={reducedMotion || !lineSeen.current ? false : { opacity: 0.35 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.18, ease: [0.05, 0.7, 0.1, 1] }}
+            >
+              <EmphasisText text={line} />
+            </motion.span>
             {dropped && (
               <button type="button" onClick={undoDrop} className="press ml-2 inline-flex min-h-11 items-center px-1 font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 Вернуть
@@ -1117,39 +1201,55 @@ export function FocusSession() {
           </div>
           {/* обёртка — для прыжка-праздника после разбивки (сам кот — общий компонент, его не трогаем). Между Домом и Фокусом
               кот перелетает (vt-cat) */}
-          <div ref={catRef} className={`vt-cat shrink-0 ${deal ? '-mt-3 [@media(max-height:699px)]:mt-0' : '-mt-5 [@media(min-height:740px)]:-mt-12'}`}>
-            <MascotSvg
-              expression={cheer ? 'excited' : 'calm'}
-              action={cheer ? 'celebrate' : busy || reveal ? 'think' : 'idle'}
-              // на удар кот смотрит, не моргая: моргание на кульминации выглядело как «кот потемнел» (17.11)
-              awake={!!reveal}
-              label={companionName ?? 'Напарник'}
-              // у куклы над ушами пустое поле рисунка — подтягиваем кота к пузырю; размер — от высоты экрана, чтобы старт
-              // всегда был над меню
-              className={
-                deal
-                  ? tall
-                    ? 'size-[clamp(76px,calc(100dvh_-_684px),150px)]'
-                    : 'size-[clamp(64px,calc(100dvh_-_640px),150px)] [@media(max-height:699px)]:size-16'
-                  : 'size-[clamp(112px,calc(100dvh_-_570px),232px)]'
-              }
-            />
+          <div
+            ref={catRef}
+            className={`vt-cat relative shrink-0 ${
+              stage
+                ? `${CAT_STAGE} z-10 -mb-[14px] -mt-10`
+                : deal
+                  ? `${tall ? 'size-[clamp(76px,calc(100dvh_-_684px),150px)]' : 'size-[clamp(64px,calc(100dvh_-_640px),150px)] [@media(max-height:699px)]:size-16'} -mt-3 [@media(max-height:699px)]:mt-0`
+                  : '-mt-5 [@media(min-height:740px)]:-mt-12'
+            }`}
+          >
+            {/* в «деле» тело кота — крупное (размер «ожидания») и уменьшено масштабом до места кота (cat-fit) */}
+            <div ref={catBodyRef} className={deal && !stage ? 'cat-fit absolute left-0 top-0 origin-top-left' : deal ? 'absolute left-0 top-0 origin-top-left' : ''}>
+              <MascotSvg
+                expression={cheer ? 'excited' : 'calm'}
+                action={cheer ? 'celebrate' : busy || reveal ? 'think' : 'idle'}
+                // на удар кот смотрит, не моргая: моргание на кульминации выглядело как «кот потемнел» (17.11)
+                awake={!!reveal}
+                label={companionName ?? 'Напарник'}
+                // размер — от высоты экрана, чтобы старт всегда был над меню
+                className={deal ? CAT_STAGE : 'size-[clamp(112px,calc(100dvh_-_570px),232px)]'}
+              />
+            </div>
           </div>
+          {/* «ожидание»: кот сидит на полене — лапы на коре, тень кота на коре (владелец 17.11). Полено — под котом и во время
+              сцены (сцена кладёт своё полено в это же место, а не поверх страницы). Пока кот разламывает, полено покачивается */}
+          {stage && (
+            <>
+              <div ref={slotRef} data-rv-slot className="relative h-[4.25rem] w-full shrink-0">
+                {/* дело словами человека: шрифт резьбы и текст полена; на экране не видно */}
+                <p ref={sourceRef} data-rv-source aria-hidden="true" className="pointer-events-none invisible absolute inset-x-4 top-3.5 text-pretty text-[1.15rem] font-bold leading-snug">
+                  {reveal ? reveal.task : task}
+                </p>
+                {waiting && <WaitLog text={task} />}
+              </div>
+            </>
+          )}
         </div>
         {/* листы появляются в разметке (и в сети) только после первого открытия */}
         {sheetsUsed.templates && <TemplatesSheet open={templatesOpen} onClose={() => setTemplatesOpen(false)} onPick={applyTemplate} />}
         {sheetsUsed.prefs && <BreakdownPrefs open={prefsOpen} onClose={() => setPrefsOpen(false)} fineness={fineness} onFineness={setFineness} />}
         {/* блок дела прижат к низу: кнопка старта стоит пиксель в пиксель там же, где на обычном экране Фокуса */}
-        <div className="mt-auto flex flex-col gap-4">
-          {deal ? (
+        <div className={stage || !deal ? 'mt-auto flex flex-col gap-4' : 'flex min-h-0 flex-1 flex-col gap-4 pt-3'}>
+          {stage ? null : deal ? (
             // Этап 1 (research/24 C): один шаг крупно и уже выбран, ещё два — мельче, остальные свёрнуты. Полный список
             // с суммой минут делает дело «длиннее» (Kruger & Evans 2004); близкая подцель сильнее далёкой (Bandura & Schunk).
             // Пока шагов нет, на месте карточки ждёт полено, а места шагов заняты пустыми — ничего не сдвинется (17.11)
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <p className="min-w-0 flex-1 truncate font-mono text-[10.5px] font-semibold uppercase tracking-[0.2em] text-primary/90">
-                  первый шаг · {trimLabel(brokenSteps ? (dealTitle ?? '') : task, 30)}
-                </p>
+            <div className="flex min-h-0 flex-1 flex-col gap-2">
+              {/* подписи «первый шаг · дело» нет (владелец 17.11): в строке только карта штампов и настройка */}
+              <div data-rv-labelrow className="flex items-center justify-end gap-2">
                 {/* карта штампов (подаренный прогресс, Nunes & Drèze): первый штамп — отпечаток лапы за разломанное дело (это
                     правда), второй — первый шаг, закрашен наполовину. Ширина постоянная — подпись слева не прыгает */}
                 <span
@@ -1175,14 +1275,8 @@ export function FocusSession() {
                   <SlidersHorizontal className="size-[18px]" aria-hidden="true" />
                 </button>
               </div>
-              {/* место карточки первого шага: в нём полено ждёт удара и колется. Высота постоянная (заголовок до двух строк) —
-                  карточка встаёт ровно на место полена. Между полем и поленом — один кадр-фильм (vt-task) */}
-              <div ref={slotRef} data-rv-slot className="vt-task relative h-[9.75rem]">
-                {/* дело словами человека: шрифт резьбы и текст полена; на экране не видно */}
-                <p ref={sourceRef} data-rv-source aria-hidden="true" className="pointer-events-none invisible absolute inset-x-4 top-3.5 text-pretty text-[1.15rem] font-bold leading-snug">
-                  {reveal ? reveal.task : task}
-                </p>
-                {waiting && <WaitLog text={task} />}
+              {/* место карточки первого шага. Высота постоянная (заголовок до двух строк) — ничего не сдвигается */}
+              <div className="relative h-[9.75rem]">
                 {brokenSteps && (
               <div data-rv-card className="glass relative flex h-[9.75rem] flex-col overflow-hidden rounded-2xl border border-primary/40 px-4 pb-3 pt-3.5 [@media(max-width:380px)]:px-3">
                 {editing ? (
@@ -1209,14 +1303,15 @@ export function FocusSession() {
                       data-rv-step={busy ? undefined : ''}
                       className="line-clamp-2 text-pretty text-[1.15rem] font-bold leading-snug"
                     >
-                      {busy ? 'Разламываю…' : task}
+                      {busy ? 'Разламываю…' : <WoodWords text={task} />}
                     </motion.p>
                   </AnimatePresence>
                 )}
                 {/* строка оценки — место есть всегда, даже пустое: карточка одной высоты */}
                 <p className="mt-1 min-h-4 font-mono text-[10.5px] uppercase tracking-widest text-primary/80">
                   {!editing && brokenSteps[sel]?.wait && <span className="text-reward">пока ждёшь · </span>}
-                  {!editing && estimate ? `≈ ${estimate} мин · уже поставил ниже` : ''}
+                  {/* длительность может быть спрятана (шаги не влезли) — тогда говорим, сколько поставили, а не «ниже» */}
+                  {!editing && estimate ? `≈ ${estimate} мин · ${compact ? `сессия ${minutes} мин` : 'уже поставил ниже'}` : ''}
                 </p>
                 {/* кнопки карточки — всегда в один ряд: перенос делал карточку выше (на CI шрифт приходил позже, и ряд переносился) */}
                 <div className="mt-auto flex flex-nowrap gap-1.5 pt-3 [@media(max-width:380px)]:gap-1">
@@ -1249,41 +1344,30 @@ export function FocusSession() {
               </div>
                 )}
               </div>
-              {/* места шагов: высота постоянная (2 строки и «ещё N» на высоком экране, 1 и «ещё N» на низком) */}
-              <div className={`flex flex-col gap-2 ${showAll ? (rows === 2 ? 'min-h-[9.25rem]' : 'min-h-24') : rows === 2 ? 'h-[9.25rem]' : 'h-24'}`}>
-              {/* развёрнутый список длинного дела прокручивается сам: кнопка старта не должна уезжать под меню */}
-              <div className={showAll ? 'flex max-h-[9.5rem] flex-col gap-2 overflow-y-auto overscroll-contain pr-1' : 'contents'}>
-              {(showAll ? others : others.slice(0, rows)).map((st, i) => (
+              {/* остальные шаги — все, списком под карточкой, без прокрутки (владелец 17.11: вместо «ещё N — ждут в Делах») */}
+              <div data-rv-list className="-mx-1 min-h-0 flex-1 overflow-hidden px-1">
+              {(fitRows ? others.slice(0, fitRows) : others).map((st, i) => (
                 <motion.button
                   key={st.text}
                   type="button"
                   onClick={() => selectStep(st)}
-                  // во время сцены строки стоят на месте без въезда: по ним сцена считает, где «выжигать» буквы
+                  // во время сцены строки стоят на месте без въезда: по ним сцена считает, куда сажать слова
                   initial={reducedMotion || reveal ? false : { opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.22, delay: reducedMotion ? 0 : 0.04 * i, ease: [0.05, 0.7, 0.1, 1] }}
-                  className="press flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-left text-[13.5px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  transition={{ duration: 0.22, delay: reducedMotion ? 0 : 0.04 * Math.min(i, 5), ease: [0.05, 0.7, 0.1, 1] }}
+                  className="press flex h-8 w-full shrink-0 items-center gap-2 rounded-xl px-3 text-left text-[13.5px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   <span data-rv-bullet aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
-                  <span data-rv-step className="line-clamp-1">{st.text}</span>
+                  <span data-rv-step className="line-clamp-1 font-semibold">
+                    <WoodWords text={st.text} />
+                  </span>
                   {st.wait && <span className="shrink-0 font-mono text-[9.5px] uppercase tracking-widest text-reward/90">пока ждёшь</span>}
                 </motion.button>
               ))}
               </div>
-              {others.length > rows && !showAll && (
-                <button
-                  type="button"
-                  data-rv-more
-                  onClick={() => setShowAll(true)}
-                  className="min-h-11 self-start px-3 font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  ещё {others.length - rows} — ждут в Делах
-                </button>
-              )}
-              </div>
             </div>
           ) : (
-          <label className="vt-task flex flex-col gap-2">
+          <label className="flex flex-col gap-2">
             <input
               value={task}
               maxLength={STEP_MAX}
@@ -1356,7 +1440,8 @@ export function FocusSession() {
           )}
           {/* длительность: пока полено ждёт и колется — её нет на экране, но место занято; в конце проявляется на своём месте.
               Кнопка старта ниже видна всё время — неактивная, пиксель в пиксель там же (владелец 17.11) */}
-          <div inert={staging} aria-hidden={staging || undefined} className={`flex flex-col gap-2 transition-opacity duration-300 ${staging ? 'pointer-events-none opacity-0' : 'opacity-100'}`}>
+          {!(deal && !stage && compact) && (
+          <div ref={durRef} inert={staging} aria-hidden={staging || undefined} className={`flex flex-col gap-2 transition-opacity duration-300 ${staging ? 'pointer-events-none opacity-0' : 'opacity-100'}`}>
             <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
               Длительность
             </span>
@@ -1399,6 +1484,7 @@ export function FocusSession() {
                     : '45 — для дела, в которое стоит погрузиться'}
             </p>}
           </div>
+          )}
           <motion.div whileTap={reducedMotion ? undefined : { scale: 0.96 }}>
             <Button
               size="lg"

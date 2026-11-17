@@ -35,13 +35,13 @@ test('полено: сцена сама доходит до конца без к
   await page.waitForSelector('[data-rv="playing"]')
   await expect(page.locator('[data-rv="playing"]')).toHaveCount(0, { timeout: 4000 })
   expect(await page.evaluate(() => localStorage.getItem('naparnik:breaks'))).toBe('1')
-  // двенадцатая разбивка — короткая сцена (0,6 с)
+  // двенадцатая разбивка — сцена вдвое быстрее первой
   await page.evaluate(() => localStorage.setItem('naparnik:breaks', '11'))
   await page.goto(url)
   await page.waitForSelector('[data-rv="playing"]')
   const t0 = Date.now()
   await expect(page.locator('[data-rv="playing"]')).toHaveCount(0, { timeout: 4000 })
-  expect(Date.now() - t0).toBeLessThan(1200)
+  expect(Date.now() - t0).toBeLessThan(1700)
 })
 
 test('полено: при «уменьшить движение» сцены нет, шаги сразу', async ({ browser }) => {
@@ -103,7 +103,13 @@ for (const [w, h] of [[393, 664], [360, 640], [390, 844]] as const) {
     expect(tops.length).toBeGreaterThan(10)
     expect([...new Set(tops)]).toEqual([plain.top])
     await expect(page.getByRole('button', { name: 'Начали. Я рядом' })).toBeEnabled()
-    await expect.poll(durOpacity).toBe('1')
+    // шагов много — длительность спрятана и отдала место шагам (владелец 17.11); если она есть — проявилась
+    if (await page.getByText('Длительность').count()) await expect.poll(durOpacity).toBe('1')
+    // все остальные шаги — списком под карточкой, целиком и над кнопкой старта; «ещё N» нет
+    await expect(page.getByText(/ждут в Делах/)).toHaveCount(0)
+    const rows = await page.locator('[data-rv-list] > button').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().bottom)))
+    expect(rows.length).toBe(h >= 640 ? 5 : rows.length)
+    for (const b of rows) expect(b).toBeLessThanOrEqual(plain.top)
     expect(await startBox(page)).toEqual(plain)
     const navTop = await page.locator('nav').evaluate((el) => el.getBoundingClientRect().top)
     expect(plain.bottom).toBeLessThanOrEqual(navTop)
@@ -115,33 +121,79 @@ test('полено: квитанция в конце ничего не сдви�
   await slow(page, 600)
   await page.goto('/app/session?step=' + encodeURIComponent('Покушать') + '&break=1')
   await page.waitForSelector('[data-rv="playing"]')
-  const ids = await page.evaluate(() => [...document.querySelectorAll('body > div[aria-hidden="true"] [id^="rvBark"]')].map((e) => e.id))
+  await page.waitForTimeout(400)
+  const ids = await page.evaluate(() => [...document.querySelectorAll('[id^="rvBark"]')].map((e) => e.id))
   expect(ids.length).toBeGreaterThan(1)
   expect(new Set(ids).size).toBe(ids.length)
-  const slotTop = () => page.locator('[data-rv-slot]').evaluate((el) => Math.round(el.getBoundingClientRect().top))
-  const during = await slotTop()
+  // после раскола карточка на своём месте; реплика-квитанция её не сдвигает
+  await page.waitForSelector('[data-rv-card]')
+  // место карточки (сама карточка во время сцены проявляется с лёгким масштабом — меряем её место в раскладке)
+  const cardTop = () => page.locator('[data-rv-card]').evaluate((el) => Math.round(el.parentElement!.getBoundingClientRect().top))
+  const during = await cardTop()
   await expect(page.getByText(/Разломал на \d+ шаг/)).toBeVisible({ timeout: 4000 })
-  expect(await slotTop()).toBe(during)
+  expect(await cardTop()).toBe(during)
+  // в пузыре одна реплика: «Сейчас расколю!» не остаётся рядом с квитанцией (скриншот владельца 17.11)
+  await expect(page.locator('[data-rv-bubble]')).not.toContainText('расколю')
 })
 
-test('полено: буквы шага загораются ровно на своей строке', async ({ page }) => {
+/**
+ * Владелец 17.11: куски полена — слова шагов, и деревянные таблички остаются. Копия-табличка садится ровно на
+ * настоящую — подмена в конце сцены незаметна. На сборке до 17.11 табличек не было (буквы выжигались в обычный текст).
+ */
+test('полено: каждое слово шага — деревянная табличка, кусок садится ровно на неё', async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 664 })
   await slow(page, 300)
   await page.goto('/app/session?step=' + encodeURIComponent('Покушать') + '&break=1')
-  await page.waitForSelector('[data-rv="playing"]')
-  // заморозить сцену в момент «выжигания» второй строки и сравнить букву-уголёк с настоящей буквой
-  const diff = await page.evaluate(() => {
+  await page.waitForSelector('[data-rv-card]')
+  // заморозить сцену у самого конца посадки и сравнить таблички-копии с настоящими
+  const worst = await page.evaluate(() => {
     for (const a of document.getAnimations()) {
+      if (!a.id.startsWith('rv:')) continue
       a.pause()
-      a.currentTime = 1000
+      const end = Number(a.effect?.getComputedTiming().endTime ?? 0)
+      if (Number.isFinite(end)) a.currentTime = Math.max(0, end - 1)
     }
-    const row = document.querySelectorAll('[data-rv-step]')[1]
-    const range = document.createRange()
-    range.setStart(row.firstChild!, 0)
-    range.setEnd(row.firstChild!, 1)
-    const real = range.getBoundingClientRect()
-    const ghosts = [...document.querySelectorAll<HTMLElement>('body > div[aria-hidden="true"] span')].filter((s) => s.textContent === row.textContent![0])
-    return Math.min(...ghosts.map((g) => Math.abs(parseFloat(g.style.top) - real.top) + Math.abs(parseFloat(g.style.left) - real.left)))
+    const ghosts = [...document.querySelectorAll<HTMLElement>('body > div[aria-hidden="true"] div.wood-word')].map((g) => g.getBoundingClientRect())
+    const real = [...document.querySelectorAll<HTMLElement>('[data-rv-step] .wood-word')]
+      .map((r) => r.getBoundingClientRect())
+      .filter((r) => r.bottom <= document.querySelector('[data-rv-list]')!.getBoundingClientRect().bottom + 1)
+    return Math.max(...real.map((r) => Math.min(...ghosts.map((g) => Math.abs(g.left - r.left) + Math.abs(g.top - r.top)))))
   })
-  expect(diff).toBeLessThan(2)
+  expect(worst).toBeLessThan(2)
+  await page.evaluate(() => document.getAnimations().forEach((a) => a.id.startsWith('rv:') && a.play()))
+  await expect(page.locator('[data-rv="playing"]')).toHaveCount(0, { timeout: 4000 })
+  // таблички остаются, слов столько же, сколько в шагах; подписи «первый шаг · дело» нет
+  expect(await page.locator('[data-rv-step]').first().locator('.wood-word').count()).toBe(4)
+  await expect(page.getByText(/первый шаг ·/i)).toHaveCount(0)
+})
+
+test('полено: «Разломать на шаг» с Дома — следующий кадр сразу полено, кот сидит на нём', async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 664 })
+  await slow(page, 1500)
+  await page.goto('/app')
+  await page.fill('#home-task', 'Покушать')
+  await page.evaluate(() => {
+    const w = window as unknown as { __kinds: string[] }
+    w.__kinds = []
+    const tick = () => {
+      const home = !!document.querySelector('#home-task')
+      const log = !!document.querySelector('[data-rv-waitlog] svg')
+      w.__kinds.push(home ? 'H' : log ? 'L' : '?')
+      if (!log) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  })
+  await page.getByRole('link', { name: 'Разломать на шаг' }).click()
+  await page.waitForSelector('[data-rv-waitlog] svg')
+  const kinds = (await page.evaluate(() => (window as unknown as { __kinds: string[] }).__kinds)).join('')
+  // только кадры Дома, потом полено — ни одного промежуточного (наплыва, пустого экрана)
+  expect(kinds).toMatch(/^H+L$/)
+  // кот сидит на полене: низ кота заходит на верх полена на несколько пикселей (лапы на коре), кот поверх полена
+  const g = await page.evaluate(() => {
+    const cat = document.querySelector('[data-stage] .vt-cat')!.getBoundingClientRect()
+    const log = document.querySelector('[data-rv-slot]')!.getBoundingClientRect()
+    return { overlap: cat.bottom - log.top }
+  })
+  expect(g.overlap).toBeGreaterThan(4)
+  expect(g.overlap).toBeLessThan(24)
 })

@@ -6,8 +6,6 @@ import { useRouter } from "next/navigation";
 import { PawPrint, Sprout, Zap } from "lucide-react";
 import { splitDump, upsertDeal } from "@/lib/deals";
 import { BREAK_TOO_SHORT, breakable } from "@/lib/break-task";
-import { settleKeyboard } from "@/lib/keyboard";
-import { navigateWithTransition } from "@/lib/view-transition";
 import { NightScene } from "@/components/landing/night-scene";
 import { Knoll, Moon } from "@/components/hero-scene";
 import { MascotDoll } from "@/components/mascot-doll";
@@ -98,13 +96,14 @@ export function HomeCamp() {
   };
   // пустое поле разламывает дело из ответов знакомства; написанное — только если его можно разламывать (lib/break-task.ts)
   const canBreak = !text.trim() || breakable(target);
-  // «Разломать на шаг»: сначала уезжает клавиатура и экран встаёт на место, потом один кадр-фильм — кот перелетает,
-  // поле дела перетекает в полено Фокуса (17.11, запись владельца: Фокус открывался под клавиатурой и дёргался 3–4 раза)
-  const go = async () => {
+  // «Разломать на шаг»: клавиатура закрывается сразу, и следующий кадр — уже Фокус с поленом, без промежуточных кадров
+  // и наплывов (17.11, владелец: «сразу без доп кадров должен быть кадр с бревном»)
+  const go = () => {
     if (!canBreak) return setTooShort(true);
     keepRest();
-    await settleKeyboard();
-    navigateWithTransition(() => router.push(href), "focus");
+    const el = document.activeElement;
+    if (el instanceof HTMLElement) el.blur();
+    router.push(href);
   };
 
   return (
@@ -149,7 +148,7 @@ export function HomeCamp() {
             className="mt-3"
             onSubmit={(e) => {
               e.preventDefault();
-              void go();
+              go();
             }}
           >
             <label className="sr-only" htmlFor="home-task">
@@ -165,7 +164,7 @@ export function HomeCamp() {
               placeholder={homeExample(sphere)}
               enterKeyHint="go"
               autoComplete="off"
-              className="field vt-task"
+              className="field"
               autoCapitalize="sentences"
             />
           </form>
@@ -222,7 +221,7 @@ export function HomeCamp() {
             onClick={(e) => {
               // ссылка остаётся ради предзагрузки Фокуса, а переход ведём сами: клавиатура уезжает до перехода
               e.preventDefault();
-              void go();
+              go();
             }}
             // iOS Safari включает :active только при наличии touch-слушателя
             onTouchStart={() => {}}
