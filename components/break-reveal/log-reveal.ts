@@ -81,7 +81,7 @@ function div(layer: HTMLElement, style: Partial<CSSStyleDeclaration>, before?: N
 /* ───────────────────────────── «Полено» ───────────────────────────── */
 
 /** Полено сбоку: кора с прожилками, сучок, спил с годовыми кольцами справа. Рисуется под размер карточки дела. */
-function logSvg(w: number, h: number, seed: number) {
+function logSvg(w: number, h: number, seed: number, shade?: LogShade) {
   const r = h / 2
   const capRx = h * 0.3
   let rnd = seed
@@ -105,6 +105,7 @@ function logSvg(w: number, h: number, seed: number) {
       <linearGradient id="rvBark${seed}" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stop-color="#8d5b36"/><stop offset=".22" stop-color="#a36d43"/><stop offset=".5" stop-color="#6e4428"/><stop offset=".85" stop-color="#4a2c18"/><stop offset="1" stop-color="#33200f"/>
       </linearGradient>
+      <radialGradient id="rvShade${seed}" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#000" stop-opacity=".6"/><stop offset=".6" stop-color="#000" stop-opacity=".32"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
       <radialGradient id="rvCut${seed}" cx="50%" cy="50%" r="55%"><stop offset="0" stop-color="#f3cf98"/><stop offset=".7" stop-color="#deac70"/><stop offset="1" stop-color="#c38a52"/></radialGradient>
     </defs>
     <ellipse cx="${w / 2}" cy="${h + 5}" rx="${w * 0.46}" ry="6" fill="#000" fill-opacity=".35"/>
@@ -114,15 +115,24 @@ function logSvg(w: number, h: number, seed: number) {
     <path d="M${capRx},2 H${w - capRx}" stroke="#d6a070" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
     <ellipse cx="${w - capRx}" cy="${r}" rx="${capRx}" ry="${r}" fill="url(#rvCut${seed})" stroke="#3a2212" stroke-width="3"/>
     ${rings}
+    ${shade ? `<ellipse cx="${shade.x.toFixed(1)}" cy="4" rx="${shade.rx.toFixed(1)}" ry="6" fill="url(#rvShade${seed})"/>` : ''}
     <circle cx="${w - capRx}" cy="${r}" r="1.8" fill="#8a5a32"/>
   </svg>`
+}
+
+/** Тень кота, который сидит над поленом, — падает на кору сверху (x — центр, rx — полуширина, в px полена) */
+export type LogShade = { x: number; rx: number }
+
+/** Тень кота на коре: где у обёртки кота лапы (46 % ширины) и какой ширины тень */
+export function catShade(cat: DOMRect, log: DOMRect): LogShade {
+  return { x: cat.left + cat.width * 0.46 - log.left, rx: cat.width * 0.25 }
 }
 
 /** Полено в элементе host: картинка коры + слова человека резьбой. Один рисунок для полена ожидания (в разметке Фокуса)
  *  и для полена сцены — смена одного на другое незаметна. seed — свой у каждого куска: id градиентов в документе не
  *  повторяются (иначе Safari брал градиент чужого, скрытого полена и красил кусок чёрным — «тёмный кусок», 17.11) */
-export function drawLog(host: HTMLElement, w: number, h: number, text: string, font: string, seed: number) {
-  host.innerHTML = logSvg(w, h, seed)
+export function drawLog(host: HTMLElement, w: number, h: number, text: string, font: string, seed: number, shade?: LogShade) {
+  host.innerHTML = logSvg(w, h, seed, shade)
   const carve = document.createElement('p')
   carve.textContent = text
   carve.dataset.rvCarve = ''
@@ -257,7 +267,7 @@ function strike(s: Scene) {
   const carveText = stage.source.textContent ?? ''
 
   const log = div(layer, { left: `${L.x}px`, top: `${L.y}px`, width: `${L.w}px`, height: `${L.h}px`, transformOrigin: '50% 100%' })
-  drawLog(log, L.w, L.h, carveText, font, 7)
+  drawLog(log, L.w, L.h, carveText, font, 7, catShade(rect(stage.cat), slot))
   if (stage.fromWait) run(log, [{ opacity: 1 }, { opacity: 1 }], 0, 1)
   else run(log, [{ opacity: 0, transform: 'scale(.9,.55)' }, { opacity: 1, transform: 'scale(1.04,1.1)', offset: 0.6 }, { opacity: 1, transform: 'none' }], 0, T(200), { easing: SPRING })
 
