@@ -223,6 +223,33 @@ function WoodWords({ text }: { text: string }) {
   )
 }
 
+/** Убранство карточки-записки: петельки на трёх углах (четвёртый держит печать), печать-звезда «×N», лапки кота,
+ *  мерцающие звёздочки. Только украшение — для диктора его нет */
+function NoteDeco({ steps }: { steps: number }) {
+  const loop = (
+    <svg viewBox="0 0 26 26" className="size-full overflow-visible">
+      <path d="M5 5 C12 7 20 13 20 18 C20 22.5 15 23.5 12.5 20.5 C10 17.5 9.5 11 5 5 Z" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinejoin="round" />
+      <circle cx="5" cy="5" r="4.6" fill="currentColor" />
+    </svg>
+  )
+  return (
+    <span aria-hidden="true" className="pointer-events-none absolute inset-0">
+      <span className="note-loop -left-[7px] -top-[7px]">{loop}</span>
+      <span className="note-loop -bottom-[7px] -left-[7px] -scale-y-100">{loop}</span>
+      <span className="note-loop -bottom-[7px] -right-[7px] -scale-100">{loop}</span>
+      <span className="note-seal -right-[18px] -top-[20px]">
+        <span className="note-seal-star" />
+        <span className="relative">×{steps}</span>
+      </span>
+      <span className="note-paw right-[14px] top-[46px] rotate-[14deg]" />
+      <span className="note-paw right-[40px] top-[58px] rotate-[4deg] scale-75 opacity-80" />
+      <span className="note-star left-[18px] top-[64px]" />
+      <span className="note-star left-[46%] top-[62px] size-[10px] [animation-delay:.6s]" />
+      <span className="note-star right-[70px] top-[48px] size-[9px] [animation-delay:1.1s]" />
+    </span>
+  )
+}
+
 /** Кот в «ожидании» (крупно над поленом) — и размер его тела в «деле», где оно уменьшено масштабом */
 const CAT_STAGE = 'size-[clamp(170px,calc(100dvh_-_470px),245px)]'
 
@@ -1278,7 +1305,10 @@ export function FocusSession() {
               {/* место карточки первого шага. Высота постоянная (заголовок до двух строк) — ничего не сдвигается */}
               <div className="relative h-[9.75rem]">
                 {brokenSteps && (
-              <div data-rv-card className="glass relative flex h-[9.75rem] flex-col overflow-hidden rounded-2xl border border-primary/40 px-4 pb-3 pt-3.5 [@media(max-width:380px)]:px-3">
+              // карточка-записка (вариант 4, выбран владельцем 17.11): кремовая бумага с двойной строчкой, привязана к фону
+              // петельками на углах, печать-звезда «×N» (сколько шагов вышло) держит правый верхний угол, лапки кота
+              <div data-rv-card className="note-card relative flex h-[9.75rem] flex-col px-4 pb-3 pt-3.5 [@media(max-width:380px)]:px-3">
+                <NoteDeco steps={brokenSteps.length} />
                 {editing ? (
                   <input
                     autoFocus
@@ -1308,7 +1338,7 @@ export function FocusSession() {
                   </AnimatePresence>
                 )}
                 {/* строка оценки — место есть всегда, даже пустое: карточка одной высоты */}
-                <p className="mt-1 min-h-4 font-mono text-[10.5px] uppercase tracking-widest text-primary/80">
+                <p className="mt-1 min-h-4 font-mono text-[10.5px] font-semibold uppercase tracking-widest text-[#8a5a2b]">
                   {!editing && brokenSteps[sel]?.wait && <span className="text-reward">пока ждёшь · </span>}
                   {/* длительность может быть спрятана (шаги не влезли) — тогда говорим, сколько поставили, а не «ниже» */}
                   {!editing && estimate ? `≈ ${estimate} мин · ${compact ? `сессия ${minutes} мин` : 'уже поставил ниже'}` : ''}
@@ -1319,7 +1349,7 @@ export function FocusSession() {
                     type="button"
                     disabled={busy}
                     onClick={() => void breakDown(true)}
-                    className="press inline-flex min-h-11 min-w-0 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring gap-1.5 rounded-full bg-primary/15 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-semibold text-primary disabled:opacity-60"
+                    className="note-btn note-btn-go gap-1.5"
                   >
                     <Sparkles className="size-3.5 shrink-0" aria-hidden="true" />
                     <span className="truncate">{busy ? 'Дроблю…' : 'Ещё мельче'}</span>
@@ -1327,7 +1357,7 @@ export function FocusSession() {
                   <button
                     type="button"
                     onClick={() => setEditing(true)}
-                    className="press inline-flex min-h-11 min-w-0 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full border border-white/10 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-medium text-foreground/85"
+                    className="note-btn"
                   >
                     <span className="truncate">Своими словами</span>
                   </button>
@@ -1335,7 +1365,7 @@ export function FocusSession() {
                     <button
                       type="button"
                       onClick={dropStep}
-                      className="press inline-flex min-h-11 min-w-0 shrink-0 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full border border-white/10 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-medium text-muted-foreground"
+                      className="note-btn shrink-0"
                     >
                       <span className="truncate">Не то</span>
                     </button>
