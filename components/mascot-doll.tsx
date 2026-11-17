@@ -28,6 +28,8 @@ type Props = {
   /** герой первого экрана: чёткий постер с первой отрисовки. Сама картинка — data-URI в app/hero-poster.css, который
    *  подключают только лендинг и тест: в общем коде кота её нет (аудит 11.11), и в JS-пакете страницы тоже (14.11) */
   inlinePoster?: boolean;
+  /** не моргать, пока true (короткая кульминация сцены). По умолчанию кот моргает */
+  awake?: boolean;
 };
 
 const BASE = "/mascot/doll/";
@@ -77,7 +79,7 @@ export function MascotDoll(props: Props) {
   return <DollCanvas {...props} />;
 }
 
-function DollCanvas({ expression = "calm", action = "idle", size = 160, label, className, interactive = true, inlinePoster }: Props) {
+function DollCanvas({ expression = "calm", action = "idle", size = 160, label, className, interactive = true, inlinePoster, awake = false }: Props) {
   const reduce = useReducedMotion();
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);   // кот: WebGL прямо здесь
@@ -202,7 +204,8 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
     a.expression = expression;
     a.setAction(action);
     a.reduced = !!reduce;
-  }, [expression, action, reduce, state]);
+    a.awake = awake;
+  }, [expression, action, reduce, state, awake]);
 
   // взгляд за указателем
   useEffect(() => {

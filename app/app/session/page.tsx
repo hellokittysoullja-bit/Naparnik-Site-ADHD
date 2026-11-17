@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function SessionPage() {
   preloadCatPoster() // кот — самый крупный элемент экрана, а сам экран появляется только после загрузки кода
   return (
-    <main className="session-main app-page-enter flex min-h-dvh flex-col pb-16">
+    <main className="session-main app-page-enter flex min-h-dvh flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom))]">
       <FocusScene />
       <Suspense fallback={null}>
         <FocusSession />

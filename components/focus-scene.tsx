@@ -19,7 +19,8 @@ export function FocusScene() {
   return (
     <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0">
       <NightScene />
-      <Moon className="absolute right-[3%] top-[max(0.5rem,env(safe-area-inset-top))] w-[clamp(72px,22vw,104px)]" />
+      {/* луна меньше, чем на Доме: пузырь кота (квитанция в две строки) проходит левее неё и её не закрывает (17.11) */}
+      <Moon className="absolute right-[3%] top-[max(0.5rem,env(safe-area-inset-top))] w-[clamp(56px,15vw,80px)]" />
     </div>
   )
 }

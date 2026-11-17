@@ -84,7 +84,7 @@ function pickKind(): Kind {
   return r < 0.46 ? 'leaf' : r < 0.62 ? 'dot' : r < 0.78 ? 'ribbon' : r < 0.9 ? 'spark' : 'paw'
 }
 
-export function confetti(bursts: Burst[], opts: { duration?: number } = {}): () => void {
+export function confetti(bursts: Burst[], opts: { duration?: number; avoid?: DOMRect[] } = {}): () => void {
   if (typeof window === 'undefined') return () => {}
   const dpr = Math.min(2, window.devicePixelRatio || 1)
   const W = window.innerWidth
@@ -232,6 +232,17 @@ export function confetti(bursts: Burst[], opts: { duration?: number } = {}): () 
       g.restore()
     }
     g.globalAlpha = 1
+    // «окна» поверх холста: бумажки проходят позади них (квитанция кота читается)
+    if (opts.avoid?.length) {
+      g.save()
+      g.globalCompositeOperation = 'destination-out'
+      for (const a of opts.avoid) {
+        g.beginPath()
+        g.roundRect(a.left - 3, a.top - 3, a.width + 6, a.height + 6, 20)
+        g.fill()
+      }
+      g.restore()
+    }
     if (!alive || el > total + 600) return stop()
     raf = requestAnimationFrame(frame)
   }
@@ -240,7 +251,7 @@ export function confetti(bursts: Burst[], opts: { duration?: number } = {}): () 
 }
 
 /** Праздник как у Duolingo: две пушки сверху по углам бьют вниз-внутрь на весь экран + хлопок от самого кота вверх */
-export function celebrate(cat: { x: number; y: number }) {
+export function celebrate(cat: { x: number; y: number }, avoid: DOMRect[] = []) {
   const W = window.innerWidth
   return confetti(
     [
@@ -252,6 +263,6 @@ export function celebrate(cat: { x: number; y: number }) {
       // хлопок от самого кота вверх
       { x: cat.x, y: cat.y, count: 36, angle: -Math.PI / 2, spread: 2.1, speed: [380, 900], delay: 60, stagger: 90, jitter: [14, 8] },
     ],
-    { duration: 3000 },
+    { duration: 3000, avoid },
   )
 }
