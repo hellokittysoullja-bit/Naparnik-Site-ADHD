@@ -1156,7 +1156,7 @@ export function FocusSession() {
         {/* В «деле» на низком экране (ниже 700 px — iPhone с панелями Safari) кот маленький и сбоку от пузыря, иначе — под ним:
             так весь экран дела с кнопкой старта помещается над меню (владелец 17.11). Место пузыря — на две строки всегда:
             смена реплики («Сейчас расколю!» → квитанция) ничего не сдвигает. Справа сверху луна — пузырь её не закрывает */}
-        <div className={stage ? 'flex flex-1 flex-col items-center justify-center' : deal ? 'flex flex-none flex-col items-center justify-end gap-1 [@media(max-height:699px)]:flex-row-reverse [@media(max-height:699px)]:items-end [@media(max-height:699px)]:gap-2' : 'flex flex-1 flex-col items-center justify-end gap-1'}>
+        <div className={stage ? 'flex flex-1 flex-col items-center justify-center pb-16' : deal ? 'flex flex-none flex-col items-center justify-end gap-1 [@media(max-height:699px)]:flex-row-reverse [@media(max-height:699px)]:items-end [@media(max-height:699px)]:gap-2' : 'flex flex-1 flex-col items-center justify-end gap-1'}>
           {/* Пузырь стоит на месте, меняется только реплика в нём (16.11, покадровая съёмка): раньше он целиком уходил и
               приходил заново (AnimatePresence mode="wait"), и между репликами ~0,25 с кот был без пузыря */}
           {/* в деле пузырь стоит над своим местом (absolute): его высота не влияет на раскладку вообще — ни смена реплики,
@@ -1187,7 +1187,7 @@ export function FocusSession() {
             ref={catRef}
             className={`vt-cat relative shrink-0 ${
               stage
-                ? `${CAT_STAGE} z-10 mb-6 -mt-4`
+                ? `${CAT_STAGE} z-10 mb-8 -mt-4`
                 : deal
                   ? `${tall ? 'size-[clamp(76px,calc(100dvh_-_684px),150px)]' : 'size-[clamp(64px,calc(100dvh_-_640px),150px)] [@media(max-height:699px)]:size-16'} -mt-3 [@media(max-height:699px)]:mt-0`
                   : '-mt-5 [@media(min-height:740px)]:-mt-12'
