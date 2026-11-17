@@ -561,51 +561,66 @@ export function FocusSession() {
     // куски полена — по словам шагов, которые будут видны: выбранный шаг на карточке и строки под ним
     const sel = Math.max(0, list.findIndex((b) => b.text === task))
     const shown = [list[sel].text, ...list.filter((_, i) => i !== sel).map((b) => b.text)]
-    const r = playLogReveal(
-      { cat, catBody, bubble, slot, source, fromWait: reveal.fromWait },
-      reveal.nth,
-      {
-        pieces: wordCount(shown),
-        onImpact: hapticReaction,
-        // раскол: экран за один синхронный кадр встаёт в раскладку «дело»; сцена сразу меряет её и ведёт куски по местам
-        split: () => {
-          flushSync(() => setSplit(true))
-          return {
-            card: q<HTMLElement>('[data-rv-card]'),
-            texts: [...root.querySelectorAll<HTMLElement>('[data-rv-step]')],
-            bullets: [...root.querySelectorAll<HTMLElement>('[data-rv-bullet]')],
-            list: q<HTMLElement>('[data-rv-list]'),
-            stamp0: q<HTMLElement>('[data-rv-stamp]'),
-            labelRow: q<HTMLElement>('[data-rv-labelrow]'),
-          }
-        },
-      },
-    )
-    // тап в любом месте — сразу итог; кнопка под пальцем при этом срабатывает как обычно
-    const onDown = () => r.skip()
-    document.addEventListener('pointerdown', onDown, true)
     let alive = true
     let cheerTimer = 0
-    void r.finished.then(() => {
-      document.removeEventListener('pointerdown', onDown, true)
+    let r: ReturnType<typeof playLogReveal> | null = null
+    const onDown = () => r?.skip()
+    const play = () => {
       if (!alive) return
-      // экран выходит из сцены в том же кадре, в котором убирается её слой: ни одного кадра со скрытой карточкой
-      flushSync(() => {
-        setReveal(null)
-        setSplit(false)
+      const scene = playLogReveal(
+        { cat, catBody, bubble, slot, source, fromWait: reveal.fromWait },
+        reveal.nth,
+        {
+          pieces: wordCount(shown),
+          onImpact: hapticReaction,
+          // раскол: экран за один синхронный кадр встаёт в раскладку «дело»; сцена сразу меряет её и ведёт куски по местам
+          split: () => {
+            flushSync(() => setSplit(true))
+            return {
+              card: q<HTMLElement>('[data-rv-card]'),
+              texts: [...root.querySelectorAll<HTMLElement>('[data-rv-step]')],
+              bullets: [...root.querySelectorAll<HTMLElement>('[data-rv-bullet]')],
+              list: q<HTMLElement>('[data-rv-list]'),
+              stamp0: q<HTMLElement>('[data-rv-stamp]'),
+              labelRow: q<HTMLElement>('[data-rv-labelrow]'),
+            }
+          },
+        },
+      )
+      r = scene
+      // тап в любом месте — сразу итог; кнопка под пальцем при этом срабатывает как обычно
+      document.addEventListener('pointerdown', onDown, true)
+      void scene.finished.then(() => {
+        document.removeEventListener('pointerdown', onDown, true)
+        if (!alive) return
+        // экран выходит из сцены в том же кадре, в котором убирается её слой: ни одного кадра со скрытой карточкой
+        flushSync(() => {
+          setReveal(null)
+          setSplit(false)
+        })
+        scene.stop()
+        // праздник как у Duolingo: кот прыгает, конфетти на весь экран, двойная мягкая вибрация
+        hapticReward()
+        setCheer(true)
+        celebrateCat(cat, [root.querySelector('[data-rv-bubble]')])
+        cheerTimer = window.setTimeout(() => setCheer(false), 1400)
       })
-      r.stop()
-      // праздник как у Duolingo: кот прыгает, конфетти на весь экран, двойная мягкая вибрация
-      hapticReward()
-      setCheer(true)
-      celebrateCat(cat, [root.querySelector('[data-rv-bubble]')])
-      cheerTimer = window.setTimeout(() => setCheer(false), 1400)
-    })
+    }
+    // Сначала — шрифты табличек: заголовок шага (жирный) и строки (полужирный). Если они ещё грузятся, при расколе слова
+    // меряются в запасном шрифте, а потом приходит настоящий, текст шире — заголовок переносится на вторую строку, и куски
+    // садятся мимо (CI 17.11: «хочется поесть» ушли на вторую строку). Ждём не дольше 0,8 с — полено и кот всё это время
+    // на экране, как в ожидании
+    const fam = getComputedStyle(source).fontFamily
+    const text = shown.join(' ')
+    const fonts = document.fonts?.load
+      ? Promise.all([document.fonts.load(getComputedStyle(source).font, text), document.fonts.load(`600 13.5px ${fam}`, text)])
+      : Promise.resolve()
+    void Promise.race([fonts, new Promise((res) => window.setTimeout(res, 800))]).then(play, play)
     return () => {
       alive = false
       window.clearTimeout(cheerTimer)
       document.removeEventListener('pointerdown', onDown, true)
-      r.stop()
+      r?.stop()
     }
     // сцена — одна на разбивку: шаги и раскладка внутри неё меняются ею самой
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1264,7 +1279,9 @@ export function FocusSession() {
                 <p ref={sourceRef} data-rv-source aria-hidden="true" className="pointer-events-none invisible absolute inset-x-4 top-3.5 text-pretty text-[1.15rem] font-bold leading-snug">
                   {reveal ? reveal.task : task}
                 </p>
-                {waiting && <WaitLog text={task} />}
+                {/* полено ждёт и пока дробление идёт, и пока сцена ждёт шрифтов табличек; сцена кладёт своё полено поверх и
+                    прячет это */}
+                {(waiting || (!!reveal && !split)) && <WaitLog text={reveal ? reveal.task : task} />}
               </div>
             </>
           )}

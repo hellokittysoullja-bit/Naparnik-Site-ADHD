@@ -277,8 +277,12 @@ function strike(s: Scene) {
   // полено, трещины и отпечаток лежат в месте полена на странице, ПОД котом: кот сидит на полене, и его лапы должны быть
   // поверх коры (слой сцены над страницей закрывал бы их). Координаты — те же экранные: контейнер сдвинут на -L
   const under = div(stage.slot, { left: `${-L.x}px`, top: `${-L.y}px`, width: '0', height: '0' })
+  // полено ожидания (в разметке) уступает место полену сцены — иначе выглядывало бы из-под него на ударе и дрожи
+  const waitLog = stage.slot.querySelector<HTMLElement>('[data-rv-waitlog]')
+  if (waitLog) waitLog.style.visibility = 'hidden'
   const log = div(under, { left: `${L.x}px`, top: `${L.y}px`, width: `${L.w}px`, height: `${L.h}px`, transformOrigin: '50% 100%' })
-  drawLog(log, L.w, L.h, carveText, font, 7, catShade(rect(stage.cat), slot))
+  // номер рисунка — не 7, как у полена ожидания: оба лежат в разметке, и одинаковые id градиентов Safari красит чёрным
+  drawLog(log, L.w, L.h, carveText, font, 6, catShade(rect(stage.cat), slot))
   if (stage.fromWait) run(log, [{ opacity: 1 }, { opacity: 1 }], 0, 1)
   else run(log, [{ opacity: 0, transform: 'scale(.9,.55)' }, { opacity: 1, transform: 'scale(1.04,1.1)', offset: 0.6 }, { opacity: 1, transform: 'none' }], 0, T(200), { easing: SPRING })
 
