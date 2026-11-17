@@ -218,3 +218,30 @@ test('полено: «Разломать на шаг» с Дома — след�
   expect(g.overlap).toBeGreaterThan(4)
   expect(g.overlap).toBeLessThan(24)
 })
+
+/**
+ * CI 17.11 и скриншот владельца: на узком телефоне (360 px) заголовок записки переносится на вторую строку — строка была
+ * ниже таблички, и вторая строка табличек обрезалась снизу на 8 px, а куски полена летели мимо. На 320 px кнопки
+ * записки обрезались («Своими слов…»). Падает на сборке до исправления.
+ */
+for (const [w, h] of [
+  [320, 568],
+  [360, 640],
+  [393, 664],
+] as const) {
+  test(`полено ${w}×${h}: таблички заголовка целиком, кнопки записки без обрезки`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: h })
+    await page.goto('/app/session?step=' + encodeURIComponent('Покушать') + '&break=1')
+    await page.waitForSelector('[data-rv-card]')
+    await expect(page.locator('[data-rv="playing"]')).toHaveCount(0, { timeout: 5000 })
+    const r = await page.evaluate(() => {
+      const card = document.querySelector('[data-rv-card]')!
+      const title = card.querySelector('[data-rv-step]')!.getBoundingClientRect()
+      return {
+        clipped: [...card.querySelectorAll('[data-rv-step] .wood-word')].filter((e) => e.getBoundingClientRect().bottom > title.bottom + 0.5).map((e) => e.textContent),
+        cut: [...card.querySelectorAll('.note-btn .truncate')].filter((e) => e.scrollWidth > e.clientWidth + 0.5).map((e) => e.textContent),
+      }
+    })
+    expect(r).toEqual({ clipped: [], cut: [] })
+  })
+}

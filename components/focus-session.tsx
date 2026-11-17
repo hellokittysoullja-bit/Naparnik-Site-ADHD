@@ -226,6 +226,20 @@ function WoodWords({ text }: { text: string }) {
 /** Убранство карточки-записки: петельки на трёх углах (четвёртый держит печать), печать-звезда «×N», лапки кота,
  *  мерцающие звёздочки. Только украшение — для диктора его нет */
 function NoteDeco({ steps }: { steps: number }) {
+  // заголовок в две строки (узкий телефон, длинный шаг) занимает место левых лапок — тогда они и звёздочки под строкой
+  // прячутся, иначе их кусочки торчат из-под табличек. На большом телефоне заголовок в одну строку — всё на месте
+  const ref = useRef<HTMLSpanElement>(null)
+  const [wrap, setWrap] = useState(false)
+  useLayoutEffect(() => {
+    const title = ref.current?.parentElement?.querySelector<HTMLElement>('[data-rv-step]')
+    if (!title) return
+    const check = () => setWrap(title.getBoundingClientRect().height > 40)
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(title)
+    return () => ro.disconnect()
+  })
+  const under = wrap ? ' hidden' : ''
   const loop = (
     <svg viewBox="0 0 26 26" className="size-full overflow-visible">
       <path d="M5 5 C12 7 20 13 20 18 C20 22.5 15 23.5 12.5 20.5 C10 17.5 9.5 11 5 5 Z" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinejoin="round" />
@@ -233,7 +247,7 @@ function NoteDeco({ steps }: { steps: number }) {
     </svg>
   )
   return (
-    <span aria-hidden="true" className="pointer-events-none absolute inset-0">
+    <span ref={ref} aria-hidden="true" data-wrap={wrap ? '' : undefined} className="pointer-events-none absolute inset-0">
       <span className="note-loop -left-[7px] -top-[7px]">{loop}</span>
       <span className="note-loop -bottom-[7px] -left-[7px] -scale-y-100">{loop}</span>
       <span className="note-loop -bottom-[7px] -right-[7px] -scale-100">{loop}</span>
@@ -244,11 +258,11 @@ function NoteDeco({ steps }: { steps: number }) {
       <span className="note-paw right-[14px] top-[46px] rotate-[14deg]" />
       <span className="note-paw right-[40px] top-[58px] rotate-[4deg] scale-75 opacity-80" />
       {/* следы кота слева — как в макете варианта 4, который выбрал владелец, и маленькая звёздочка под левой лапкой */}
-      <span className="note-paw left-[14px] top-[50px] rotate-[80deg] scale-[.7] opacity-90" />
-      <span className="note-paw left-[44px] top-[58px] rotate-[80deg] scale-[.7] opacity-90" />
-      <span className="note-paw left-[74px] top-[50px] rotate-[80deg] scale-[.7] opacity-90" />
-      <span className="note-star left-[20px] top-[70px] size-[8px] [animation-delay:.3s]" />
-      <span className="note-star left-[46%] top-[62px] size-[10px] [animation-delay:.6s]" />
+      <span className={`note-paw left-[14px] top-[50px] rotate-[80deg] scale-[.7] opacity-90${under}`} />
+      <span className={`note-paw left-[44px] top-[58px] rotate-[80deg] scale-[.7] opacity-90${under}`} />
+      <span className={`note-paw left-[74px] top-[50px] rotate-[80deg] scale-[.7] opacity-90${under}`} />
+      <span className={`note-star left-[20px] top-[70px] size-[8px] [animation-delay:.3s]${under}`} />
+      <span className={`note-star left-[46%] top-[62px] size-[10px] [animation-delay:.6s]${under}`} />
       <span className="note-star right-[70px] top-[48px] size-[9px] [animation-delay:1.1s]" />
     </span>
   )
@@ -1357,7 +1371,7 @@ export function FocusSession() {
                       exit={reducedMotion ? { opacity: 0, transition: { duration: 0.1 } } : { opacity: 0, y: -6, transition: { duration: 0.14 } }}
                       transition={{ duration: reducedMotion ? 0.1 : 0.22, ease: [0.05, 0.7, 0.1, 1] }}
                       data-rv-step={busy ? undefined : ''}
-                      className="line-clamp-2 text-pretty text-[1.15rem] font-bold leading-snug"
+                      className="line-clamp-2 shrink-0 text-pretty text-[1.15rem] font-bold leading-[1.8rem]"
                     >
                       {busy ? 'Разламываю…' : <WoodWords text={task} />}
                     </motion.p>
