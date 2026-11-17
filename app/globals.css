@@ -2323,8 +2323,65 @@ html:has(.app-scroll) body {
   color: #4a230d;
   text-shadow: 0 1px 0 rgb(255 232 195 / 0.6);
   background: linear-gradient(180deg, #f6d7a6 0%, #e2ae70 55%, #c88b4f 100%);
-  box-shadow: inset 0 -2px 0 rgb(110 60 25 / 0.55), inset 0 1px 0 rgb(255 240 210 / 0.7), 0 3px 6px rgb(0 0 0 / 0.35);
+  /* объём — чётким бортиком снизу, без размытой тени: строка шага обрезана (line-clamp), и размытие обрывалось её краем
+     в серую полосу за словами */
+  box-shadow: inset 0 -2px 0 rgb(110 60 25 / 0.55), inset 0 1px 0 rgb(255 240 210 / 0.7), 0 2px 0 rgb(74 35 13 / 0.55);
 }
+/* Карточка-записка первого шага (Фокус; вариант 4, владелец 17.11): кремовая бумага с тёмной обводкой, двойная строчка
+   пунктиром, петельки на углах (привязана к фону), печать-звезда «×N», красные лапки, мерцающие звёздочки; кнопки — нажимные */
+.note-card {
+  --ink: #2a1f17;
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  background: radial-gradient(120% 90% at 30% 0%, #fff6e2, #f3e2bf);
+  box-shadow: 0 5px 0 var(--ink), 0 16px 28px rgb(0 0 0 / 0.45);
+}
+.note-card::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border: 2px dashed #b98a52;
+  border-radius: 12px;
+  pointer-events: none;
+}
+.note-card > *:not(span[aria-hidden]) { position: relative; z-index: 1; }
+.note-loop { position: absolute; width: 26px; height: 26px; color: var(--ink); }
+.note-seal {
+  position: absolute; width: 42px; height: 42px; display: grid; place-items: center;
+  font: 800 12px/1 var(--font-sans); color: var(--ink);
+}
+.note-seal-star {
+  /* звезда — готовая картинка (SVG), а не clip-path: такую вращает видеокарта, без пересчёта стилей на каждом кадре */
+  position: absolute; inset: 0; background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 108 108'><polygon points='50,0 61,18 82,10 80,32 100,40 85,56 96,76 74,78 66,100 50,86 34,100 26,78 4,76 15,56 0,40 20,32 18,10 39,18' fill='%23f2b33d' stroke='%232a1f17' stroke-width='7' stroke-linejoin='round'/></svg>") center / contain no-repeat;
+  animation: note-spin 8s linear infinite; will-change: transform;
+}
+.note-paw {
+  position: absolute; width: 22px; height: 20px; background: #e2403a;
+  -webkit-mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
+  mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
+}
+.note-star {
+  position: absolute; width: 14px; height: 14px; background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M50 0 61 39 100 50 61 61 50 100 39 61 0 50 39 39Z' fill='%23e9a82c'/></svg>") center / contain no-repeat;
+  animation: note-twinkle 1.8s ease-in-out infinite; will-change: transform, opacity;
+}
+@keyframes note-twinkle { 0%, 100% { transform: scale(0.55) rotate(0); opacity: 0.45; } 50% { transform: scale(1.1) rotate(45deg); opacity: 1; } }
+@keyframes note-spin { to { transform: rotate(360deg); } }
+.note-btn {
+  display: inline-flex; min-height: 2.75rem; min-width: 0; align-items: center; border-radius: 9999px;
+  padding-inline: 9px; font-size: 12.5px; font-weight: 700; color: var(--ink);
+  background: #fff8ea; border: 2.5px solid var(--ink); box-shadow: 0 4px 0 var(--ink); transform: translateY(-2px);
+  transition: transform 80ms, box-shadow 80ms; -webkit-tap-highlight-color: transparent;
+}
+.note-btn:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 0 var(--ink); }
+.note-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.note-btn:disabled { opacity: 0.6; }
+.note-btn-go { background: #a6e22e; }
+/* узкие телефоны (≤ 380 px): три кнопки записки целиком, без «Своими слов…» — плотнее и на полпикселя мельче;
+   на больших телефонах вид не меняется */
+@media (max-width: 380px) { .note-btn { padding-inline: 7px; font-size: 12px; } }
+@media (max-width: 340px) { .note-btn { padding-inline: 6px; font-size: 11px; } .note-btn > svg { display: none; } }
+@media (prefers-reduced-motion: reduce) { .note-star, .note-seal-star { animation: none; } }
 .rv-print {
   background: var(--primary);
   -webkit-mask: url('/mascot/reveal/print.webp') center / contain no-repeat;

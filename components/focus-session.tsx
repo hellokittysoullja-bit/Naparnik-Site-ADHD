@@ -223,6 +223,51 @@ function WoodWords({ text }: { text: string }) {
   )
 }
 
+/** Убранство карточки-записки: петельки на трёх углах (четвёртый держит печать), печать-звезда «×N», лапки кота,
+ *  мерцающие звёздочки. Только украшение — для диктора его нет */
+function NoteDeco({ steps }: { steps: number }) {
+  // заголовок в две строки (узкий телефон, длинный шаг) занимает место левых лапок — тогда они и звёздочки под строкой
+  // прячутся, иначе их кусочки торчат из-под табличек. На большом телефоне заголовок в одну строку — всё на месте
+  const ref = useRef<HTMLSpanElement>(null)
+  const [wrap, setWrap] = useState(false)
+  useLayoutEffect(() => {
+    const title = ref.current?.parentElement?.querySelector<HTMLElement>('[data-rv-step]')
+    if (!title) return
+    const check = () => setWrap(title.getBoundingClientRect().height > 40)
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(title)
+    return () => ro.disconnect()
+  })
+  const under = wrap ? ' hidden' : ''
+  const loop = (
+    <svg viewBox="0 0 26 26" className="size-full overflow-visible">
+      <path d="M5 5 C12 7 20 13 20 18 C20 22.5 15 23.5 12.5 20.5 C10 17.5 9.5 11 5 5 Z" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinejoin="round" />
+      <circle cx="5" cy="5" r="4.6" fill="currentColor" />
+    </svg>
+  )
+  return (
+    <span ref={ref} aria-hidden="true" data-wrap={wrap ? '' : undefined} className="pointer-events-none absolute inset-0">
+      <span className="note-loop -left-[7px] -top-[7px]">{loop}</span>
+      <span className="note-loop -bottom-[7px] -left-[7px] -scale-y-100">{loop}</span>
+      <span className="note-loop -bottom-[7px] -right-[7px] -scale-100">{loop}</span>
+      <span className="note-seal -right-[18px] -top-[20px]">
+        <span className="note-seal-star" />
+        <span className="relative">×{steps}</span>
+      </span>
+      <span className="note-paw right-[14px] top-[46px] rotate-[14deg]" />
+      <span className="note-paw right-[40px] top-[58px] rotate-[4deg] scale-75 opacity-80" />
+      {/* следы кота слева — как в макете варианта 4, который выбрал владелец, и маленькая звёздочка под левой лапкой */}
+      <span className={`note-paw left-[14px] top-[50px] rotate-[80deg] scale-[.7] opacity-90${under}`} />
+      <span className={`note-paw left-[44px] top-[58px] rotate-[80deg] scale-[.7] opacity-90${under}`} />
+      <span className={`note-paw left-[74px] top-[50px] rotate-[80deg] scale-[.7] opacity-90${under}`} />
+      <span className={`note-star left-[20px] top-[70px] size-[8px] [animation-delay:.3s]${under}`} />
+      <span className={`note-star left-[46%] top-[62px] size-[10px] [animation-delay:.6s]${under}`} />
+      <span className="note-star right-[70px] top-[48px] size-[9px] [animation-delay:1.1s]" />
+    </span>
+  )
+}
+
 /** Кот в «ожидании» (крупно над поленом) — и размер его тела в «деле», где оно уменьшено масштабом */
 const CAT_STAGE = 'size-[clamp(170px,calc(100dvh_-_470px),245px)]'
 
@@ -530,51 +575,71 @@ export function FocusSession() {
     // куски полена — по словам шагов, которые будут видны: выбранный шаг на карточке и строки под ним
     const sel = Math.max(0, list.findIndex((b) => b.text === task))
     const shown = [list[sel].text, ...list.filter((_, i) => i !== sel).map((b) => b.text)]
-    const r = playLogReveal(
-      { cat, catBody, bubble, slot, source, fromWait: reveal.fromWait },
-      reveal.nth,
-      {
-        pieces: wordCount(shown),
-        onImpact: hapticReaction,
-        // раскол: экран за один синхронный кадр встаёт в раскладку «дело»; сцена сразу меряет её и ведёт куски по местам
-        split: () => {
-          flushSync(() => setSplit(true))
-          return {
-            card: q<HTMLElement>('[data-rv-card]'),
-            texts: [...root.querySelectorAll<HTMLElement>('[data-rv-step]')],
-            bullets: [...root.querySelectorAll<HTMLElement>('[data-rv-bullet]')],
-            list: q<HTMLElement>('[data-rv-list]'),
-            stamp0: q<HTMLElement>('[data-rv-stamp]'),
-            labelRow: q<HTMLElement>('[data-rv-labelrow]'),
-          }
-        },
-      },
-    )
-    // тап в любом месте — сразу итог; кнопка под пальцем при этом срабатывает как обычно
-    const onDown = () => r.skip()
-    document.addEventListener('pointerdown', onDown, true)
     let alive = true
     let cheerTimer = 0
-    void r.finished.then(() => {
-      document.removeEventListener('pointerdown', onDown, true)
+    let r: ReturnType<typeof playLogReveal> | null = null
+    const onDown = () => r?.skip()
+    const play = () => {
       if (!alive) return
-      // экран выходит из сцены в том же кадре, в котором убирается её слой: ни одного кадра со скрытой карточкой
-      flushSync(() => {
-        setReveal(null)
-        setSplit(false)
+      const scene = playLogReveal(
+        { cat, catBody, bubble, slot, source, fromWait: reveal.fromWait },
+        reveal.nth,
+        {
+          pieces: wordCount(shown),
+          onImpact: hapticReaction,
+          // раскол: экран за один синхронный кадр встаёт в раскладку «дело»; сцена сразу меряет её и ведёт куски по местам
+          split: () => {
+            flushSync(() => setSplit(true))
+            return {
+              card: q<HTMLElement>('[data-rv-card]'),
+              texts: [...root.querySelectorAll<HTMLElement>('[data-rv-step]')],
+              bullets: [...root.querySelectorAll<HTMLElement>('[data-rv-bullet]')],
+              list: q<HTMLElement>('[data-rv-list]'),
+              stamp0: q<HTMLElement>('[data-rv-stamp]'),
+              labelRow: q<HTMLElement>('[data-rv-labelrow]'),
+            }
+          },
+        },
+      )
+      r = scene
+      // тап в любом месте — сразу итог; кнопка под пальцем при этом срабатывает как обычно
+      document.addEventListener('pointerdown', onDown, true)
+      void scene.finished.then(() => {
+        document.removeEventListener('pointerdown', onDown, true)
+        if (!alive) return
+        // экран выходит из сцены в том же кадре, в котором убирается её слой: ни одного кадра со скрытой карточкой
+        flushSync(() => {
+          setReveal(null)
+          setSplit(false)
+        })
+        scene.stop()
+        // праздник как у Duolingo: кот прыгает, конфетти на весь экран, двойная мягкая вибрация
+        hapticReward()
+        setCheer(true)
+        celebrateCat(cat, [root.querySelector('[data-rv-bubble]')])
+        cheerTimer = window.setTimeout(() => setCheer(false), 1400)
       })
-      r.stop()
-      // праздник как у Duolingo: кот прыгает, конфетти на весь экран, двойная мягкая вибрация
-      hapticReward()
-      setCheer(true)
-      celebrateCat(cat, [root.querySelector('[data-rv-bubble]')])
-      cheerTimer = window.setTimeout(() => setCheer(false), 1400)
-    })
+    }
+    // Сначала — шрифты табличек: заголовок шага (жирный) и строки (полужирный). Если они ещё грузятся, при расколе слова
+    // меряются в запасном шрифте, а потом приходит настоящий, текст шире — заголовок переносится на вторую строку, и куски
+    // садятся мимо (CI 17.11: «хочется поесть» ушли на вторую строку). Ждём не дольше 1,5 с — полено и кот всё это время
+    // на экране, как в ожидании
+    const fam = getComputedStyle(source).fontFamily
+    const text = shown.join(' ')
+    const fonts = document.fonts?.load
+      ? Promise.all([
+          document.fonts.load(getComputedStyle(source).font, text),
+          // заголовок карточки — жирный 700 (первая версия ждала только вес подписи и строк, CI 17.11 упал снова)
+          document.fonts.load(`700 18px ${fam}`, text),
+          document.fonts.load(`600 13.5px ${fam}`, text),
+        ])
+      : Promise.resolve()
+    void Promise.race([fonts, new Promise((res) => window.setTimeout(res, 1500))]).then(play, play)
     return () => {
       alive = false
       window.clearTimeout(cheerTimer)
       document.removeEventListener('pointerdown', onDown, true)
-      r.stop()
+      r?.stop()
     }
     // сцена — одна на разбивку: шаги и раскладка внутри неё меняются ею самой
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1233,7 +1298,9 @@ export function FocusSession() {
                 <p ref={sourceRef} data-rv-source aria-hidden="true" className="pointer-events-none invisible absolute inset-x-4 top-3.5 text-pretty text-[1.15rem] font-bold leading-snug">
                   {reveal ? reveal.task : task}
                 </p>
-                {waiting && <WaitLog text={task} />}
+                {/* полено ждёт и пока дробление идёт, и пока сцена ждёт шрифтов табличек; сцена кладёт своё полено поверх и
+                    прячет это */}
+                {(waiting || (!!reveal && !split)) && <WaitLog text={reveal ? reveal.task : task} />}
               </div>
             </>
           )}
@@ -1278,7 +1345,10 @@ export function FocusSession() {
               {/* место карточки первого шага. Высота постоянная (заголовок до двух строк) — ничего не сдвигается */}
               <div className="relative h-[9.75rem]">
                 {brokenSteps && (
-              <div data-rv-card className="glass relative flex h-[9.75rem] flex-col overflow-hidden rounded-2xl border border-primary/40 px-4 pb-3 pt-3.5 [@media(max-width:380px)]:px-3">
+              // карточка-записка (вариант 4, выбран владельцем 17.11): кремовая бумага с двойной строчкой, привязана к фону
+              // петельками на углах, печать-звезда «×N» (сколько шагов вышло) держит правый верхний угол, лапки кота
+              <div data-rv-card className="note-card relative flex h-[9.75rem] flex-col px-4 pb-3 pt-3.5 [@media(max-width:380px)]:px-3">
+                <NoteDeco steps={brokenSteps.length} />
                 {editing ? (
                   <input
                     autoFocus
@@ -1301,14 +1371,14 @@ export function FocusSession() {
                       exit={reducedMotion ? { opacity: 0, transition: { duration: 0.1 } } : { opacity: 0, y: -6, transition: { duration: 0.14 } }}
                       transition={{ duration: reducedMotion ? 0.1 : 0.22, ease: [0.05, 0.7, 0.1, 1] }}
                       data-rv-step={busy ? undefined : ''}
-                      className="line-clamp-2 text-pretty text-[1.15rem] font-bold leading-snug"
+                      className="line-clamp-2 shrink-0 text-pretty text-[1.15rem] font-bold leading-[1.8rem]"
                     >
                       {busy ? 'Разламываю…' : <WoodWords text={task} />}
                     </motion.p>
                   </AnimatePresence>
                 )}
                 {/* строка оценки — место есть всегда, даже пустое: карточка одной высоты */}
-                <p className="mt-1 min-h-4 font-mono text-[10.5px] uppercase tracking-widest text-primary/80">
+                <p className="mt-1 min-h-4 font-mono text-[10.5px] font-semibold uppercase tracking-widest text-[#8a5a2b]">
                   {!editing && brokenSteps[sel]?.wait && <span className="text-reward">пока ждёшь · </span>}
                   {/* длительность может быть спрятана (шаги не влезли) — тогда говорим, сколько поставили, а не «ниже» */}
                   {!editing && estimate ? `≈ ${estimate} мин · ${compact ? `сессия ${minutes} мин` : 'уже поставил ниже'}` : ''}
@@ -1319,7 +1389,7 @@ export function FocusSession() {
                     type="button"
                     disabled={busy}
                     onClick={() => void breakDown(true)}
-                    className="press inline-flex min-h-11 min-w-0 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring gap-1.5 rounded-full bg-primary/15 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-semibold text-primary disabled:opacity-60"
+                    className="note-btn note-btn-go gap-1.5"
                   >
                     <Sparkles className="size-3.5 shrink-0" aria-hidden="true" />
                     <span className="truncate">{busy ? 'Дроблю…' : 'Ещё мельче'}</span>
@@ -1327,7 +1397,7 @@ export function FocusSession() {
                   <button
                     type="button"
                     onClick={() => setEditing(true)}
-                    className="press inline-flex min-h-11 min-w-0 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full border border-white/10 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-medium text-foreground/85"
+                    className="note-btn"
                   >
                     <span className="truncate">Своими словами</span>
                   </button>
@@ -1335,7 +1405,7 @@ export function FocusSession() {
                     <button
                       type="button"
                       onClick={dropStep}
-                      className="press inline-flex min-h-11 min-w-0 shrink-0 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full border border-white/10 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-medium text-muted-foreground"
+                      className="note-btn shrink-0"
                     >
                       <span className="truncate">Не то</span>
                     </button>

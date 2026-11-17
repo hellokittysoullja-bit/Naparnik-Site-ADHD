@@ -143,28 +143,49 @@ test('полено: квитанция в конце ничего не сдви�
 test('полено: каждое слово шага — деревянная табличка, кусок садится ровно на неё', async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 664 })
   await slow(page, 300)
+  // медленная сеть: файлы шрифтов приходят на 0,7 с позже. Без ожидания шрифтов сцена мерила слова в запасном шрифте, а
+  // настоящий шире — заголовок переносился на вторую строку, и куски садились мимо (так падало в CI 17.11)
+  await page.route(/\.woff2(\?|$)/, async (r) => {
+    await new Promise((x) => setTimeout(x, 700))
+    await r.continue()
+  })
   await page.goto('/app/session?step=' + encodeURIComponent('Покушать') + '&break=1')
   await page.waitForSelector('[data-rv-card]')
-  // заморозить сцену у самого конца посадки и сравнить таблички-копии с настоящими
-  const worst = await page.evaluate(() => {
-    for (const a of document.getAnimations()) {
-      if (!a.id.startsWith('rv:')) continue
-      a.pause()
-      const end = Number(a.effect?.getComputedTiming().endTime ?? 0)
-      if (Number.isFinite(end)) a.currentTime = Math.max(0, end - 1)
-    }
-    const ghosts = [...document.querySelectorAll<HTMLElement>('body > div[aria-hidden="true"] div.wood-word')].map((g) => g.getBoundingClientRect())
-    const real = [...document.querySelectorAll<HTMLElement>('[data-rv-step] .wood-word')]
-      .map((r) => r.getBoundingClientRect())
-      .filter((r) => r.bottom <= document.querySelector('[data-rv-list]')!.getBoundingClientRect().bottom + 1)
-    return Math.max(...real.map((r) => Math.min(...ghosts.map((g) => Math.abs(g.left - r.left) + Math.abs(g.top - r.top)))))
-  })
-  expect(worst).toBeLessThan(2)
-  await page.evaluate(() => document.getAnimations().forEach((a) => a.id.startsWith('rv:') && a.play()))
+  // куда сцена посадит каждую табличку-копию (место контейнера куска без сдвига анимацией) — и где после сцены стоит
+  // настоящая табличка этого слова. Без перемотки анимаций: на медленной машине CI перемотка доходила не до всех кусков
+  const targets = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>('body > div[aria-hidden="true"] div.wood-word')].map((plate) => {
+      const box = plate.parentElement!.parentElement as HTMLElement
+      return { text: plate.textContent ?? '', x: parseFloat(box.style.left), y: parseFloat(box.style.top) }
+    }),
+  )
   await expect(page.locator('[data-rv="playing"]')).toHaveCount(0, { timeout: 4000 })
+  const real = await page.evaluate(() => {
+    const lb = document.querySelector('[data-rv-list]')!.getBoundingClientRect().bottom
+    return [...document.querySelectorAll<HTMLElement>('[data-rv-step] .wood-word')]
+      .map((e) => ({ text: e.textContent ?? '', r: e.getBoundingClientRect() }))
+      .filter(({ r }) => r.bottom <= lb + 1)
+      .map(({ text, r }) => ({ text, x: r.left, y: r.top }))
+  })
+  expect(real.length).toBeGreaterThan(5)
+  const off = real
+    .map((w) => {
+      const d = Math.min(...targets.filter((t) => t.text === w.text).map((t) => Math.abs(t.x - w.x) + Math.abs(t.y - w.y)))
+      return { ...w, d }
+    })
+    .filter((w) => !(w.d < 2))
+  expect(off, 'таблички, на которые кусок сел не туда').toEqual([])
   // таблички остаются, слов столько же, сколько в шагах; подписи «первый шаг · дело» нет
   expect(await page.locator('[data-rv-step]').first().locator('.wood-word').count()).toBe(4)
   await expect(page.getByText(/первый шаг ·/i)).toHaveCount(0)
+  // карточка-записка (вариант 4, владелец 17.11): печать «×N» по числу шагов, все три кнопки нажимаются — украшения их не
+  // перекрывают
+  await expect(page.locator('[data-rv-card] .note-seal')).toHaveText('×6')
+  for (const name of ['Ещё мельче', 'Своими словами', 'Не то']) {
+    const box = (await page.getByRole('button', { name }).boundingBox())!
+    const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('button')?.textContent?.trim(), { x: box.x + box.width / 2, y: box.y + box.height / 2 })
+    expect(hit).toBe(name)
+  }
 })
 
 test('полено: «Разломать на шаг» с Дома — следующий кадр сразу полено, кот сидит на нём', async ({ page }) => {
@@ -197,3 +218,30 @@ test('полено: «Разломать на шаг» с Дома — след�
   expect(g.overlap).toBeGreaterThan(4)
   expect(g.overlap).toBeLessThan(24)
 })
+
+/**
+ * CI 17.11 и скриншот владельца: на узком телефоне (360 px) заголовок записки переносится на вторую строку — строка была
+ * ниже таблички, и вторая строка табличек обрезалась снизу на 8 px, а куски полена летели мимо. На 320 px кнопки
+ * записки обрезались («Своими слов…»). Падает на сборке до исправления.
+ */
+for (const [w, h] of [
+  [320, 568],
+  [360, 640],
+  [393, 664],
+] as const) {
+  test(`полено ${w}×${h}: таблички заголовка целиком, кнопки записки без обрезки`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: h })
+    await page.goto('/app/session?step=' + encodeURIComponent('Покушать') + '&break=1')
+    await page.waitForSelector('[data-rv-card]')
+    await expect(page.locator('[data-rv="playing"]')).toHaveCount(0, { timeout: 5000 })
+    const r = await page.evaluate(() => {
+      const card = document.querySelector('[data-rv-card]')!
+      const title = card.querySelector('[data-rv-step]')!.getBoundingClientRect()
+      return {
+        clipped: [...card.querySelectorAll('[data-rv-step] .wood-word')].filter((e) => e.getBoundingClientRect().bottom > title.bottom + 0.5).map((e) => e.textContent),
+        cut: [...card.querySelectorAll('.note-btn .truncate')].filter((e) => e.scrollWidth > e.clientWidth + 0.5).map((e) => e.textContent),
+      }
+    })
+    expect(r).toEqual({ clipped: [], cut: [] })
+  })
+}
