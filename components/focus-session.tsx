@@ -243,7 +243,11 @@ function NoteDeco({ steps }: { steps: number }) {
       </span>
       <span className="note-paw right-[14px] top-[46px] rotate-[14deg]" />
       <span className="note-paw right-[40px] top-[58px] rotate-[4deg] scale-75 opacity-80" />
-      <span className="note-star left-[18px] top-[64px]" />
+      {/* следы кота слева — как в макете варианта 4, который выбрал владелец, и маленькая звёздочка под левой лапкой */}
+      <span className="note-paw left-[14px] top-[50px] rotate-[80deg] scale-[.7] opacity-90" />
+      <span className="note-paw left-[44px] top-[58px] rotate-[80deg] scale-[.7] opacity-90" />
+      <span className="note-paw left-[74px] top-[50px] rotate-[80deg] scale-[.7] opacity-90" />
+      <span className="note-star left-[20px] top-[70px] size-[8px] [animation-delay:.3s]" />
       <span className="note-star left-[46%] top-[62px] size-[10px] [animation-delay:.6s]" />
       <span className="note-star right-[70px] top-[48px] size-[9px] [animation-delay:1.1s]" />
     </span>
