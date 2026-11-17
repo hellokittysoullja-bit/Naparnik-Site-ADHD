@@ -654,7 +654,8 @@ export function playLogReveal(
     layer.remove()
     svg.remove()
   }
-  const finished = end.finished.then(cleanup, cleanup)
+  // слой убирает stop(): сначала экран снимает «сцена идёт» (иначе на кадр всё было бы скрыто — пустой кадр в конце)
+  const finished = end.finished.then(() => {}, () => {})
   return {
     finished,
     skip: () => {

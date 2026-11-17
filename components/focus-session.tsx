@@ -538,8 +538,12 @@ export function FocusSession() {
     void r.finished.then(() => {
       document.removeEventListener('pointerdown', onDown, true)
       if (!alive) return
-      setReveal(null)
-      setSplit(false)
+      // экран выходит из сцены в том же кадре, в котором убирается её слой: ни одного кадра со скрытой карточкой
+      flushSync(() => {
+        setReveal(null)
+        setSplit(false)
+      })
+      r.stop()
       // праздник как у Duolingo: кот прыгает, конфетти на весь экран, двойная мягкая вибрация
       hapticReward()
       setCheer(true)
