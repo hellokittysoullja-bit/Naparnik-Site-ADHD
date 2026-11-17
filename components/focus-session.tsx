@@ -608,14 +608,19 @@ export function FocusSession() {
     }
     // Сначала — шрифты табличек: заголовок шага (жирный) и строки (полужирный). Если они ещё грузятся, при расколе слова
     // меряются в запасном шрифте, а потом приходит настоящий, текст шире — заголовок переносится на вторую строку, и куски
-    // садятся мимо (CI 17.11: «хочется поесть» ушли на вторую строку). Ждём не дольше 0,8 с — полено и кот всё это время
+    // садятся мимо (CI 17.11: «хочется поесть» ушли на вторую строку). Ждём не дольше 1,5 с — полено и кот всё это время
     // на экране, как в ожидании
     const fam = getComputedStyle(source).fontFamily
     const text = shown.join(' ')
     const fonts = document.fonts?.load
-      ? Promise.all([document.fonts.load(getComputedStyle(source).font, text), document.fonts.load(`600 13.5px ${fam}`, text)])
+      ? Promise.all([
+          document.fonts.load(getComputedStyle(source).font, text),
+          // заголовок карточки — жирный 700 (первая версия ждала только вес подписи и строк, CI 17.11 упал снова)
+          document.fonts.load(`700 18px ${fam}`, text),
+          document.fonts.load(`600 13.5px ${fam}`, text),
+        ])
       : Promise.resolve()
-    void Promise.race([fonts, new Promise((res) => window.setTimeout(res, 800))]).then(play, play)
+    void Promise.race([fonts, new Promise((res) => window.setTimeout(res, 1500))]).then(play, play)
     return () => {
       alive = false
       window.clearTimeout(cheerTimer)
