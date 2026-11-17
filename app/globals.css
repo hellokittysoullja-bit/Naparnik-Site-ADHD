@@ -2309,7 +2309,7 @@ html:has(.app-scroll) body {
 
 /* «Полено» в Фокусе (components/break-reveal/log-reveal.ts): пока идёт сцена, шаги, точки, «ещё N» и первый штамп скрыты —
    их по одному проявляют анимации (WAAPI сильнее этих правил); после сцены анимации снимаются и всё стоит на месте. */
-[data-rv='playing'] :is([data-rv-card], [data-rv-step], [data-rv-bullet], [data-rv-more], [data-rv-stamp], [data-rv-labelrow]) {
+[data-rv='playing'] :is([data-rv-card], [data-rv-step], [data-rv-bullet], [data-rv-stamp], [data-rv-labelrow]) {
   opacity: 0;
 }
 .rv-print {

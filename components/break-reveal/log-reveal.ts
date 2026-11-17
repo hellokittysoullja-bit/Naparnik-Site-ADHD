@@ -30,17 +30,20 @@ export function revealSpeed(nth: number) {
   return nth <= 3 ? 1 : nth <= 10 ? 0.75 : 0.5
 }
 
-/** сколько кусков будет у полена: по слову видимых шагов, но не больше 16 (иначе куски мельче букв) */
-export const MAX_PIECES = 16
+/** сколько кусков будет у полена: по слову шагов, но не больше 24 (2 ряда по 12 — кусок не мельче ~30 px) */
+export const MAX_PIECES = 24
 export const wordCount = (texts: string[]) => Math.min(MAX_PIECES, texts.reduce((n, t) => n + (t.match(/\S+/g)?.length ?? 0), 0))
 
 type WordBox = { text: string; x: number; y: number; w: number; h: number; el: HTMLElement; visible: boolean }
 
 /** где на экране стоит каждое слово текста (через Range — текст на span'ы не режем, диктор читает его целиком).
  *  Слово, обрезанное многоточием или ушедшее за line-clamp, помечено невидимым: его кусок долетит до конца строки и угаснет */
-function wordBoxes(el: HTMLElement): WordBox[] {
+function wordBoxes(el: HTMLElement, clip: DOMRect | null): WordBox[] {
   const out: WordBox[] = []
   const er = el.getBoundingClientRect()
+  // строка ниже края прокручиваемого списка: её слова не видны, куски уходят в низ списка
+  const top = clip ? clip.top : -Infinity
+  const bottom = clip ? clip.bottom : Infinity
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
   const r = document.createRange()
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
@@ -50,11 +53,12 @@ function wordBoxes(el: HTMLElement): WordBox[] {
       r.setEnd(n, m.index! + m[0].length)
       const rects = r.getClientRects()
       const b = rects[0]
-      const visible = !!b && b.width > 0 && rects.length === 1 && b.right <= er.right + 1 && b.bottom <= er.bottom + 1
+      const visible = !!b && b.width > 0 && rects.length === 1 && b.right <= er.right + 1 && b.bottom <= er.bottom + 1 && b.top >= top - 1 && b.bottom <= bottom + 1
       if (b && b.width && visible) out.push({ text: m[0], x: b.left, y: b.top, w: b.width, h: b.height, el, visible })
       else {
         const hh = b?.height || 16
-        out.push({ text: m[0], x: er.right - 14, y: er.bottom - hh, w: 12, h: hh, el, visible: false })
+        const below = er.bottom > bottom
+        out.push({ text: m[0], x: below ? er.left + 24 : er.right - 14, y: (below ? bottom : er.bottom) - hh, w: 12, h: hh, el, visible: false })
       }
     }
   }
@@ -65,13 +69,6 @@ const rect = (el: Element | null) => el?.getBoundingClientRect() ?? new DOMRect(
 const SPRING = 'cubic-bezier(.2,1.35,.35,1)'
 const OUT = 'cubic-bezier(.05,.7,.1,1)'
 const easeInOut = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2)
-
-const NS = 'http://www.w3.org/2000/svg'
-function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>) {
-  const e = document.createElementNS(NS, tag)
-  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v))
-  return e
-}
 
 function div(layer: HTMLElement, style: Partial<CSSStyleDeclaration>, before?: Node | null) {
   const d = document.createElement('div')
@@ -150,8 +147,6 @@ export type StageRefs = {
   slot: HTMLElement
   /** дело словами человека: шрифт и текст резьбы */
   source: HTMLElement
-  /** «первый шаг · дело» под поленом */
-  label: HTMLElement | null
   /** полено уже ждало удара на экране (дробление шло с сервера): сцена встаёт на его место без проявления */
   fromWait: boolean
 }
@@ -162,16 +157,16 @@ export type FinalRefs = {
   /** тексты шагов в порядке чтения: заголовок карточки, потом строки */
   texts: HTMLElement[]
   bullets: HTMLElement[]
-  more: HTMLElement | null
+  /** прокручиваемый список остальных шагов */
+  list: HTMLElement | null
   stamp0: HTMLElement | null
-  /** строка подписи над карточкой и сама подпись в ней */
+  /** строка над карточкой: карта штампов и настройка */
   labelRow: HTMLElement | null
-  label: HTMLElement | null
 }
 
 type Run = (el: Element, kf: Keyframe[], from: number, to: number, o?: KeyframeAnimationOptions) => Animation
 
-type Cell = { poly: string; cx: number; cy: number }
+type Cell = { poly: string; pts: [number, number][]; cx: number; cy: number }
 
 /** Полено колется на клетки: 1 ряд до 7 кусков, 2 ряда больше. Разрезы — ломаные, общие у соседей (без щелей);
  *  внешние края вынесены за полено, чтобы в кусок попали спил, тень и кора */
@@ -237,7 +232,7 @@ function cells(M: number, w: number, h: number, seed: number) {
       const inY = (y: number) => Math.max(0, Math.min(h, y))
       const cx = poly.reduce((a, p) => a + inX(p[0]), 0) / poly.length
       const cy = poly.reduce((a, p) => a + inY(p[1]), 0) / poly.length
-      out.push({ poly: poly.map(([x, y]) => `${x.toFixed(1)}px ${y.toFixed(1)}px`).join(','), cx, cy })
+      out.push({ poly: poly.map(([x, y]) => `${x.toFixed(1)}px ${y.toFixed(1)}px`).join(','), pts: poly, cx, cy })
     }
   })
   return { cells: out, cuts: cuts.map((c) => c.pts), hPts }
@@ -247,7 +242,6 @@ type Scene = {
   run: Run
   f: number
   layer: HTMLElement
-  svg: SVGSVGElement
   stage: StageRefs
   M: number
 }
@@ -326,26 +320,39 @@ function strike(s: Scene) {
     run(chip, kf, tImp, tImp + T(300) + (k % 3) * 30, { fill: 'forwards', easing: 'linear' })
   }
 
-  // трещины — ровно по границам будущих кусков; разбегаются от места удара и разгораются
+  // трещины — ровно по границам будущих кусков; разбегаются от места удара и разгораются. Каждая трещина — свой
+  // маленький <svg>, а движение у него — только масштаб и прозрачность (видеокарта): раньше анимировались штрихи внутри
+  // SVG, и браузер перерисовывал их на процессоре каждый кадр
   const geo = cells(s.M, L.w, L.h, 11 + s.M)
-  const cracks = svgEl('g', {})
-  s.svg.appendChild(cracks)
+  const cracks = div(layer, {})
   const lines = [...geo.cuts, ...(geo.hPts.length ? [geo.hPts] : [])]
-  lines.forEach((pts) => {
-    const inside = pts.filter(([x]) => x >= 0 && x <= L.w)
-    const d = (inside.length > 1 ? inside : pts).map(([x, y], i) => `${i ? 'L' : 'M'}${(L.x + Math.max(0, Math.min(L.w, x))).toFixed(1)},${(L.y + Math.max(0, Math.min(L.h, y))).toFixed(1)}`).join(' ')
-    const glow = svgEl('path', { d, fill: 'none', stroke: '#ff9a3c', 'stroke-width': 7, 'stroke-opacity': 0.35, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0 })
-    const core = svgEl('path', { d, fill: 'none', stroke: '#ffe6b0', 'stroke-width': 2.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0 })
-    cracks.append(glow, core)
-    const mx = pts.reduce((a, p) => a + p[0], 0) / pts.length
-    const tc = tImp + T(20) + (Math.abs(L.x + mx - hit.x) / L.w) * T(160)
-    const len = L.w + L.h
-    for (const p of [glow, core]) {
-      p.setAttribute('stroke-dasharray', `${len} ${len}`)
-      run(p, [{ strokeDashoffset: len, opacity: 1 }, { strokeDashoffset: 0, opacity: 1 }], tc, tc + T(90), { easing: 'ease-out' })
+  lines.forEach((pts, li) => {
+    const horizontal = li >= geo.cuts.length
+    const P = pts.map(([x, y]) => [Math.max(0, Math.min(L.w, x)), Math.max(0, Math.min(L.h, y))] as [number, number])
+    const pad = 8
+    const x0 = Math.min(...P.map((p) => p[0])) - pad
+    const y0 = Math.min(...P.map((p) => p[1])) - pad
+    const x1 = Math.max(...P.map((p) => p[0])) + pad
+    const y1 = Math.max(...P.map((p) => p[1])) + pad
+    const d = P.map(([x, y], i) => `${i ? 'L' : 'M'}${(x - x0).toFixed(1)},${(y - y0).toFixed(1)}`).join(' ')
+    const mk = (stroke: string, width: number, op: number) => {
+      const el = div(cracks, { left: `${L.x + x0}px`, top: `${L.y + y0}px`, width: `${x1 - x0}px`, height: `${y1 - y0}px`, opacity: '0', willChange: 'transform, opacity' })
+      el.innerHTML = `<svg width="${x1 - x0}" height="${y1 - y0}" style="display:block;overflow:visible"><path d="${d}" fill="none" stroke="${stroke}" stroke-opacity="${op}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+      return el
     }
+    const glow = mk('#ff9a3c', 12, 0.85)
+    const core = mk('#ffe6b0', 2.4, 1)
+    const mx = P.reduce((acc, p) => acc + p[0], 0) / P.length
+    const tc = tImp + T(20) + (Math.abs(L.x + mx - hit.x) / L.w) * T(160)
+    // вертикальная трещина растёт сверху (от места удара) вниз, горизонтальная — от места удара в стороны
+    const origin = horizontal ? `${hit.x - L.x - x0}px 50%` : '50% 0'
+    for (const el of [glow, core]) {
+      el.style.transformOrigin = origin
+      run(el, [{ transform: horizontal ? 'scaleX(0)' : 'scaleY(0)' }, { transform: 'none' }], tc, tc + T(90), { easing: 'ease-out' })
+    }
+    run(core, [{ opacity: 0 }, { opacity: 1 }], tc, tc + 1)
     // сигнал «сейчас развалится»: свечение разгорается до самого раскола
-    run(glow, [{ strokeOpacity: 0.35, strokeWidth: 7 }, { strokeOpacity: 0.95, strokeWidth: 13 }], tc + T(90), tSplit, { easing: 'ease-in' })
+    run(glow, [{ opacity: 0 }, { opacity: 0.3, offset: 0.1 }, { opacity: 1 }], tc, tSplit, { easing: 'ease-in' })
   })
   // угольки поднимаются из трещин
   geo.cuts.forEach((pts, i) => {
@@ -364,13 +371,13 @@ function strike(s: Scene) {
   }
   run(log, shake, tImp + T(170), tSplit, { easing: 'linear' })
 
-  // отпечаток лапы на полене — подаренный первый штамп; при расколе улетит в карту штампов
+  // отпечаток лапы на месте удара — подаренный первый штамп; при расколе улетает в карту штампов и там исчезает
   const ps = 24
   const print = div(layer, {
     left: `${hit.x - ps / 2}px`, top: `${L.y + L.h * 0.16 - ps / 2}px`, width: `${ps}px`, height: `${(ps * 91) / 100}px`, opacity: '0',
     background: '#a0ec2a', webkitMaskImage: `url(${PRINT})`, maskImage: `url(${PRINT})`, webkitMaskSize: '100% 100%', maskSize: '100% 100%',
   } as Partial<CSSStyleDeclaration>)
-  run(print, [{ transform: 'scale(1.8) rotate(-30deg)', opacity: 0 }, { transform: 'scale(1) rotate(-12deg)', opacity: 0.95 }], tImp, tImp + T(60), { easing: 'cubic-bezier(.6,0,.4,1)' })
+  run(print, [{ transform: 'scale(1.6) rotate(-30deg)', opacity: 0 }, { transform: 'scale(1) rotate(-12deg)', opacity: 0.95 }], tImp, tImp + T(60), { fill: 'forwards', easing: 'cubic-bezier(.6,0,.4,1)' })
 
   // кора кусков рисуется заранее, пока лапа замахивается (на главном потоке тогда ничего не движется): в кадр раскола
   // остаётся только расставить куски — раньше их рисование давало задержку ~0,1 с на слабом телефоне
@@ -378,8 +385,17 @@ function strike(s: Scene) {
   const faces: HTMLElement[] = []
   const prepare = () => {
     for (let i = faces.length; i < geo.cells.length; i++) {
-      const face = div(holder, { width: `${L.w}px`, height: `${L.h}px`, clipPath: `polygon(${geo.cells[i].poly})` })
-      drawLog(face, L.w, L.h, carveText, font, 100 + i)
+      // слой куска — размером со свой кусок, а не со всё полено: меньше памяти видеокарты и быстрее сборка кадра
+      const c = geo.cells[i]
+      const bx = Math.max(-24, Math.min(...c.pts.map((p) => p[0])))
+      const by = Math.max(-14, Math.min(...c.pts.map((p) => p[1])))
+      const bw = Math.min(L.w + 24, Math.max(...c.pts.map((p) => p[0]))) - bx
+      const bh = Math.min(L.h + 14, Math.max(...c.pts.map((p) => p[1]))) - by
+      const face = div(holder, { width: `${bw}px`, height: `${bh}px`, overflow: 'hidden', clipPath: `polygon(${c.pts.map(([x, y]) => `${(x - bx).toFixed(1)}px ${(y - by).toFixed(1)}px`).join(',')})` })
+      face.dataset.bx = String(bx)
+      face.dataset.by = String(by)
+      const art = div(face, { left: `${-bx}px`, top: `${-by}px`, width: `${L.w}px`, height: `${L.h}px` })
+      drawLog(art, L.w, L.h, carveText, font, 100 + i)
       faces.push(face)
     }
   }
@@ -389,7 +405,7 @@ function strike(s: Scene) {
 }
 
 /** Акт 2: раскол. Экран уже в раскладке «дело»; куски полена летят и становятся словами шагов */
-function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMRect; bubble: DOMRect; label: DOMRect | null; labelGhost: HTMLElement | null }, fin: FinalRefs) {
+function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMRect; bubble: DOMRect }, fin: FinalRefs) {
   const { run, f, layer, stage } = s
   const T = (ms: number) => ms * f
   const { L, tSplit } = a
@@ -398,35 +414,28 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
   // каждом слове (кадр раскола на слабом телефоне стоял ~0,1 с)
   const body = rect(stage.catBody)
   const bub = rect(stage.bubble)
-  const labelTo = fin.label ? rect(fin.label) : null
-  const words = fin.texts.flatMap((el) => wordBoxes(el)).slice(0, a.geo.cells.length)
+  const clip = fin.list ? rect(fin.list) : null
+  const words = fin.texts.flatMap((el, j) => wordBoxes(el, j ? clip : null)).slice(0, a.geo.cells.length)
+  const s0 = fin.stamp0 ? rect(fin.stamp0) : null
+  const pr = rect(a.print)
   const styleOf = new Map<HTMLElement, { font: string; color: string }>()
   for (const el of fin.texts) {
     const cs = getComputedStyle(el)
     styleOf.set(el, { font: cs.font, color: cs.color })
   }
-  const s0 = fin.stamp0 ? rect(fin.stamp0) : null
-  const pr = rect(a.print)
   window.clearTimeout(a.prep)
   a.prepare()
   // полено и трещины исчезают в кадр раскола — их место занимают куски
   run(a.log, [{ opacity: 1 }, { opacity: 0 }], at, at + 1)
   run(a.cracks, [{ opacity: 1 }, { opacity: 0 }], at, at + 1)
 
-  // кот, пузырь и подпись переезжают со своих мест «ожидания» на места «дела» (FLIP)
+  // кот и пузырь переезжают со своих мест «ожидания» на места «дела» (FLIP)
   const k = body.width / Math.max(1, before.catBody.width)
   run(stage.catBody, [
     { transform: `translate(${before.catBody.left - body.left}px, ${before.catBody.top - body.top}px) scale(1)` },
     { transform: `scale(${k})` },
   ], at, at + T(560), { easing: 'cubic-bezier(.3,1.2,.4,1)', fill: 'backwards' })
   run(stage.bubble, [{ transform: `translate(${before.bubble.left - bub.left}px, ${before.bubble.top - bub.top}px)` }, { transform: 'none' }], at, at + T(480), { easing: 'cubic-bezier(.3,1.15,.4,1)', fill: 'backwards' })
-  const tLabel = at + T(520)
-  if (before.labelGhost && before.label && labelTo) {
-    const to = labelTo
-    run(before.labelGhost, [{ transform: 'none' }, { transform: `translate(${to.left - before.label.left}px, ${to.top - before.label.top}px)` }], at + T(40), tLabel, { easing: 'cubic-bezier(.5,0,.2,1)' })
-    run(before.labelGhost, [{ opacity: 1 }, { opacity: 0 }], tLabel, tLabel + 1)
-  }
-  if (fin.labelRow) run(fin.labelRow, [{ opacity: 0 }, { opacity: 1 }], tLabel, tLabel + 1)
 
   // взрыв: вспышка, дым, угли
   const C = { x: L.x + L.w / 2, y: L.y + L.h * 0.55 }
@@ -472,7 +481,7 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
     ghostsOf.set(b.el, [...(ghostsOf.get(b.el) ?? []), box])
     // лицо — та же кора полена, вырезанная по клетке
     const front = a.faces[i]
-    Object.assign(front.style, { left: `${b.w / 2 - cell.cx}px`, top: `${b.h / 2 - cell.cy}px` })
+    Object.assign(front.style, { left: `${b.w / 2 - (cell.cx - Number(front.dataset.bx))}px`, top: `${b.h / 2 - (cell.cy - Number(front.dataset.by))}px` })
     box.appendChild(front)
     // изнанка — светлая сердцевина с выжженным словом
     const back = div(box, { width: `${b.w}px`, height: `${b.h}px`, opacity: '0' })
@@ -534,11 +543,8 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
     const glow = div(layer, { left: `${tg.x - 40}px`, top: `${tg.y - 22}px`, width: '80px', height: '44px', borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(255,220,140,.85), rgba(255,160,60,0))', opacity: '0' }, box)
     run(glow, [{ transform: 'scale(.4)', opacity: 0.95 }, { transform: 'scale(1.5)', opacity: 0 }], tL, tL + T(260), { fill: 'forwards', easing: OUT })
     run(back, [{ opacity: 1 }, { opacity: 0 }], tL + T(50), tL + T(230), { easing: 'ease-in' })
-    run(clean, [
-      { opacity: 0, textShadow: '0 0 10px rgba(255,180,80,1)' },
-      { opacity: 1, textShadow: '0 0 7px rgba(255,150,50,.85)', offset: 0.4 },
-      { opacity: 1, textShadow: '0 0 0 rgba(255,150,50,0)' },
-    ], tL + T(40), tL + T(300), { easing: 'ease-out' })
+    // свечение даёт вспышка позади слова (прозрачность и масштаб — видеокарта), сам текст только проявляется
+    run(clean, [{ opacity: 0 }, { opacity: 1 }], tL + T(40), tL + T(200), { easing: 'ease-out' })
     for (let e = 0; e < 4; e++) {
       const sx = e % 2 ? b.x + b.w : b.x
       const em = div(layer, { left: `${sx - 2}px`, top: `${tg.y - 2}px`, width: '3px', height: '3px', borderRadius: '50%', background: '#ffd27a', boxShadow: '0 0 5px 2px rgba(255,150,50,.6)', opacity: '0' })
@@ -551,6 +557,21 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
   const title = fin.texts[0]
   const tCard = firstOf.get(title) ?? at + D
   if (fin.card) run(fin.card, [{ opacity: 0, transform: 'scale(.97)' }, { opacity: 1, transform: 'none' }], tCard - T(160), tCard + T(40), { easing: OUT })
+  // строка со штампами — к прилёту отпечатка
+  if (fin.labelRow) run(fin.labelRow, [{ opacity: 0 }, { opacity: 1 }], at + T(260), at + T(420), { easing: OUT })
+  // отпечаток лапы с полена улетает в карту штампов и исчезает в ней — там загорается первый штамп («дело разломано»)
+  if (fin.stamp0 && s0) {
+    const ddx = s0.left + s0.width / 2 - (pr.left + pr.width / 2)
+    const ddy = s0.top + s0.height / 2 - (pr.top + pr.height / 2)
+    const tS = at + T(420)
+    run(a.print, [
+      { transform: 'scale(1) rotate(-12deg)', opacity: 0.95 },
+      { transform: `translate(${ddx * 0.5 + 30}px, ${ddy * 0.5 - 40}px) scale(1.4) rotate(-50deg)`, offset: 0.5 },
+      { transform: `translate(${ddx}px, ${ddy}px) scale(.62) rotate(-12deg)`, opacity: 1 },
+    ], at, tS, { easing: 'cubic-bezier(.5,0,.4,1)' })
+    run(a.print, [{ opacity: 1 }, { opacity: 0 }], tS, tS + 1)
+    run(fin.stamp0, [{ opacity: 0, transform: 'scale(1.8)' }, { opacity: 1, transform: 'none' }], tS, tS + T(200), { easing: SPRING })
+  } else run(a.print, [{ opacity: 0.95 }, { opacity: 0 }], at, at + T(160))
   fin.texts.forEach((el, j) => {
     const done = (doneOf.get(el) ?? at + D) + T(300)
     run(el, [{ opacity: 0 }, { opacity: 1 }], done, done + 1)
@@ -559,22 +580,6 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
     const t0 = firstOf.get(el) ?? at + D
     if (bullet) run(bullet, [{ opacity: 0, transform: 'scale(0)' }, { opacity: 1, transform: 'scale(1)' }], t0 - T(40), t0 + T(100), { easing: SPRING })
   })
-  const last = Math.max(...[...doneOf.values()], at + D)
-  if (fin.more) run(fin.more, [{ opacity: 0 }, { opacity: 1 }], last, last + T(160), { easing: OUT })
-
-  // отпечаток лапы улетает в карту штампов
-  if (fin.stamp0 && s0) {
-    const ddx = s0.left + s0.width / 2 - (pr.left + pr.width / 2)
-    const ddy = s0.top + s0.height / 2 - (pr.top + pr.height / 2)
-    const tS = at + T(380)
-    run(a.print, [
-      { transform: 'scale(1) rotate(-12deg)', opacity: 0.95 },
-      { transform: `translate(${ddx * 0.5 + 30}px, ${ddy * 0.5 - 40}px) scale(1.5) rotate(-50deg)`, offset: 0.5 },
-      { transform: `translate(${ddx}px, ${ddy}px) scale(.62) rotate(-12deg)`, opacity: 1 },
-    ], at, tS, { easing: 'cubic-bezier(.5,0,.4,1)' })
-    run(a.print, [{ opacity: 1 }, { opacity: 0 }], tS, tS + 1)
-    run(fin.stamp0, [{ opacity: 0, transform: 'scale(1.6)' }, { opacity: 1, transform: 'none' }], tS, tS + T(160), { easing: SPRING })
-  } else run(a.print, [{ opacity: 1 }, { opacity: 0 }], at, at + T(200))
 }
 
 /** Длина всей сцены (мс) — известна заранее: по ней сцена объявляет конец */
@@ -598,10 +603,7 @@ export function playLogReveal(
   const layer = document.createElement('div')
   layer.setAttribute('aria-hidden', 'true')
   Object.assign(layer.style, { position: 'fixed', inset: '0', zIndex: '60', pointerEvents: 'none', overflow: 'hidden' })
-  const svg = document.createElementNS(NS, 'svg') as SVGSVGElement
-  svg.setAttribute('aria-hidden', 'true')
-  Object.assign(svg.style, { position: 'fixed', inset: '0', width: '100%', height: '100%', zIndex: '61', pointerEvents: 'none', overflow: 'visible' })
-  document.body.append(layer, svg)
+  document.body.append(layer)
   const list: Animation[] = []
   const t0 = performance.now()
   const seen = new WeakMap<Element, Set<string>>()
@@ -619,7 +621,7 @@ export function playLogReveal(
     list.push(a)
     return a
   }
-  const scene: Scene = { run, f, layer, svg, stage, M }
+  const scene: Scene = { run, f, layer, stage, M }
   const act1 = strike(scene)
   const end = run(layer, [{ opacity: 1 }, { opacity: 1 }], 0, sceneLength(M, f))
   const impact = window.setTimeout(hooks.onImpact, act1.tImp)
@@ -628,19 +630,7 @@ export function playLogReveal(
     if (didSplit) return
     didSplit = true
     window.clearTimeout(splitTimer)
-    const before = {
-      catBody: rect(stage.catBody),
-      bubble: rect(stage.bubble),
-      label: stage.label ? rect(stage.label) : null,
-      labelGhost: null as HTMLElement | null,
-    }
-    if (stage.label && before.label) {
-      const g = stage.label.cloneNode(true) as HTMLElement
-      g.removeAttribute('data-rv-stagelabel')
-      Object.assign(g.style, { position: 'absolute', left: `${before.label.left}px`, top: `${before.label.top}px`, width: `${before.label.width}px`, margin: '0' })
-      layer.appendChild(g)
-      before.labelGhost = g
-    }
+    const before = { catBody: rect(stage.catBody), bubble: rect(stage.bubble) }
     const fin = hooks.split()
     if (fin) shatter(scene, act1, before, fin)
   }
@@ -652,7 +642,6 @@ export function playLogReveal(
     for (const a of list) a.cancel()
     layer.replaceChildren()
     layer.remove()
-    svg.remove()
   }
   // слой убирает stop(): сначала экран снимает «сцена идёт» (иначе на кадр всё было бы скрыто — пустой кадр в конце)
   const finished = end.finished.then(() => {}, () => {})
