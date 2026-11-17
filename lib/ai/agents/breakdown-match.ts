@@ -62,7 +62,12 @@ const allowed = (w: string) => (w.length >= 9 ? 2 : w.length >= 4 ? 1 : 0)
  * Слова, в которые опечатку НЕ исправляем — только дословно. Короткие глаголы отличаются от них одной буквой:
  * «поспать» и «пожрать» превращались в «Посрать» (16.11). Интимное и туалетное узнаём только как написано.
  */
-const EXACT_ONLY = new Set(['посрать', 'поссать', 'покакать', 'пописать', 'подрочить', 'потрахаться', 'трахнуться', 'переспать'])
+const EXACT_ONLY = new Set([
+  'посрать', 'поссать', 'покакать', 'пописать', 'подрочить', 'потрахаться', 'трахнуться', 'переспать',
+  // частые ошибки в написании этих слов — тоже только дословно (17.11): иначе опечатки других дел уходили бы в них
+  'пописять', 'пописат', 'поссат', 'пасрать', 'посрат', 'пакакать', 'покакат', 'подрачить', 'падрочить', 'подрочит',
+  'потрахатся', 'потрахаца', 'переспат', 'отлить',
+])
 
 export type Matcher<T> = { find: (text: string) => { title: string; value: T; corrected: boolean } | null }
 
@@ -101,12 +106,18 @@ export function buildMatcher<T>(entries: [string, T][]): Matcher<T> {
     }
     let best = max + 1
     let out: string[] = []
+    // слово так же близко к туалетному или интимному, как к обычному («порать»: посрать или пожрать) — не исправляем вовсе:
+    // туалетное само по опечатке не узнаётся, а уводить его в другое дело нельзя (владелец 17.11: «посрать и поспать — не
+    // опечатка, а разные дела»)
+    let nearExact = max + 1
+    for (const v of EXACT_ONLY) if (Math.abs(v.length - w.length) <= max) nearExact = Math.min(nearExact, distance(w, v, max))
     for (const v of vocab) {
       if (EXACT_ONLY.has(v) || Math.abs(v.length - w.length) > max) continue
       const d = distance(w, v, max)
       if (d < best) [best, out] = [d, [v]]
       else if (d === best) out.push(v)
     }
+    if (nearExact <= max && nearExact <= best) return [w]
     return best <= max ? out : [w]
   }
 
