@@ -377,6 +377,7 @@ export function FocusSession() {
   // и даже так не влезают (большое дело, 9+ шагов на низком экране): показываем столько строк, сколько помещается целиком —
   // полстроки у края выглядели бы поломкой; все шаги и так лежат в «Делах»
   const [fitRows, setFitRows] = useState<number | null>(null)
+  const rowHeights = useRef(new Map<string, number>())
   const durRef = useRef<HTMLDivElement>(null)
   const durSpace = useRef(0)
   // тело кота: в «деле» всегда рисуется крупным и уменьшается масштабом — переезд с крупного места на маленькое без мыла
@@ -655,14 +656,22 @@ export function FocusSession() {
       return
     }
     if (durRef.current) durSpace.current = durRef.current.offsetHeight + 16
-    const rowsEls = [...list.querySelectorAll<HTMLElement>(':scope > button')]
-    const rowH = rowsEls[0]?.offsetHeight || 32
-    const total = brokenSteps ? Math.max(0, brokenSteps.length - 1) : 0
-    const need = total * rowH
+    // строки разной высоты (длинный шаг — в две-три строки табличек): высоту каждой запоминаем по тексту — строки,
+    // спрятанные из-за нехватки места, тоже учитываются
+    for (const el of list.querySelectorAll<HTMLElement>(':scope > button')) rowHeights.current.set(el.dataset.step ?? '', el.offsetHeight)
+    const selIdx = brokenSteps ? Math.max(0, brokenSteps.findIndex((b) => b.text === task)) : -1
+    const heights = (brokenSteps ?? []).filter((_, i) => i !== selIdx).map((b) => rowHeights.current.get(b.text) ?? 32)
+    const need = heights.reduce((a, h) => a + h, 0)
     const have = list.clientHeight - (compact ? durSpace.current : 0)
     const next = need > have + 1
     if (next !== compact) return setCompact(next)
-    const fit = next && need > list.clientHeight + 1 ? Math.max(1, Math.floor(list.clientHeight / rowH)) : null
+    let fit: number | null = null
+    if (next && need > list.clientHeight + 1) {
+      let used = 0
+      fit = 0
+      for (const h of heights) { if (used + h > list.clientHeight + 1) break; used += h; fit++ }
+      fit = Math.max(1, fit)
+    }
     if (fit !== fitRows) setFitRows(fit)
   })
   // тело кота в «деле» нарисовано крупным (размер «ожидания») и уменьшено масштабом до места кота: переезд из
@@ -1371,7 +1380,7 @@ export function FocusSession() {
                       exit={reducedMotion ? { opacity: 0, transition: { duration: 0.1 } } : { opacity: 0, y: -6, transition: { duration: 0.14 } }}
                       transition={{ duration: reducedMotion ? 0.1 : 0.22, ease: [0.05, 0.7, 0.1, 1] }}
                       data-rv-step={busy ? undefined : ''}
-                      className="line-clamp-2 shrink-0 text-pretty text-[1.15rem] font-bold leading-[1.8rem]"
+                      className="max-h-[3.6rem] shrink-0 overflow-hidden text-pretty text-[1.15rem] font-bold leading-[1.8rem]"
                     >
                       {busy ? 'Разламываю…' : <WoodWords text={task} />}
                     </motion.p>
@@ -1420,15 +1429,18 @@ export function FocusSession() {
                 <motion.button
                   key={st.text}
                   type="button"
+                  data-step={st.text}
                   onClick={() => selectStep(st)}
                   // во время сцены строки стоят на месте без въезда: по ним сцена считает, куда сажать слова
                   initial={reducedMotion || reveal ? false : { opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.22, delay: reducedMotion ? 0 : 0.04 * Math.min(i, 5), ease: [0.05, 0.7, 0.1, 1] }}
-                  className="press flex h-8 w-full shrink-0 items-center gap-2 rounded-xl px-3 text-left text-[13.5px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  className="press flex min-h-8 w-full shrink-0 items-center gap-2 rounded-xl px-3 py-[5px] text-left text-[13.5px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   <span data-rv-bullet aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
-                  <span data-rv-step className="line-clamp-1 font-semibold">
+                  {/* без line-clamp: Safari режет им многоточием каждую табличку внутри строки («Сдела…», скриншот владельца 17.11).
+                      Длинный шаг переносится на вторую-третью строку табличек; слово видно целиком или не видно совсем */}
+                  <span data-rv-step className="block max-h-[66px] overflow-hidden font-semibold leading-[22px]">
                     <WoodWords text={st.text} />
                   </span>
                   {st.wait && <span className="shrink-0 font-mono text-[9.5px] uppercase tracking-widest text-reward/90">пока ждёшь</span>}
