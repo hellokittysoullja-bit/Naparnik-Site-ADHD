@@ -2352,13 +2352,9 @@ html:has(.app-scroll) body {
   font: 800 12px/1 var(--font-sans); color: var(--ink);
 }
 .note-seal-star {
-  position: absolute; inset: 0; background: var(--ink);
-  clip-path: polygon(50% 0,61% 18%,82% 10%,80% 32%,100% 40%,85% 56%,96% 76%,74% 78%,66% 100%,50% 86%,34% 100%,26% 78%,4% 76%,15% 56%,0 40%,20% 32%,18% 10%,39% 18%);
-  animation: note-spin 8s linear infinite;
-}
-.note-seal-star::after {
-  content: ''; position: absolute; inset: 3px; background: #f2b33d;
-  clip-path: inherit;
+  /* звезда — готовая картинка (SVG), а не clip-path: такую вращает видеокарта, без пересчёта стилей на каждом кадре */
+  position: absolute; inset: 0; background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 108 108'><polygon points='50,0 61,18 82,10 80,32 100,40 85,56 96,76 74,78 66,100 50,86 34,100 26,78 4,76 15,56 0,40 20,32 18,10 39,18' fill='%23f2b33d' stroke='%232a1f17' stroke-width='7' stroke-linejoin='round'/></svg>") center / contain no-repeat;
+  animation: note-spin 8s linear infinite; will-change: transform;
 }
 .note-paw {
   position: absolute; width: 22px; height: 20px; background: #e2403a;
@@ -2366,9 +2362,8 @@ html:has(.app-scroll) body {
   mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
 }
 .note-star {
-  position: absolute; width: 14px; height: 14px; background: #e9a82c;
-  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
-  animation: note-twinkle 1.8s ease-in-out infinite;
+  position: absolute; width: 14px; height: 14px; background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M50 0 61 39 100 50 61 61 50 100 39 61 0 50 39 39Z' fill='%23e9a82c'/></svg>") center / contain no-repeat;
+  animation: note-twinkle 1.8s ease-in-out infinite; will-change: transform, opacity;
 }
 @keyframes note-twinkle { 0%, 100% { transform: scale(0.55) rotate(0); opacity: 0.45; } 50% { transform: scale(1.1) rotate(45deg); opacity: 1; } }
 @keyframes note-spin { to { transform: rotate(360deg); } }

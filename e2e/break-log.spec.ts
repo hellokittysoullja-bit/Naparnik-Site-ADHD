@@ -165,6 +165,14 @@ test('полено: каждое слово шага — деревянная т
   // таблички остаются, слов столько же, сколько в шагах; подписи «первый шаг · дело» нет
   expect(await page.locator('[data-rv-step]').first().locator('.wood-word').count()).toBe(4)
   await expect(page.getByText(/первый шаг ·/i)).toHaveCount(0)
+  // карточка-записка (вариант 4, владелец 17.11): печать «×N» по числу шагов, все три кнопки нажимаются — украшения их не
+  // перекрывают
+  await expect(page.locator('[data-rv-card] .note-seal')).toHaveText('×6')
+  for (const name of ['Ещё мельче', 'Своими словами', 'Не то']) {
+    const box = (await page.getByRole('button', { name }).boundingBox())!
+    const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('button')?.textContent?.trim(), { x: box.x + box.width / 2, y: box.y + box.height / 2 })
+    expect(hit).toBe(name)
+  }
 })
 
 test('полено: «Разломать на шаг» с Дома — следующий кадр сразу полено, кот сидит на нём', async ({ page }) => {
