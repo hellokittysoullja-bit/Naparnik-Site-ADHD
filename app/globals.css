@@ -1558,8 +1558,13 @@ html.hero-wait body *::after {
 .vt-landing { view-transition-name: nap-landing; }
 .vt-onb { view-transition-name: nap-onb; }
 .vt-session { view-transition-name: nap-session; }
+/* Дом → Фокус (17.11): поле дела перетекает в полено, которое ждёт удара (и обратно, если разломать не вышло) */
+.vt-task { view-transition-name: nap-task; }
 
 ::view-transition-group(root) { animation-duration: 450ms; animation-timing-function: ease; }
+::view-transition-group(nap-task) { animation-duration: 420ms; animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1); }
+::view-transition-old(nap-task),
+::view-transition-new(nap-task) { animation-duration: 420ms; height: 100%; object-fit: cover; }
 ::view-transition-old(root),
 ::view-transition-new(root) { animation-duration: 450ms; animation-timing-function: ease; }
 
@@ -2309,7 +2314,7 @@ html:has(.app-scroll) body {
 
 /* «Полено» в Фокусе (components/break-reveal/log-reveal.ts): пока идёт сцена, шаги, точки, «ещё N» и первый штамп скрыты —
    их по одному проявляют анимации (WAAPI сильнее этих правил); после сцены анимации снимаются и всё стоит на месте. */
-[data-rv='playing'] :is([data-rv-step], [data-rv-bullet], [data-rv-more], [data-rv-stamp]) {
+[data-rv='playing'] :is([data-rv-card], [data-rv-step], [data-rv-bullet], [data-rv-more], [data-rv-stamp]) {
   opacity: 0;
 }
 .rv-print {
@@ -2318,3 +2323,9 @@ html:has(.app-scroll) body {
   mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
   transform: rotate(-12deg);
 }
+
+/* Полено ждёт удара (Фокус, пока кот разламывает дело на сервере): едва заметно покачивается — живое, но без рывка
+   при передаче сцене «Полено» (размах ≤ 1 px и 0,4°). Без движения при «уменьшить движение» */
+.rv-wait { transform-origin: 50% 100%; animation: rv-wait 1.6s ease-in-out infinite; }
+@keyframes rv-wait { 0%, 100% { transform: none; } 50% { transform: translateY(-1px) rotate(-0.4deg); } }
+@media (prefers-reduced-motion: reduce) { .rv-wait { animation: none; } }

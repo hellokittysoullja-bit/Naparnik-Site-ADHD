@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { PawPrint, Sprout, Zap } from "lucide-react";
 import { splitDump, upsertDeal } from "@/lib/deals";
 import { BREAK_TOO_SHORT, breakable } from "@/lib/break-task";
+import { settleKeyboard } from "@/lib/keyboard";
+import { navigateWithTransition } from "@/lib/view-transition";
 import { NightScene } from "@/components/landing/night-scene";
 import { Knoll, Moon } from "@/components/hero-scene";
 import { MascotDoll } from "@/components/mascot-doll";
@@ -96,10 +98,13 @@ export function HomeCamp() {
   };
   // пустое поле разламывает дело из ответов знакомства; написанное — только если его можно разламывать (lib/break-task.ts)
   const canBreak = !text.trim() || breakable(target);
-  const go = () => {
+  // «Разломать на шаг»: сначала уезжает клавиатура и экран встаёт на место, потом один кадр-фильм — кот перелетает,
+  // поле дела перетекает в полено Фокуса (17.11, запись владельца: Фокус открывался под клавиатурой и дёргался 3–4 раза)
+  const go = async () => {
     if (!canBreak) return setTooShort(true);
     keepRest();
-    router.push(href);
+    await settleKeyboard();
+    navigateWithTransition(() => router.push(href), "focus");
   };
 
   return (
@@ -144,7 +149,7 @@ export function HomeCamp() {
             className="mt-3"
             onSubmit={(e) => {
               e.preventDefault();
-              go();
+              void go();
             }}
           >
             <label className="sr-only" htmlFor="home-task">
@@ -160,7 +165,7 @@ export function HomeCamp() {
               placeholder={homeExample(sphere)}
               enterKeyHint="go"
               autoComplete="off"
-              className="field"
+              className="field vt-task"
               autoCapitalize="sentences"
             />
           </form>
@@ -215,11 +220,9 @@ export function HomeCamp() {
           <Link
             href={href}
             onClick={(e) => {
-              // переход делает сама ссылка (предзагрузка Фокуса остаётся); нечего разламывать — остаёмся на Доме
-              if (!canBreak) {
-                e.preventDefault();
-                setTooShort(true);
-              } else keepRest();
+              // ссылка остаётся ради предзагрузки Фокуса, а переход ведём сами: клавиатура уезжает до перехода
+              e.preventDefault();
+              void go();
             }}
             // iOS Safari включает :active только при наличии touch-слушателя
             onTouchStart={() => {}}
@@ -273,7 +276,7 @@ export function HomeCamp() {
               expression="calm"
               size={190}
               label="Напарник"
-              className="size-[clamp(96px,calc(100dvh-480px-env(safe-area-inset-bottom)),196px)] [@media(max-height:620px)]:size-[clamp(90px,calc(100dvh-440px-env(safe-area-inset-bottom)),196px)]"
+              className="vt-cat size-[clamp(96px,calc(100dvh-480px-env(safe-area-inset-bottom)),196px)] [@media(max-height:620px)]:size-[clamp(90px,calc(100dvh-440px-env(safe-area-inset-bottom)),196px)]"
             />
           </div>
         </div>

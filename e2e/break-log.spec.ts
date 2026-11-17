@@ -53,3 +53,83 @@ test('полено: при «уменьшить движение» сцены н
   await expect(page.getByText(/Разломал на \d+ шаг/)).toBeVisible()
   await ctx.close()
 })
+
+/**
+ * Запись владельца 17.11 (iPhone, 393×664): пока кот разламывал дело, полторы секунды висел экран выбора шага; потом всё
+ * перестраивалось под полено; в конце кнопка старта уезжала под меню; квитанция сдвигала экран; один кусок полена был
+ * тёмным. Тесты ниже падают на сборке до 17.11.
+ */
+const steps6 = ['Решить, что хочется поесть', 'Приготовить еду', 'Выложить еду на тарелку', 'Сесть за стол', 'Поесть спокойно', 'Убрать посуду']
+const slow = (page: import('@playwright/test').Page, ms = 1500) =>
+  page.route('**/api/breakdown', async (r) => {
+    await new Promise((x) => setTimeout(x, ms))
+    await r.fulfill({ json: { steps: steps6, source: 'library', title: 'Покушать' } })
+  })
+const startBox = (page: import('@playwright/test').Page) =>
+  page.getByRole('button', { name: 'Начали. Я рядом' }).evaluate((el) => {
+    const r = el.getBoundingClientRect()
+    return { top: Math.round(r.top), bottom: Math.round(r.bottom) }
+  })
+
+for (const [w, h] of [[393, 664], [360, 640], [390, 844]] as const) {
+  test(`полено ${w}×${h}: пока кот разламывает — полено на месте поля, длительности нет, старт неактивен; кнопка старта всё время на своём месте и над меню`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: h })
+    await page.goto('/app/session')
+    await expect(page.getByRole('textbox', { name: 'Первый шаг' })).toBeVisible()
+    const plain = await startBox(page)
+    await slow(page)
+    await page.goto('/app/session?step=' + encodeURIComponent('Покушать') + '&break=1')
+    // ожидание: экрана выбора шага нет — вместо поля ждёт полено со словами человека
+    await expect(page.locator('[data-rv-waitlog] svg')).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'Первый шаг' })).toHaveCount(0)
+    const durOpacity = () => page.getByText('Длительность').evaluate((el) => getComputedStyle(el.parentElement!).opacity)
+    expect(await durOpacity()).toBe('0')
+    await expect(page.getByRole('button', { name: 'Начали. Я рядом' })).toBeDisabled()
+    expect(await startBox(page)).toEqual(plain)
+    // раскол и итог: кнопка там же, пиксель в пиксель, и не под меню
+    await page.waitForSelector('[data-rv="playing"]')
+    expect(await startBox(page)).toEqual(plain)
+    await expect(page.locator('[data-rv="playing"]')).toHaveCount(0, { timeout: 4000 })
+    await expect(page.getByRole('button', { name: 'Начали. Я рядом' })).toBeEnabled()
+    await expect.poll(durOpacity).toBe('1')
+    expect(await startBox(page)).toEqual(plain)
+    const navTop = await page.locator('nav').evaluate((el) => el.getBoundingClientRect().top)
+    expect(plain.bottom).toBeLessThanOrEqual(navTop)
+  })
+}
+
+test('полено: квитанция в конце ничего не сдвигает; у каждого куска свой рисунок коры (не чёрный кусок)', async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 664 })
+  await slow(page, 600)
+  await page.goto('/app/session?step=' + encodeURIComponent('Покушать') + '&break=1')
+  await page.waitForSelector('[data-rv="playing"]')
+  const ids = await page.evaluate(() => [...document.querySelectorAll('body > div[aria-hidden="true"] [id^="rvBark"]')].map((e) => e.id))
+  expect(ids.length).toBeGreaterThan(1)
+  expect(new Set(ids).size).toBe(ids.length)
+  const slotTop = () => page.locator('[data-rv-slot]').evaluate((el) => Math.round(el.getBoundingClientRect().top))
+  const during = await slotTop()
+  await expect(page.getByText(/Разломал на \d+ шаг/)).toBeVisible({ timeout: 4000 })
+  expect(await slotTop()).toBe(during)
+})
+
+test('полено: буквы шага загораются ровно на своей строке', async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 664 })
+  await slow(page, 300)
+  await page.goto('/app/session?step=' + encodeURIComponent('Покушать') + '&break=1')
+  await page.waitForSelector('[data-rv="playing"]')
+  // заморозить сцену в момент «выжигания» второй строки и сравнить букву-уголёк с настоящей буквой
+  const diff = await page.evaluate(() => {
+    for (const a of document.getAnimations()) {
+      a.pause()
+      a.currentTime = 1000
+    }
+    const row = document.querySelectorAll('[data-rv-step]')[1]
+    const range = document.createRange()
+    range.setStart(row.firstChild!, 0)
+    range.setEnd(row.firstChild!, 1)
+    const real = range.getBoundingClientRect()
+    const ghosts = [...document.querySelectorAll<HTMLElement>('body > div[aria-hidden="true"] span')].filter((s) => s.textContent === row.textContent![0])
+    return Math.min(...ghosts.map((g) => Math.abs(parseFloat(g.style.top) - real.top) + Math.abs(parseFloat(g.style.left) - real.left)))
+  })
+  expect(diff).toBeLessThan(2)
+})

@@ -170,6 +170,8 @@ export class DollAnimator {
 
   /** Моргание не пачкой: не ближе BLINK_MIN_GAP к уже назначенному (двойное через 0.32 с проходит) — как thin_blinks роликов */
   private addBlink(at: number, gap = 0.3) {
+    // «не моргать»: никаких новых морганий — ни по таймеру, ни при переводе взгляда
+    if (this.awake) return;
     if (this.blinks.some((b) => Math.abs(b - at) < gap) || Math.abs(this.nextBlink - at) < gap) return;
     this.blinks.push(at);
   }

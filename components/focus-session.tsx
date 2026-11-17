@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
 import { canViewTransition } from '@/lib/view-transition'
 import { useFirstFrameReady } from '@/lib/first-frame'
@@ -198,23 +198,26 @@ function morph(update: () => void) {
 
 /** Полено, которое ждёт удара, пока кот разламывает дело на сервере: та же картинка, что у сцены «Полено»
  *  (components/break-reveal/log-reveal.ts), на месте будущей карточки первого шага */
-function WaitLog({ text, slotRef, fontRef }: { text: string; slotRef: RefObject<HTMLDivElement | null>; fontRef: RefObject<HTMLParagraphElement | null> }) {
+function WaitLog({ text }: { text: string }) {
   const ref = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     const el = ref.current
-    const slot = slotRef.current
+    // место и шрифт берём из разметки, а не из ref родителя: эффект ребёнка идёт раньше, чем React привяжет ref родителя
+    const slot = el?.parentElement
     if (!el || !slot) return
     const draw = () => {
       const r = slot.getBoundingClientRect()
+      if (!r.width) return
       const h = logHeight(r.height)
       Object.assign(el.style, { width: `${r.width}px`, height: `${h}px`, top: `${(r.height - h) / 2}px` })
-      drawLog(el, r.width, h, text, fontRef.current ? getComputedStyle(fontRef.current).font : '700 18px sans-serif', 7)
+      const font = slot.querySelector('[data-rv-source]')
+      drawLog(el, r.width, h, text, font ? getComputedStyle(font).font : '700 18px sans-serif', 7)
     }
     draw()
     const ro = new ResizeObserver(draw)
     ro.observe(slot)
     return () => ro.disconnect()
-  }, [text, slotRef, fontRef])
+  }, [text])
   return <div ref={ref} data-rv-waitlog aria-hidden="true" className="rv-wait pointer-events-none absolute left-0" />
 }
 
@@ -1080,7 +1083,7 @@ export function FocusSession() {
         ? 'Секунду, *разламываю*…'
         : buildSetupLine(prefilledStep, priorSessions, companionName)
     return (
-      <div ref={setupRef} data-rv={reveal ? 'playing' : undefined} data-vt-arrived="focus" className={`relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-4 ${deal ? 'py-3' : 'py-5'}`}>
+      <div ref={setupRef} data-rv={reveal ? 'playing' : undefined} data-vt-arrived="focus" className={`relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-5 ${deal ? 'pt-2' : 'pt-5'}`}>
         <h1 className="sr-only">Фокус-сессия: выбери первый шаг</h1>
         {/* Сцена: реплика сверху, кот под ней — крупный и внизу, прямо над полем (владелец 16.11). Размер от высоты экрана:
             на 360×640 кнопка старта не уходит под меню */}
@@ -1090,8 +1093,8 @@ export function FocusSession() {
         <div className={deal ? 'flex flex-1 flex-col items-center justify-end gap-1 [@media(max-height:699px)]:flex-none [@media(max-height:699px)]:flex-row-reverse [@media(max-height:699px)]:items-end [@media(max-height:699px)]:gap-2' : 'flex flex-1 flex-col items-center justify-end gap-1'}>
           {/* Пузырь стоит на месте, меняется только реплика в нём (16.11, покадровая съёмка): раньше он целиком уходил и
               приходил заново (AnimatePresence mode="wait"), и между репликами ~0,25 с кот был без пузыря */}
-          <div className={deal ? 'flex min-h-[4.15rem] w-full items-end justify-center [@media(max-height:699px)]:min-w-0 [@media(max-height:699px)]:flex-1 [@media(max-height:699px)]:justify-start [@media(max-height:699px)]:pr-[4.25rem]' : 'contents'}>
-          <p data-rv-bubble className={`glass text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed ${deal ? 'max-w-[min(20rem,calc(100%-9rem))] [@media(max-height:699px)]:max-w-full [@media(max-height:699px)]:text-left' : 'max-w-80'}`}>
+          <div className={deal ? 'flex min-h-[4.25rem] w-full items-end justify-center [@media(max-height:699px)]:min-w-0 [@media(max-height:699px)]:flex-1 [@media(max-height:699px)]:justify-start [@media(max-height:699px)]:pr-[3.75rem]' : 'contents'}>
+          <p data-rv-bubble className={`glass text-balance rounded-2xl px-4 py-2 text-center font-sans text-[0.95rem] leading-relaxed ${deal ? 'max-w-[min(20rem,calc(100%-9rem))] [@media(max-height:699px)]:max-w-full [@media(max-height:699px)]:px-3 [@media(max-height:699px)]:text-left' : 'max-w-80'}`}>
             {/* первая реплика — сразу, без проявления; следующие (ответ на действие) — короткое проявление поверх старой */}
             <AnimatePresence initial={false}>
               <motion.span
@@ -1124,8 +1127,8 @@ export function FocusSession() {
               className={
                 deal
                   ? tall
-                    ? 'size-[clamp(80px,calc(100dvh_-_680px),150px)]'
-                    : 'size-[clamp(72px,calc(100dvh_-_628px),150px)] [@media(max-height:699px)]:size-16'
+                    ? 'size-[clamp(76px,calc(100dvh_-_684px),150px)]'
+                    : 'size-[clamp(64px,calc(100dvh_-_640px),150px)] [@media(max-height:699px)]:size-16'
                   : 'size-[clamp(112px,calc(100dvh_-_570px),232px)]'
               }
             />
@@ -1134,7 +1137,8 @@ export function FocusSession() {
         {/* листы появляются в разметке (и в сети) только после первого открытия */}
         {sheetsUsed.templates && <TemplatesSheet open={templatesOpen} onClose={() => setTemplatesOpen(false)} onPick={applyTemplate} />}
         {sheetsUsed.prefs && <BreakdownPrefs open={prefsOpen} onClose={() => setPrefsOpen(false)} fineness={fineness} onFineness={setFineness} />}
-        <div className="flex flex-col gap-4">
+        {/* блок дела прижат к низу: кнопка старта стоит пиксель в пиксель там же, где на обычном экране Фокуса */}
+        <div className="mt-auto flex flex-col gap-4">
           {deal ? (
             // Этап 1 (research/24 C): один шаг крупно и уже выбран, ещё два — мельче, остальные свёрнуты. Полный список
             // с суммой минут делает дело «длиннее» (Kruger & Evans 2004); близкая подцель сильнее далёкой (Bandura & Schunk).
@@ -1176,9 +1180,9 @@ export function FocusSession() {
                 <p ref={sourceRef} data-rv-source aria-hidden="true" className="pointer-events-none invisible absolute inset-x-4 top-3.5 text-pretty text-[1.15rem] font-bold leading-snug">
                   {reveal ? reveal.task : task}
                 </p>
-                {waiting && <WaitLog text={task} slotRef={slotRef} fontRef={sourceRef} />}
+                {waiting && <WaitLog text={task} />}
                 {brokenSteps && (
-              <div data-rv-card className="glass relative flex min-h-[9.75rem] flex-col rounded-2xl border border-primary/40 px-4 pb-3 pt-3.5">
+              <div data-rv-card className="glass relative flex min-h-[9.75rem] flex-col rounded-2xl border border-primary/40 px-4 pb-3 pt-3.5 [@media(max-width:380px)]:px-3">
                 {editing ? (
                   <input
                     autoFocus
@@ -1212,12 +1216,12 @@ export function FocusSession() {
                   {!editing && brokenSteps[sel]?.wait && <span className="text-reward">пока ждёшь · </span>}
                   {!editing && estimate ? `≈ ${estimate} мин · уже поставил ниже` : ''}
                 </p>
-                <div className="mt-auto flex flex-wrap gap-1.5 pt-3">
+                <div className="mt-auto flex flex-wrap gap-1.5 pt-3 [@media(max-width:380px)]:gap-1">
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() => void breakDown(true)}
-                    className="press inline-flex min-h-11 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring gap-1.5 rounded-full bg-primary/15 px-3 text-[13px] font-semibold text-primary disabled:opacity-60"
+                    className="press inline-flex min-h-11 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring gap-1.5 rounded-full bg-primary/15 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-semibold text-primary disabled:opacity-60"
                   >
                     <Sparkles className="size-3.5" aria-hidden="true" />
                     {busy ? 'Дроблю…' : 'Ещё мельче'}
@@ -1225,7 +1229,7 @@ export function FocusSession() {
                   <button
                     type="button"
                     onClick={() => setEditing(true)}
-                    className="press inline-flex min-h-11 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full border border-white/10 px-3 text-[13px] font-medium text-foreground/85"
+                    className="press inline-flex min-h-11 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full border border-white/10 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-medium text-foreground/85"
                   >
                     Своими словами
                   </button>
@@ -1233,7 +1237,7 @@ export function FocusSession() {
                     <button
                       type="button"
                       onClick={dropStep}
-                      className="press inline-flex min-h-11 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full border border-white/10 px-3 text-[13px] font-medium text-muted-foreground"
+                      className="press inline-flex min-h-11 items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full border border-white/10 px-3 [@media(max-width:380px)]:px-2 text-[13px] font-medium text-muted-foreground"
                     >
                       Не то
                     </button>
@@ -1347,9 +1351,9 @@ export function FocusSession() {
               </button>
             </div>
           )}
-          {/* длительность и старт: пока полено ждёт и колется — невидимы (их место занято), потом проявляются на своих местах */}
-          <div inert={staging} aria-hidden={staging || undefined} className={`flex flex-col gap-4 transition-opacity duration-300 ${staging ? 'pointer-events-none opacity-0' : 'opacity-100'}`}>
-          <div className="flex flex-col gap-2">
+          {/* длительность: пока полено ждёт и колется — её нет на экране, но место занято; в конце проявляется на своём месте.
+              Кнопка старта ниже видна всё время — неактивная, пиксель в пиксель там же (владелец 17.11) */}
+          <div inert={staging} aria-hidden={staging || undefined} className={`flex flex-col gap-2 transition-opacity duration-300 ${staging ? 'pointer-events-none opacity-0' : 'opacity-100'}`}>
             <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
               Длительность
             </span>
@@ -1396,13 +1400,12 @@ export function FocusSession() {
             <Button
               size="lg"
               onClick={() => void start()}
-              disabled={!task.trim() || busy}
+              disabled={!task.trim() || busy || staging}
               className="h-14 w-full text-[17px]"
             >
               Начали. Я рядом
             </Button>
           </motion.div>
-          </div>
         </div>
       </div>
     )

@@ -321,7 +321,9 @@ function playLog(c: Ctx) {
     const piece = document.createElement('div')
     Object.assign(piece.style, { position: 'absolute', left: `${L.x}px`, top: `${L.y}px`, width: `${w}px`, height: `${h}px`, clipPath: `polygon(${ordered.join(',')})` })
     drawLog(piece, w, h, carve.textContent ?? '', scs.font, 100 + k)
-    c.layer.appendChild(piece)
+    // кусок со словами человека (первый) — поверх остальных: соседний кусок, летящий к своей строке, проходит позади
+    // и не закрывает слова (17.11)
+    c.layer.insertBefore(piece, k === 0 ? null : c.layer.firstChild)
     const xl = left ? left[2] : 0
     const xr = right ? right[2] : w
     const cx = (xl + xr) / 2
@@ -331,12 +333,14 @@ function playLog(c: Ctx) {
     const sep = `translate(${(k - mid) * 16}px, ${-8 - Math.abs(k - mid) * 2}px) rotate(${(k - mid) * 2.5}deg)`
     run(piece, [{ opacity: 0 }, { opacity: 1 }], tSplit, tSplit + 0.001)
     run(piece, [{ transform: 'none' }, { transform: sep }], tSplit, tFly, { easing: SPRING })
-    // цель — сам текст шага (для первого — карточка): кусок ложится точно на строку и превращается в неё
-    const to = rect(k === 0 ? c.card : c.texts[k])
+    // цель — сам текст шага: первый кусок ложится на заголовок карточки, остальные — на свои строки, и превращаются в них
+    const to = rect(c.texts[k])
     const tx = to.left + to.width / 2 - (L.x + cx)
     const ty = to.top + to.height / 2 - (L.y + h / 2)
-    const sx = Math.min(1.6, Math.max(0.3, to.width / Math.max(30, xr - xl)))
-    const sy = k === 0 ? Math.min(1.2, Math.max(0.35, to.height / h)) : Math.max(0.28, (to.height * 1.3) / h)
+    // кусок не раздувается (раздутый первый кусок висел над карточкой полупрозрачным «призраком», 17.11): только сжимается
+    // до размера строки
+    const sx = Math.min(1, Math.max(0.3, to.width / Math.max(30, xr - xl)))
+    const sy = Math.min(1, Math.max(0.28, (to.height * 1.3) / h))
     const tk = tFly + k * 0.04
     const tArr = tk + 0.2
     run(piece, [
@@ -355,9 +359,11 @@ function playLog(c: Ctx) {
 
   // отпечаток лапы остался на месте удара — он и есть подаренный первый штамп
   const print = document.createElement('div')
-  const ps = 30
+  // отпечаток — у верхнего края полена, над словами: на середине он закрывал буквы («курс◉вую», 17.11)
+  const ps = 24
+  const py = L.y + h * 0.17
   Object.assign(print.style, {
-    position: 'absolute', left: `${hit.x - ps / 2}px`, top: `${L.y + h / 2 - ps / 2}px`, width: `${ps}px`, height: `${(ps * 91) / 100}px`,
+    position: 'absolute', left: `${hit.x - ps / 2}px`, top: `${py - ps / 2}px`, width: `${ps}px`, height: `${(ps * 91) / 100}px`,
     background: '#a0ec2a', WebkitMaskImage: `url(${PRINT})`, maskImage: `url(${PRINT})`, WebkitMaskSize: '100% 100%', maskSize: '100% 100%',
   })
   c.layer.appendChild(print)
@@ -365,7 +371,7 @@ function playLog(c: Ctx) {
   const s0 = rect(c.stamp0)
   const tS = 0.8
   const dx = s0.left + s0.width / 2 - hit.x
-  const dy = s0.top + s0.height / 2 - (L.y + h / 2)
+  const dy = s0.top + s0.height / 2 - py
   run(print, [
     { transform: 'scale(1) rotate(-12deg)', opacity: 0.95 },
     { transform: `translate(${dx * 0.5 + 30}px, ${dy * 0.5 - 30}px) scale(1.4) rotate(-40deg)`, offset: 0.5 },
