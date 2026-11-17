@@ -1156,7 +1156,7 @@ export function FocusSession() {
         {/* В «деле» на низком экране (ниже 700 px — iPhone с панелями Safari) кот маленький и сбоку от пузыря, иначе — под ним:
             так весь экран дела с кнопкой старта помещается над меню (владелец 17.11). Место пузыря — на две строки всегда:
             смена реплики («Сейчас расколю!» → квитанция) ничего не сдвигает. Справа сверху луна — пузырь её не закрывает */}
-        <div className={stage ? 'flex flex-1 flex-col items-center justify-center pb-16' : deal ? 'flex flex-none flex-col items-center justify-end gap-1 [@media(max-height:699px)]:flex-row-reverse [@media(max-height:699px)]:items-end [@media(max-height:699px)]:gap-2' : 'flex flex-1 flex-col items-center justify-end gap-1'}>
+        <div className={stage ? 'flex flex-1 flex-col items-center justify-center pb-[117px]' : deal ? 'flex flex-none flex-col items-center justify-end gap-1 [@media(max-height:699px)]:flex-row-reverse [@media(max-height:699px)]:items-end [@media(max-height:699px)]:gap-2' : 'flex flex-1 flex-col items-center justify-end gap-1'}>
           {/* Пузырь стоит на месте, меняется только реплика в нём (16.11, покадровая съёмка): раньше он целиком уходил и
               приходил заново (AnimatePresence mode="wait"), и между репликами ~0,25 с кот был без пузыря */}
           {/* в деле пузырь стоит над своим местом (absolute): его высота не влияет на раскладку вообще — ни смена реплики,
@@ -1187,12 +1187,17 @@ export function FocusSession() {
             ref={catRef}
             className={`vt-cat relative shrink-0 ${
               stage
-                ? `${CAT_STAGE} z-10 mb-8 -mt-4`
+                ? `${CAT_STAGE} z-10 mb-[3px] -mt-10`
                 : deal
                   ? `${tall ? 'size-[clamp(76px,calc(100dvh_-_684px),150px)]' : 'size-[clamp(64px,calc(100dvh_-_640px),150px)] [@media(max-height:699px)]:size-16'} -mt-3 [@media(max-height:699px)]:mt-0`
                   : '-mt-5 [@media(min-height:740px)]:-mt-12'
             }`}
           >
+            {/* в «ожидании» под лапами — своя, более густая тень: кот висит над поленом, тени куклы на тёмном небе почти не
+                видно (владелец 17.11). Градиент без фильтра — дёшево для видеокарты */}
+            {stage && (
+              <span aria-hidden="true" className="pointer-events-none absolute bottom-[3px] left-[46%] h-3 w-[46%] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(closest-side,rgb(0_0_0/0.75),rgb(0_0_0/0.45)_55%,transparent)]" />
+            )}
             {/* в «деле» тело кота — крупное (размер «ожидания») и уменьшено масштабом до места кота (cat-fit) */}
             <div ref={catBodyRef} className={deal && !stage ? 'cat-fit absolute left-0 top-0 origin-top-left' : deal ? 'absolute left-0 top-0 origin-top-left' : ''}>
               <MascotSvg
