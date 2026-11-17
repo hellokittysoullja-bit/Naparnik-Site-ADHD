@@ -31,12 +31,17 @@ test('Фокус: ночная сцена, без чипов, «Раздроби
   await expect(breakBtn).toBeVisible()
   await field.fill('Hh')
   await expect(breakBtn).toBeVisible()
+  // 17.11 (владелец): «Раздробить» — 1 в 1 «Ещё мельче» из записки, «Готовые шаги» — 1 в 1 «Своими словами»: цвет, обводка,
+  // нажимной бортик; размер прежний. Текст «Готовых шагов» тёмный на кремовом (цвет записки задан и вне записки)
+  await expect(breakBtn).toHaveClass(/note-btn-go/)
+  await expect(ready).toHaveClass(/note-btn/)
   for (const b of [breakBtn, ready]) {
-    await expect(b).toHaveClass(/btn-chunky/)
-    await expect(b).toHaveClass(/rounded-full/)
-    const lip = await b.locator('.btn-face').evaluate((el) => getComputedStyle(el).boxShadow)
-    expect(lip).toMatch(/0px 4px 0px/)
+    const st = await b.evaluate((el) => { const c = getComputedStyle(el); return { lip: c.boxShadow, color: c.color, h: el.getBoundingClientRect().height } })
+    expect(st.lip).toMatch(/0px 4px 0px/)
+    expect(st.color).toBe('rgb(42, 31, 23)')
+    expect(st.h).toBeGreaterThanOrEqual(44)
   }
+  await expect(page.getByText(/рекомендуем/i)).toHaveCount(0)
 
   // нечего разламывать — кот просит слова, а не шлёт запрос
   let asked = false

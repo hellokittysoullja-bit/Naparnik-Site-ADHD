@@ -22,7 +22,7 @@ test('новичок: лендинг → знакомство → первая �
   await page.goto('/app')
   // Дом после знакомства — как на примере владельца (13.11): поле, сфера из ответов подсвечена, строка над кнопкой
   // по ответам (walkOnboarding берёт первые варианты: учёба, «не знаю, с чего», «голова освободится»)
-  await expect(page.getByText('ЧТО СЕЙЧАС ВИСИТ?')).toBeVisible()
+  await expect(page.getByText('Какое дело сейчас висит?')).toBeVisible()
   await expect(page.getByRole('button', { name: /Учёба/ })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByText('Один шаг, и в голове уже тише')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Разломать на шаг' })).toBeVisible()
@@ -42,7 +42,7 @@ test('первый визит на Дом: без ошибок и без зам�
   const errors = collectErrors(page)
   const cls = await watchLayoutShift(page)
   await page.goto('/app')
-  await expect(page.getByText('ЧТО СЕЙЧАС ВИСИТ?')).toBeVisible()
+  await expect(page.getByText('Какое дело сейчас висит?')).toBeVisible()
   await page.waitForTimeout(1500)
   expect(await cls()).toBeLessThan(0.05)
   expect(errors).toEqual([])

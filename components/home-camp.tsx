@@ -143,7 +143,7 @@ export function HomeCamp() {
           {/* Затемнение земли начинается над подписью и доходит до полной темноты за ~100 px; isolate — слой затемнения
               над холмом, но под текстом и кнопками. Колонка не шире 448 px, как у Фокуса; затемнение — на всю ширину */}
           <div className="relative isolate mx-auto flex w-full max-w-md flex-col before:pointer-events-none before:absolute before:-inset-x-[50vw] before:-top-5 before:bottom-0 before:-z-10 before:bg-[linear-gradient(to_bottom,rgb(3_11_9/0),rgb(3_11_9/0.8)_52px,rgb(3_11_9)_100px)] before:content-['']">
-          <p className="h-4 font-mono text-[10.5px] font-semibold leading-4 tracking-[0.26em] text-primary/90">ЧТО СЕЙЧАС ВИСИТ?</p>
+          <p className="h-[22px] text-[16px] font-extrabold leading-[22px] text-[oklch(0.93_0.04_90)]">Какое дело сейчас висит?</p>
           <form
             className="mt-3"
             onSubmit={(e) => {

@@ -19,6 +19,8 @@ export const ASSET_VERSIONS: Record<string, string> = {
   "/fonts/manrope-600-lat.woff2": "d9cae8b8be",
   "/fonts/manrope-700-cyr.woff2": "752b2a6308",
   "/fonts/manrope-700-lat.woff2": "1bbd9fed7e",
+  "/fonts/manrope-800-cyr.woff2": "07d71ea9aa",
+  "/fonts/manrope-800-lat.woff2": "04758b5283",
   "/mascot/poster/neutral.webp": "ce1781ecfa",
   "/mascot/doll/body.webp": "86376e3ba9",
   "/mascot/doll/eye-l.webp": "a95da21712",

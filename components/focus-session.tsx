@@ -437,7 +437,7 @@ export function FocusSession() {
     const n = list.length
     const word = n % 10 === 1 && n % 100 !== 11 ? 'шаг' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'шага' : 'шагов'
     // квитанция в две строки при любой ширине: «остальное — в Делах» и так видно строкой «ещё N — ждут в Делах»
-    setReceipt(`Разломал на ${n} ${word}. Начнём *с первого*!`)
+    setReceipt(`Разломал на ${n} ${word}. Начнём *с первого шага*!`)
     if (!reducedMotion) {
       setSplit(false)
       setReveal({ task: source, nth: nextBreakCount(), fromWait })
@@ -1282,7 +1282,7 @@ export function FocusSession() {
                 ? `${CAT_STAGE} z-10 -mb-[14px] -mt-10`
                 : deal
                   ? `${tall ? 'size-[clamp(76px,calc(100dvh_-_684px),150px)]' : 'size-[clamp(64px,calc(100dvh_-_640px),150px)] [@media(max-height:699px)]:size-16'} -mt-3 [@media(max-height:699px)]:mt-0`
-                  : '-mt-5 [@media(min-height:740px)]:-mt-12'
+                  : '-mt-5 mb-8 [@media(min-height:740px)]:-mt-12'
             }`}
           >
             {/* в «деле» тело кота — крупное (размер «ожидания») и уменьшено масштабом до места кота (cat-fit) */}
@@ -1294,7 +1294,7 @@ export function FocusSession() {
                 awake={!!reveal}
                 label={companionName ?? 'Напарник'}
                 // размер — от высоты экрана, чтобы старт всегда был над меню
-                className={deal ? CAT_STAGE : 'size-[clamp(112px,calc(100dvh_-_570px),232px)]'}
+                className={deal ? CAT_STAGE : 'size-[clamp(124px,calc(100dvh_-_552px),248px)]'}
               />
             </div>
           </div>
@@ -1476,14 +1476,16 @@ export function FocusSession() {
           {!deal && (
             <div className="flex flex-wrap gap-2">
               {/* «Раздробить» на экране всегда (владелец 16.11); дело, которое нечем разламывать, — просьба кота в пузыре */}
+              {/* «Раздробить» и «Готовые шаги» — те же нажимные кнопки, что «Ещё мельче» и «Своими словами» в записке: цвет,
+                  обводка, бортик, нажатие (владелец 17.11); размер прежний */}
               <button
                 type="button"
                 onClick={() => void requestBreak()}
                 disabled={busy}
-                className="btn-chunky btn-chunky-dark select-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                className="note-btn note-btn-go focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring !px-4 !text-sm"
               >
-                <span className="btn-face inline-flex min-h-11 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold">
-                  <Sparkles className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                <span className="inline-flex items-center gap-2 py-2">
+                  <Sparkles className="size-4 shrink-0" aria-hidden="true" />
                   {busy ? 'Дроблю…' : 'Раздробить'}
                 </span>
               </button>
@@ -1491,10 +1493,10 @@ export function FocusSession() {
               <button
                 type="button"
                 onClick={() => setTemplatesOpen(true)}
-                className="btn-chunky btn-chunky-dark select-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="note-btn focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring !px-4 !text-sm"
               >
-                <span className="btn-face inline-flex min-h-11 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold">
-                  <LayoutList className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                <span className="inline-flex items-center gap-2 py-2">
+                  <LayoutList className="size-4 shrink-0" aria-hidden="true" />
                   Готовые шаги
                 </span>
               </button>
@@ -1546,12 +1548,6 @@ export function FocusSession() {
                   >
                     {d} мин
                   </button>
-                  {d === 25 && (deal || !durationTouched) && (
-                    // в деле место подписи есть всегда: она пропадает, когда оценка шага сама ставит длительность, — без сдвига
-                    <span className={`font-mono text-[9px] uppercase tracking-widest text-primary/70 ${durationTouched ? 'invisible' : ''}`}>
-                      рекомендуем
-                    </span>
-                  )}
                 </div>
               ))}
             </div>
