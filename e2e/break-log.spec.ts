@@ -245,3 +245,24 @@ for (const [w, h] of [
     expect(r).toEqual({ clipped: [], cut: [] })
   })
 }
+
+/**
+ * Скриншот владельца 17.11 (iPhone, Safari): «Сдела…», «Дойти д… туалета» — line-clamp у строки шага в WebKit режет
+ * многоточием каждую табличку внутри неё. Line-clamp у табличек больше нет: длинный шаг переносится на вторую строку
+ * табличек, слово видно целиком или не видно совсем. В стенде нет WebKit — проверяем само правило: ни у одного
+ * контейнера табличек нет -webkit-line-clamp, и ни одна видимая табличка не обрезана.
+ */
+test('таблички шагов без line-clamp: слова целиком, длинный шаг — в две строки', async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 664 })
+  await page.goto('/app/session?step=' + encodeURIComponent('Поесть нормально') + '&break=1')
+  await page.waitForSelector('[data-rv-card]')
+  await expect(page.locator('[data-rv="playing"]')).toHaveCount(0, { timeout: 5000 })
+  const r = await page.evaluate(() => {
+    const clamped = [...document.querySelectorAll('.wood-word')].map((w) => w.parentElement!).filter((p, i, a) => a.indexOf(p) === i)
+      .filter((p) => { const c = getComputedStyle(p).getPropertyValue('-webkit-line-clamp'); return c && c !== 'none' })
+    const cut = [...document.querySelectorAll<HTMLElement>('.wood-word')].filter((w) => w.offsetParent && w.scrollWidth > w.clientWidth + 0.5)
+    const two = [...document.querySelectorAll<HTMLElement>('[data-rv-list] [data-rv-step]')].some((s) => s.getBoundingClientRect().height > 30)
+    return { clamped: clamped.length, cut: cut.length, two }
+  })
+  expect(r).toEqual({ clamped: 0, cut: 0, two: true })
+})
