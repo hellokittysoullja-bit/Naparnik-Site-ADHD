@@ -214,7 +214,7 @@ function WaitLog({ text }: { text: string }) {
 }
 
 /** Кот в «ожидании» (крупно над поленом) — и размер его тела в «деле», где оно уменьшено масштабом */
-const CAT_STAGE = 'size-[clamp(160px,calc(100dvh_-_480px),235px)]'
+const CAT_STAGE = 'size-[clamp(170px,calc(100dvh_-_470px),245px)]'
 
 export function FocusSession() {
   const reducedMotion = useReducedMotion()
@@ -1189,17 +1189,12 @@ export function FocusSession() {
             ref={catRef}
             className={`vt-cat relative shrink-0 ${
               stage
-                ? `${CAT_STAGE} z-10 mb-[9px] -mt-10`
+                ? `${CAT_STAGE} z-10 -mb-[14px] -mt-10`
                 : deal
                   ? `${tall ? 'size-[clamp(76px,calc(100dvh_-_684px),150px)]' : 'size-[clamp(64px,calc(100dvh_-_640px),150px)] [@media(max-height:699px)]:size-16'} -mt-3 [@media(max-height:699px)]:mt-0`
                   : '-mt-5 [@media(min-height:740px)]:-mt-12'
             }`}
           >
-            {/* в «ожидании» под лапами — своя, более густая тень: кот висит над поленом, тени куклы на тёмном небе почти не
-                видно (владелец 17.11). Градиент без фильтра — дёшево для видеокарты */}
-            {stage && (
-              <span aria-hidden="true" className="pointer-events-none absolute bottom-[1px] left-[46%] h-4 w-[54%] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(closest-side,rgb(0_0_0/0.95),rgb(0_0_0/0.65)_50%,transparent)]" />
-            )}
             {/* в «деле» тело кота — крупное (размер «ожидания») и уменьшено масштабом до места кота (cat-fit) */}
             <div ref={catBodyRef} className={deal && !stage ? 'cat-fit absolute left-0 top-0 origin-top-left' : deal ? 'absolute left-0 top-0 origin-top-left' : ''}>
               <MascotSvg
@@ -1213,8 +1208,8 @@ export function FocusSession() {
               />
             </div>
           </div>
-          {/* «ожидание»: кот над поленом, с зазором (владелец 17.11: «ещё выше»), полено кота не перекрывает. Пока кот
-              разламывает, полено чуть покачивается */}
+          {/* «ожидание»: кот сидит на полене — лапы на коре, тень кота на коре (владелец 17.11). Полено — под котом и во время
+              сцены (сцена кладёт своё полено в это же место, а не поверх страницы). Пока кот разламывает, полено покачивается */}
           {stage && (
             <>
               <div ref={slotRef} data-rv-slot className="relative h-[4.25rem] w-full shrink-0">

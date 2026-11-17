@@ -115,7 +115,7 @@ function logSvg(w: number, h: number, seed: number, shade?: LogShade) {
     <path d="M${capRx},2 H${w - capRx}" stroke="#d6a070" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
     <ellipse cx="${w - capRx}" cy="${r}" rx="${capRx}" ry="${r}" fill="url(#rvCut${seed})" stroke="#3a2212" stroke-width="3"/>
     ${rings}
-    ${shade ? `<ellipse cx="${shade.x.toFixed(1)}" cy="4" rx="${shade.rx.toFixed(1)}" ry="6" fill="url(#rvShade${seed})"/>` : ''}
+    ${shade ? `<ellipse cx="${shade.x.toFixed(1)}" cy="8" rx="${shade.rx.toFixed(1)}" ry="6" fill="url(#rvShade${seed})"/>` : ''}
     <circle cx="${w - capRx}" cy="${r}" r="1.8" fill="#8a5a32"/>
   </svg>`
 }
@@ -266,7 +266,10 @@ function strike(s: Scene) {
   const font = getComputedStyle(stage.source).font
   const carveText = stage.source.textContent ?? ''
 
-  const log = div(layer, { left: `${L.x}px`, top: `${L.y}px`, width: `${L.w}px`, height: `${L.h}px`, transformOrigin: '50% 100%' })
+  // полено, трещины и отпечаток лежат в месте полена на странице, ПОД котом: кот сидит на полене, и его лапы должны быть
+  // поверх коры (слой сцены над страницей закрывал бы их). Координаты — те же экранные: контейнер сдвинут на -L
+  const under = div(stage.slot, { left: `${-L.x}px`, top: `${-L.y}px`, width: '0', height: '0' })
+  const log = div(under, { left: `${L.x}px`, top: `${L.y}px`, width: `${L.w}px`, height: `${L.h}px`, transformOrigin: '50% 100%' })
   drawLog(log, L.w, L.h, carveText, font, 7, catShade(rect(stage.cat), slot))
   if (stage.fromWait) run(log, [{ opacity: 1 }, { opacity: 1 }], 0, 1)
   else run(log, [{ opacity: 0, transform: 'scale(.9,.55)' }, { opacity: 1, transform: 'scale(1.04,1.1)', offset: 0.6 }, { opacity: 1, transform: 'none' }], 0, T(200), { easing: SPRING })
@@ -310,7 +313,7 @@ function strike(s: Scene) {
   run(flash, [{ transform: 'scale(.25)', opacity: 1 }, { transform: 'scale(1.25)', opacity: 0 }], tImp, tImp + T(230), { fill: 'forwards', easing: OUT })
   const ring = div(layer, { left: `${hit.x - 24}px`, top: `${hit.y - 24}px`, width: '48px', height: '48px', borderRadius: '50%', border: '3px solid rgba(255,232,190,.95)', opacity: '0' })
   run(ring, [{ transform: 'scale(.5, .25)', opacity: 1 }, { transform: 'scale(5.5, 1.9)', opacity: 0 }], tImp, tImp + T(380), { fill: 'forwards', easing: OUT })
-  const dust = div(layer, { left: `${hit.x - 70}px`, top: `${L.y + L.h - 34}px`, width: '140px', height: '64px', borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(230,200,160,.5), transparent)', opacity: '0' }, log)
+  const dust = div(under, { left: `${hit.x - 70}px`, top: `${L.y + L.h - 34}px`, width: '140px', height: '64px', borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(230,200,160,.5), transparent)', opacity: '0' }, log)
   run(dust, [{ transform: 'scale(.3,.2)', opacity: 0.9 }, { transform: 'scale(2.4,1.1)', opacity: 0 }], tImp, tImp + T(260), { fill: 'forwards', easing: OUT })
   // щепки: баллистика с вращением, 7 ключевых кадров
   for (let k = 0; k < 22; k++) {
@@ -334,7 +337,7 @@ function strike(s: Scene) {
   // маленький <svg>, а движение у него — только масштаб и прозрачность (видеокарта): раньше анимировались штрихи внутри
   // SVG, и браузер перерисовывал их на процессоре каждый кадр
   const geo = cells(s.M, L.w, L.h, 11 + s.M)
-  const cracks = div(layer, {})
+  const cracks = div(under, {})
   const lines = [...geo.cuts, ...(geo.hPts.length ? [geo.hPts] : [])]
   lines.forEach((pts, li) => {
     const horizontal = li >= geo.cuts.length
@@ -383,7 +386,7 @@ function strike(s: Scene) {
 
   // отпечаток лапы на месте удара — подаренный первый штамп; при расколе улетает в карту штампов и там исчезает
   const ps = 24
-  const print = div(layer, {
+  const print = div(under, {
     left: `${hit.x - ps / 2}px`, top: `${L.y + L.h * 0.16 - ps / 2}px`, width: `${ps}px`, height: `${(ps * 91) / 100}px`, opacity: '0',
     background: '#a0ec2a', webkitMaskImage: `url(${PRINT})`, maskImage: `url(${PRINT})`, webkitMaskSize: '100% 100%', maskSize: '100% 100%',
   } as Partial<CSSStyleDeclaration>)
@@ -411,7 +414,7 @@ function strike(s: Scene) {
   }
   const prep = window.setTimeout(prepare, T(140))
 
-  return { L, log, cracks, geo, print, font, carveText, tImp, tSplit, faces, prepare, prep }
+  return { L, log, cracks, geo, print, under, font, carveText, tImp, tSplit, faces, prepare, prep }
 }
 
 /** Акт 2: раскол. Экран уже в раскладке «дело»; куски полена летят и становятся словами шагов */
@@ -641,6 +644,8 @@ export function playLogReveal(
     didSplit = true
     window.clearTimeout(splitTimer)
     const before = { catBody: rect(stage.catBody), bubble: rect(stage.bubble) }
+    // отпечаток лапы улетает в карту штампов — переносим его из места полена (оно сейчас исчезнет) в слой сцены
+    layer.appendChild(act1.print)
     const fin = hooks.split()
     if (fin) shatter(scene, act1, before, fin)
   }
@@ -651,6 +656,7 @@ export function playLogReveal(
     window.clearTimeout(splitTimer)
     for (const a of list) a.cancel()
     layer.replaceChildren()
+    act1.under.remove()
     layer.remove()
   }
   // слой убирает stop(): сначала экран снимает «сцена идёт» (иначе на кадр всё было бы скрыто — пустой кадр в конце)
