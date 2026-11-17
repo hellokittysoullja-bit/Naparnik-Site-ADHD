@@ -212,7 +212,7 @@ function WaitLog({ text }: { text: string }) {
 }
 
 /** Кот в «ожидании» (крупно над поленом) — и размер его тела в «деле», где оно уменьшено масштабом */
-const CAT_STAGE = 'size-[clamp(142px,calc(100dvh_-_500px),215px)]'
+const CAT_STAGE = 'size-[clamp(160px,calc(100dvh_-_480px),235px)]'
 
 export function FocusSession() {
   const reducedMotion = useReducedMotion()
@@ -1187,7 +1187,7 @@ export function FocusSession() {
             ref={catRef}
             className={`vt-cat relative shrink-0 ${
               stage
-                ? `${CAT_STAGE} z-10 -mb-4 -mt-4`
+                ? `${CAT_STAGE} z-10 mb-6 -mt-4`
                 : deal
                   ? `${tall ? 'size-[clamp(76px,calc(100dvh_-_684px),150px)]' : 'size-[clamp(64px,calc(100dvh_-_640px),150px)] [@media(max-height:699px)]:size-16'} -mt-3 [@media(max-height:699px)]:mt-0`
                   : '-mt-5 [@media(min-height:740px)]:-mt-12'
@@ -1206,7 +1206,8 @@ export function FocusSession() {
               />
             </div>
           </div>
-          {/* «ожидание»: кот сидит на полене (поверх него, лапы и тень — на коре). Пока кот разламывает, полено чуть покачивается */}
+          {/* «ожидание»: кот над поленом, с зазором (владелец 17.11: «ещё выше»), полено кота не перекрывает. Пока кот
+              разламывает, полено чуть покачивается */}
           {stage && (
             <>
               <div ref={slotRef} data-rv-slot className="relative h-[4.25rem] w-full shrink-0">
