@@ -213,6 +213,16 @@ function WaitLog({ text }: { text: string }) {
   return <div ref={ref} data-rv-waitlog aria-hidden="true" className="rv-wait pointer-events-none absolute left-0" />
 }
 
+/** Шаг дела — слова на деревянных табличках: в них превращаются куски полена, и таблички остаются (владелец 17.11).
+ *  Пробелы между табличками — обычные: текст читается и копируется как раньше */
+function WoodWords({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(\s+)/).filter(Boolean).map((p, i) => (/^\s+$/.test(p) ? ' ' : <span key={i} className="wood-word">{p}</span>))}
+    </>
+  )
+}
+
 /** Кот в «ожидании» (крупно над поленом) — и размер его тела в «деле», где оно уменьшено масштабом */
 const CAT_STAGE = 'size-[clamp(170px,calc(100dvh_-_470px),245px)]'
 
@@ -1287,7 +1297,7 @@ export function FocusSession() {
                       data-rv-step={busy ? undefined : ''}
                       className="line-clamp-2 text-pretty text-[1.15rem] font-bold leading-snug"
                     >
-                      {busy ? 'Разламываю…' : task}
+                      {busy ? 'Разламываю…' : <WoodWords text={task} />}
                     </motion.p>
                   </AnimatePresence>
                 )}
@@ -1341,7 +1351,9 @@ export function FocusSession() {
                   className="press flex h-8 w-full shrink-0 items-center gap-2 rounded-xl px-3 text-left text-[13.5px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   <span data-rv-bullet aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
-                  <span data-rv-step className="line-clamp-1">{st.text}</span>
+                  <span data-rv-step className="line-clamp-1 font-semibold">
+                    <WoodWords text={st.text} />
+                  </span>
                   {st.wait && <span className="shrink-0 font-mono text-[9.5px] uppercase tracking-widest text-reward/90">пока ждёшь</span>}
                 </motion.button>
               ))}

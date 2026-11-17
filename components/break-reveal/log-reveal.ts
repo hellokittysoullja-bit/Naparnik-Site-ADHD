@@ -34,35 +34,41 @@ export function revealSpeed(nth: number) {
 export const MAX_PIECES = 24
 export const wordCount = (texts: string[]) => Math.min(MAX_PIECES, texts.reduce((n, t) => n + (t.match(/\S+/g)?.length ?? 0), 0))
 
-type WordBox = { text: string; x: number; y: number; w: number; h: number; el: HTMLElement; visible: boolean }
+type WordBox = {
+  text: string
+  /** табличка слова на экране */
+  x: number
+  y: number
+  w: number
+  h: number
+  /** где в табличке сам текст и каким шрифтом */
+  tx: number
+  ty: number
+  th: number
+  font: string
+  /** строка шага, которой принадлежит слово */
+  el: HTMLElement
+  visible: boolean
+}
 
-/** где на экране стоит каждое слово текста (через Range — текст на span'ы не режем, диктор читает его целиком).
- *  Слово, обрезанное многоточием или ушедшее за line-clamp, помечено невидимым: его кусок долетит до конца строки и угаснет */
+/** Слова шага — деревянные таблички (.wood-word, владелец 17.11: таблички остаются, не превращаются в текст). Табличка,
+ *  ушедшая за line-clamp или ниже края списка, помечена невидимой: её кусок долетит до конца строки и угаснет */
 function wordBoxes(el: HTMLElement, clip: DOMRect | null): WordBox[] {
-  const out: WordBox[] = []
   const er = el.getBoundingClientRect()
-  // строка ниже края прокручиваемого списка: её слова не видны, куски уходят в низ списка
   const top = clip ? clip.top : -Infinity
   const bottom = clip ? clip.bottom : Infinity
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
   const r = document.createRange()
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    const s = n.textContent ?? ''
-    for (const m of s.matchAll(/\S+/g)) {
-      r.setStart(n, m.index!)
-      r.setEnd(n, m.index! + m[0].length)
-      const rects = r.getClientRects()
-      const b = rects[0]
-      const visible = !!b && b.width > 0 && rects.length === 1 && b.right <= er.right + 1 && b.bottom <= er.bottom + 1 && b.top >= top - 1 && b.bottom <= bottom + 1
-      if (b && b.width && visible) out.push({ text: m[0], x: b.left, y: b.top, w: b.width, h: b.height, el, visible })
-      else {
-        const hh = b?.height || 16
-        const below = er.bottom > bottom
-        out.push({ text: m[0], x: below ? er.left + 24 : er.right - 14, y: (below ? bottom : er.bottom) - hh, w: 12, h: hh, el, visible: false })
-      }
-    }
-  }
-  return out
+  return [...el.querySelectorAll<HTMLElement>('.wood-word')].map((sp) => {
+    const b = sp.getBoundingClientRect()
+    r.selectNodeContents(sp)
+    const t = r.getBoundingClientRect()
+    const font = getComputedStyle(sp).font
+    const visible = b.width > 0 && b.right <= er.right + 1 && b.top >= er.top - 1 && b.bottom <= er.bottom + 1 && b.top >= top - 1 && b.bottom <= bottom + 1
+    if (visible) return { text: sp.textContent ?? '', x: b.left, y: b.top, w: b.width, h: b.height, tx: t.left - b.left, ty: t.top - b.top, th: t.height, font, el, visible }
+    const hh = b.height || 20
+    const below = er.bottom > bottom
+    return { text: sp.textContent ?? '', x: below ? er.left + 24 : er.right - 14, y: (below ? bottom : er.bottom) - hh, w: 12, h: hh, tx: 0, ty: 0, th: hh, font, el, visible: false }
+  })
 }
 
 const rect = (el: Element | null) => el?.getBoundingClientRect() ?? new DOMRect()
@@ -139,7 +145,9 @@ export function drawLog(host: HTMLElement, w: number, h: number, text: string, f
   Object.assign(carve.style, {
     position: 'absolute', left: `${h * 0.3 + 10}px`, right: `${h * 0.6 + 6}px`, top: '50%', transform: 'translateY(-50%)', margin: '0',
     font, color: '#ffe9cc', textShadow: '0 1px 0 rgba(0,0,0,.55), 0 -1px 0 rgba(255,210,150,.15)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-  })
+    // резьба жирная и по центру коры (владелец 17.11); обводка тем же цветом — жирнее самого жирного начертания шрифта
+    fontWeight: '800', textAlign: 'center', webkitTextStroke: '0.7px #ffe9cc',
+  } as Partial<CSSStyleDeclaration>)
   host.appendChild(carve)
   return carve
 }
@@ -286,7 +294,8 @@ function strike(s: Scene) {
 
   // лапа: выезжает от кота, замах выше места удара, резкий удар, стоп-кадр 60 мс, отскок назад
   const hit = { x: L.x + L.w * 0.5, y: L.y + 4 }
-  const pw = Math.max(54, Math.min(84, cat.width * 0.48))
+  // лапа поменьше (владелец 17.11)
+  const pw = Math.max(44, Math.min(62, cat.width * 0.33))
   const paw = document.createElement('img')
   paw.src = PAW
   paw.alt = ''
@@ -431,11 +440,6 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
   const words = fin.texts.flatMap((el, j) => wordBoxes(el, j ? clip : null)).slice(0, a.geo.cells.length)
   const s0 = fin.stamp0 ? rect(fin.stamp0) : null
   const pr = rect(a.print)
-  const styleOf = new Map<HTMLElement, { font: string; color: string }>()
-  for (const el of fin.texts) {
-    const cs = getComputedStyle(el)
-    styleOf.set(el, { font: cs.font, color: cs.color })
-  }
   window.clearTimeout(a.prep)
   a.prepare()
   // полено и трещины исчезают в кадр раскола — их место занимают куски
@@ -485,7 +489,6 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
 
   words.forEach((b, i) => {
     const cell = a.geo.cells[i]
-    const cs = styleOf.get(b.el)!
     const tL = landAt(i)
     doneOf.set(b.el, Math.max(doneOf.get(b.el) ?? 0, tL))
     if (!firstOf.has(b.el)) firstOf.set(b.el, tL)
@@ -496,20 +499,14 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
     const front = a.faces[i]
     Object.assign(front.style, { left: `${b.w / 2 - (cell.cx - Number(front.dataset.bx))}px`, top: `${b.h / 2 - (cell.cy - Number(front.dataset.by))}px` })
     box.appendChild(front)
-    // изнанка — светлая сердцевина с выжженным словом
+    // изнанка — та же деревянная табличка, что останется на экране (.wood-word), со словом на своём месте
     const back = div(box, { width: `${b.w}px`, height: `${b.h}px`, opacity: '0' })
-    div(back, {
-      left: '-6px', top: '-3px', width: `${b.w + 12}px`, height: `${b.h + 6}px`, borderRadius: '7px',
-      background: 'linear-gradient(180deg, #f6d7a6 0%, #e2ae70 55%, #c88b4f 100%)', boxShadow: 'inset 0 -2px 0 rgba(110,60,25,.55), inset 0 1px 0 rgba(255,240,210,.7), 0 3px 6px rgba(0,0,0,.35)',
-    })
-    const burnt = document.createElement('span')
-    burnt.textContent = b.text
-    Object.assign(burnt.style, { position: 'absolute', left: '0', top: '0', font: cs.font, lineHeight: `${b.h}px`, whiteSpace: 'pre', color: '#4a230d', textShadow: '0 1px 0 rgba(255,232,195,.6)' })
-    back.appendChild(burnt)
-    const clean = document.createElement('span')
-    clean.textContent = b.text
-    Object.assign(clean.style, { position: 'absolute', left: '0', top: '0', font: cs.font, lineHeight: `${b.h}px`, whiteSpace: 'pre', color: cs.color, opacity: '0' })
-    box.appendChild(clean)
+    const plate = div(back, { width: `${b.w}px`, height: `${b.h}px`, padding: '0', margin: '0' })
+    plate.className = 'wood-word'
+    const word = document.createElement('span')
+    word.textContent = b.text
+    Object.assign(word.style, { position: 'absolute', left: `${b.tx}px`, top: `${b.ty}px`, font: b.font, lineHeight: `${b.th}px`, whiteSpace: 'pre' })
+    plate.appendChild(word)
 
     // траектория: баллистика от взрыва (скорость + тяжесть + вращение), плавно переходящая в самонаведение на слово
     const c0 = { x: L.x + cell.cx, y: L.y + cell.cy }
@@ -555,9 +552,6 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
     run(box, [{ transform: 'scale(1.2,.82)' }, { transform: 'scale(.95,1.06)', offset: 0.5 }, { transform: 'none' }], tL, tL + T(170), { easing: 'ease-out' })
     const glow = div(layer, { left: `${tg.x - 40}px`, top: `${tg.y - 22}px`, width: '80px', height: '44px', borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(255,220,140,.85), rgba(255,160,60,0))', opacity: '0' }, box)
     run(glow, [{ transform: 'scale(.4)', opacity: 0.95 }, { transform: 'scale(1.5)', opacity: 0 }], tL, tL + T(260), { fill: 'forwards', easing: OUT })
-    run(back, [{ opacity: 1 }, { opacity: 0 }], tL + T(50), tL + T(230), { easing: 'ease-in' })
-    // свечение даёт вспышка позади слова (прозрачность и масштаб — видеокарта), сам текст только проявляется
-    run(clean, [{ opacity: 0 }, { opacity: 1 }], tL + T(40), tL + T(200), { easing: 'ease-out' })
     for (let e = 0; e < 4; e++) {
       const sx = e % 2 ? b.x + b.w : b.x
       const em = div(layer, { left: `${sx - 2}px`, top: `${tg.y - 2}px`, width: '3px', height: '3px', borderRadius: '50%', background: '#ffd27a', boxShadow: '0 0 5px 2px rgba(255,150,50,.6)', opacity: '0' })
@@ -586,7 +580,8 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
     run(fin.stamp0, [{ opacity: 0, transform: 'scale(1.8)' }, { opacity: 1, transform: 'none' }], tS, tS + T(200), { easing: SPRING })
   } else run(a.print, [{ opacity: 0.95 }, { opacity: 0 }], at, at + T(160))
   fin.texts.forEach((el, j) => {
-    const done = (doneOf.get(el) ?? at + D) + T(300)
+    // табличка-копия стоит ровно на настоящей: подмена в одном кадре, когда все слова строки сели
+    const done = (doneOf.get(el) ?? at + D) + T(180)
     run(el, [{ opacity: 0 }, { opacity: 1 }], done, done + 1)
     for (const gbox of ghostsOf.get(el) ?? []) run(gbox, [{ opacity: 1 }, { opacity: 0 }], done, done + 1)
     const bullet = j > 0 ? fin.bullets[j - 1] : null
