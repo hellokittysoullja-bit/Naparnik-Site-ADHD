@@ -324,6 +324,11 @@ export function FocusSession() {
   const catRef = useRef<HTMLDivElement>(null)
   // шаги дела не влезают под карточкой — блок длительности прячется и отдаёт им место (владелец 17.11: шаги без прокрутки)
   const [compact, setCompact] = useState(false)
+  // реплика кота уже показывалась на этом экране: следующие смены проявляются, первая — стоит сразу
+  const lineSeen = useRef(false)
+  useEffect(() => {
+    lineSeen.current = true
+  }, [])
   // и даже так не влезают (большое дело, 9+ шагов на низком экране): показываем столько строк, сколько помещается целиком —
   // полстроки у края выглядели бы поломкой; все шаги и так лежат в «Делах»
   const [fitRows, setFitRows] = useState<number | null>(null)
@@ -1142,7 +1147,7 @@ export function FocusSession() {
     const deal = !!brokenSteps || busy
     // полено ждёт удара: шагов ещё нет
     const waiting = busy && !brokenSteps
-    // «ожидание»: реплика, кот крупно, под ним полено, под поленом «первый шаг · дело» (владелец 17.11) — пока кот
+    // «ожидание»: реплика, кот крупно сидит на полене (владелец 17.11) — пока кот
     // разламывает дело и пока бьёт лапой; с расколом экран встаёт в «дело»
     const stage = waiting || (!!reveal && !split)
     // пока полено ждёт и колется, длительность и старт невидимы, но их место занято — в конце они проявляются на своих местах
@@ -1180,7 +1185,8 @@ export function FocusSession() {
             <motion.span
               key={line}
               className="block"
-              initial={reducedMotion ? false : { opacity: 0.35 }}
+              // первая реплика экрана — сразу, без проявления (первый видимый кадр — готовый экран); проявляются только смены
+              initial={reducedMotion || !lineSeen.current ? false : { opacity: 0.35 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.18, ease: [0.05, 0.7, 0.1, 1] }}
             >
@@ -1304,7 +1310,8 @@ export function FocusSession() {
                 {/* строка оценки — место есть всегда, даже пустое: карточка одной высоты */}
                 <p className="mt-1 min-h-4 font-mono text-[10.5px] uppercase tracking-widest text-primary/80">
                   {!editing && brokenSteps[sel]?.wait && <span className="text-reward">пока ждёшь · </span>}
-                  {!editing && estimate ? `≈ ${estimate} мин · уже поставил ниже` : ''}
+                  {/* длительность может быть спрятана (шаги не влезли) — тогда говорим, сколько поставили, а не «ниже» */}
+                  {!editing && estimate ? `≈ ${estimate} мин · ${compact ? `сессия ${minutes} мин` : 'уже поставил ниже'}` : ''}
                 </p>
                 {/* кнопки карточки — всегда в один ряд: перенос делал карточку выше (на CI шрифт приходил позже, и ряд переносился) */}
                 <div className="mt-auto flex flex-nowrap gap-1.5 pt-3 [@media(max-width:380px)]:gap-1">
