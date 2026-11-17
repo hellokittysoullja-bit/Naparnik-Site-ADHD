@@ -101,6 +101,9 @@ export class DollAnimator {
   private sleepK = 0;
   private blinks: number[] = [];
   private nextBlink = 1.2;
+  /** на миг кульминации (раскол полена) кот смотрит не моргая: моргание на удар выглядело как «потемнел» (владелец 17.11).
+   *  По умолчанию выключено — остальные коты моргают как раньше */
+  awake = false;
   private earAt = 3;
   private glanceAt = 2;
   private glanceUntil = -1;
@@ -207,6 +210,8 @@ export class DollAnimator {
     const hk = sm(this.happyK), sk = this.sleepK;
 
     // ----- моргание: вниз 80 мс, пауза 50, вверх 170 (как у куклы в роликах); иногда двойное
+    // в режиме «не моргать» очередное моргание откладывается, а уже начатое доигрывает (глаз не дёргается)
+    if (this.awake && t >= this.nextBlink) this.nextBlink = t + 0.6 + this.rand() * 0.6;
     if (!still && t >= this.nextBlink) {
       const dbl = this.rand() < 0.15;
       this.nextBlink = t + 2.5 + this.rand() * 3;      // сначала следующее: addBlink сверяется и с ним
