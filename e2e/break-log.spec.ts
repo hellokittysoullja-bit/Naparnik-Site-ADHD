@@ -247,6 +247,36 @@ for (const [w, h] of [
 }
 
 /**
+ * Скриншот владельца 17.11 (iPhone 393 px): шаг «Зайти в туалет и закрыть дверь» в две строки — кнопки записки уезжали
+ * за пунктирную строчку на 5 px (верхний отступ ряда кнопок не помещался в карточку постоянной высоты). Падает на сборке
+ * до исправления.
+ */
+for (const [w, h] of [
+  [320, 568],
+  [360, 640],
+  [393, 664],
+] as const) {
+  test(`полено ${w}×${h}: шаг в две строки — кнопки записки внутри строчки`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: h })
+    // план из базы, но без похода на сервер: в этом файле и так много разбивок, а у /api/breakdown лимит 10 в минуту
+    const steps = ['Зайти в туалет и закрыть дверь', 'Поднять крышку унитаза', 'Сделать свои дела', 'Вымыть руки с мылом и вытереть', 'Выйти из туалета']
+    await page.route('**/api/breakdown', (r) => r.fulfill({ json: { steps, source: 'library', title: 'Сходить в туалет' } }))
+    await page.goto('/app/session?step=' + encodeURIComponent('Сходить в туалет') + '&break=1')
+    await page.waitForSelector('[data-rv-card]')
+    await expect(page.locator('[data-rv="playing"]')).toHaveCount(0, { timeout: 5000 })
+    const r = await page.evaluate(() => {
+      const card = document.querySelector('[data-rv-card]')!
+      const stitch = card.getBoundingClientRect().bottom - 3 - 6 // обводка 3 px, строчка на 6 px внутри
+      const two = card.querySelector('[data-rv-step]')!.getBoundingClientRect().height > 40
+      // нижний край кнопки с её бортиком (4 px) не заходит на строчку
+      const out = [...card.querySelectorAll('.note-btn')].filter((e) => e.getBoundingClientRect().bottom + 4 > stitch).map((e) => e.textContent)
+      return { two, out }
+    })
+    expect(r).toEqual({ two: true, out: [] })
+  })
+}
+
+/**
  * Скриншот владельца 17.11 (iPhone, Safari): «Сдела…», «Дойти д… туалета» — line-clamp у строки шага в WebKit режет
  * многоточием каждую табличку внутри неё. Line-clamp у табличек больше нет: длинный шаг переносится на вторую строку
  * табличек, слово видно целиком или не видно совсем. В стенде нет WebKit — проверяем само правило: ни у одного

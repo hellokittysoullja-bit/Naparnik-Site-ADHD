@@ -24,7 +24,7 @@ test('ничего не положено: «Что сейчас висит?», �
   await seed(page, { onboarding: { sphere: 'study', blocker: 'tired', motive: 'safety' } })
   await page.route('**/api/breakdown', (route) => route.fulfill({ json: { steps: ['Открыть реферат', 'Найти тему', 'Написать одну фразу'], source: 'model' } }))
   await page.goto('/app')
-  await expect(page.getByText('ЧТО СЕЙЧАС ВИСИТ?')).toBeVisible()
+  await expect(page.getByText('Какое дело сейчас висит?')).toBeVisible()
   await expect(page.getByRole('button', { name: /Учёба/ })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: /Работа/ })).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByText('Только открыть, это уже шаг к спокойствию')).toBeVisible()
@@ -40,7 +40,7 @@ test('ничего не положено: «Что сейчас висит?», �
 
 test('первый визит без знакомства: поле и подсказки, плашки находок нет, ничего не подсвечено', async ({ page }) => {
   await page.goto('/app')
-  await expect(page.getByText('ЧТО СЕЙЧАС ВИСИТ?')).toBeVisible()
+  await expect(page.getByText('Какое дело сейчас висит?')).toBeVisible()
   for (const name of [/Учёба/, /Работа/, /Дом$/]) await expect(page.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByText(/находк/)).toHaveCount(0)
   // строка над кнопкой есть и без знакомства — общая из утверждённых (владелец 13.11)
@@ -363,7 +363,7 @@ test('план, очередь и старты в памяти не меняют
       }, data)
       await p.goto('/app')
       const tag = `${w}×${h} ${name}`
-      await expect(p.getByText('ЧТО СЕЙЧАС ВИСИТ?'), tag).toBeVisible()
+      await expect(p.getByText('Какое дело сейчас висит?'), tag).toBeVisible()
       await expect(p.getByLabel('Что сейчас висит'), tag).toBeVisible()
       await expect(p.getByRole('button', { name: /Работа/ }), tag).toHaveAttribute('aria-pressed', 'true')
       await expect(p.getByText('Две минуты без ленты, и вечер твой'), tag).toBeVisible()
@@ -408,7 +408,7 @@ test('знакомство с конкретными ответами → Дом
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('naparnik:onboarding') ?? 'null'))
   expect(saved).toMatchObject({ sphere: 'work', hanging: 'week', blocker: 'phone', motive: 'rest' })
   await page.goto('/app')
-  await expect(page.getByText('ЧТО СЕЙЧАС ВИСИТ?')).toBeVisible()
+  await expect(page.getByText('Какое дело сейчас висит?')).toBeVisible()
   await expect(page.getByRole('button', { name: /Работа/ })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: /Учёба/ })).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByText('Две минуты без ленты, и вечер твой')).toBeVisible()

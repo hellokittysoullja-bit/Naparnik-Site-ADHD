@@ -71,15 +71,15 @@ test('слои куклы предзагружаются только на До�
   for (const p of ['/?intro=1', '/app/start']) expect(await head(p)).not.toContain('mascot/doll/')
 })
 
-// 14.11: подпись «ЧТО СЕЙЧАС ВИСИТ?» набрана моноширинным; у Google «?» и пробел лежат в латинском файле (40 КБ) —
-// знаки и цифры теперь отдельным маленьким файлом, латинский Дому не нужен
-test('Дом: моноширинный без латинского файла', async ({ page }) => {
+// 14.11: подпись Дома была моноширинной, и Google тянул латинский файл (40 КБ) ради «?» и пробела. С 17.11 подпись —
+// Manrope 800 (как строка над кнопкой, только жирнее, владелец): латинские файлы Дому не нужны ни моноширинного, ни Manrope 800
+test('Дом: подпись своим шрифтом без латинских файлов', async ({ page }) => {
   const fonts: string[] = []
-  page.on('request', (r) => { if (r.url().includes('/fonts/jetbrains-mono')) fonts.push(r.url()) })
+  page.on('request', (r) => { if (r.url().includes('/fonts/')) fonts.push(r.url()) })
   await page.goto('/app')
-  await expect(page.getByText('ЧТО СЕЙЧАС ВИСИТ?')).toBeVisible()
+  await expect(page.getByText('Какое дело сейчас висит?')).toBeVisible()
   await page.evaluate(() => document.fonts.ready)
-  await expect.poll(() => fonts.some((f) => f.includes('jetbrains-mono-common'))).toBe(true)
-  expect(fonts.some((f) => f.includes('jetbrains-mono-cyrillic.'))).toBe(true)
-  expect(fonts.some((f) => f.includes('jetbrains-mono-latin.'))).toBe(false)
+  await expect.poll(() => fonts.some((f) => f.includes('manrope-800-cyr'))).toBe(true)
+  expect(fonts.some((f) => f.includes('jetbrains-mono-latin.') || f.includes('manrope-800-lat'))).toBe(false)
+  expect(await page.getByText('Какое дело сейчас висит?').evaluate((e) => getComputedStyle(e).fontWeight)).toBe('800')
 })

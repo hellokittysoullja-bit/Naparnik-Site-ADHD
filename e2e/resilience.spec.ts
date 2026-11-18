@@ -12,7 +12,7 @@ test('хранилище заблокировано (Safari «Блокирова
   })
   const errors = collectErrors(page)
   await page.goto('/app')
-  await expect(page.getByText('ЧТО СЕЙЧАС ВИСИТ?')).toBeVisible()
+  await expect(page.getByText('Какое дело сейчас висит?')).toBeVisible()
   await page.goto('/app/chat')
   await expect(page.getByText('Первый старт за 15 минут')).toBeVisible()
   await expect(page.getByText('Я споткнулся')).toHaveCount(0)

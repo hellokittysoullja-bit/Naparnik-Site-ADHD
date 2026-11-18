@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 };
 
 export default function AppHomePage() {
-  preloadFonts("manrope-700-cyr"); // шаг и строка над кнопкой набраны жирным
+  preloadFonts("manrope-700-cyr", "manrope-800-cyr"); // шаг и строка над кнопкой набраны жирным
   preloadCatPoster(true); // кот — самый крупный элемент Дома
   preloadDoll(); // и сразу оживает: слои качаются вместе с кодом, а не после него
   return <HomeCamp />;

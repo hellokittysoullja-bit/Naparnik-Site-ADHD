@@ -29,7 +29,7 @@ test('Фокус: свечение дуги — фильтр её <svg>, а не
 test('Дом: нижнее меню без размытия поверх видео; на Мире размытие на месте', async ({ page }) => {
   const blur = () => page.evaluate(() => getComputedStyle(document.querySelector('nav[aria-label="Основная навигация"]')!).backdropFilter)
   await page.goto('/app')
-  await expect(page.getByText('ЧТО СЕЙЧАС ВИСИТ?')).toBeVisible()
+  await expect(page.getByText('Какое дело сейчас висит?')).toBeVisible()
   expect(await blur()).toBe('none')
   await page.goto('/app/world')
   await page.waitForTimeout(300)

@@ -64,7 +64,7 @@ test('после визита в /app сервер сам уводит с лен
 
 test('без стартов метки нет — сервер лендинг не трогает', async ({ page, context }) => {
   await page.goto('/app')
-  await expect(page.getByText('ЧТО СЕЙЧАС ВИСИТ?')).toBeVisible()
+  await expect(page.getByText('Какое дело сейчас висит?')).toBeVisible()
   expect((await context.cookies()).find((c) => c.name === 'naparnik_home')).toBeUndefined()
   expect((await page.request.get('/', { maxRedirects: 0 })).status()).toBe(200)
 })
