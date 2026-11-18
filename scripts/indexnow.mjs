@@ -16,8 +16,10 @@ const key = keyFile.slice(0, -4)
 
 let urls = process.argv.slice(2).map((p) => new URL(p, SITE).href)
 if (!urls.length) {
-  const xml = await (await fetch(`${SITE}/sitemap.xml`)).text()
-  urls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1])
+  const r = await fetch(`${SITE}/sitemap.xml`)
+  if (!r.ok) throw new Error(`карта сайта не открылась: ${r.status}`)
+  urls = [...(await r.text()).matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1])
+  if (!urls.length) throw new Error('в карте сайта нет адресов')
 }
 const body = JSON.stringify({ host: new URL(SITE).host, key, keyLocation: `${SITE}/${keyFile}`, urlList: urls })
 for (const endpoint of ['https://yandex.com/indexnow', 'https://api.indexnow.org/indexnow']) {

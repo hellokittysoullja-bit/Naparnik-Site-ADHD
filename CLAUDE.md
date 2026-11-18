@@ -589,9 +589,9 @@ squash) хвоста ветки, и следующий PR из-за этого �
   Новая публичная страница — строка в `app/sitemap.ts`, в `llms.txt` и разметка. Тест — `tests/unit/seo.test.ts`.
   **Второй заход (18.11, `research/29-seo-audit/README.md`):** метаданные публичной страницы — только `pageMetadata` (`lib/seo.ts`):
   свой openGraph в Next выбрасывает унаследованную картинку, а без своего страница показывает в превью заголовок лендинга. Под входом
-  теста — статья с FAQ (`components/sdvg/sdvg-article.tsx`, тексты `content/sdvg-article.ru.ts` — черновик; правка текста → `updated`),
+  теста — статья с FAQ (`components/sdvg/sdvg-article.tsx`, тексты `content/sdvg-article.ru.ts`, согласованы 18.11; правка текста → `updated`),
   видна только на входе; своя карточка превью `public/og/sdvg-test.jpg`; `app/llms-full.txt` собирается из контента; после
-  выкладки — `pnpm indexnow` (Яндекс, Bing). Ждут владельца: тексты статьи, «для взрослых» в H1, ссылка с лендинга на тест.
+  выкладки — `pnpm indexnow` (Яндекс, Bing). Вопросов ВОЗ вне `/sdvg-test` нет (красная линия 7, © NYU) — в `llms-full.txt` только ссылка. Ждут владельца: «для взрослых» в H1, ссылка с лендинга на тест.
 - **Проверки:** `pnpm check` (tsc + eslint + vitest), `pnpm test:e2e` (Playwright против прод-сборки, `e2e/`),
   CI — `.github/workflows/ci.yml`. Сборка больше не игнорирует ошибки типов. Каждый найденный баг — тест в `e2e/`
   или `tests/unit/`, который на старой сборке падает (проверено для всех текущих).

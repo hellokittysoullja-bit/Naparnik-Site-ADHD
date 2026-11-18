@@ -78,9 +78,12 @@ export function SdvgArticle() {
 }
 
 /** Те же вопросы-ответы для разметки FAQPage: только то, что видно на странице */
-export function sdvgFaqLd() {
+export function sdvgFaqLd(pageUrl: string) {
   return {
     '@type': 'FAQPage',
+    '@id': `${pageUrl}#faq`,
+    // та же страница, что WebPage в графе: один адрес — одна сущность
+    isPartOf: { '@id': pageUrl },
     mainEntity: A.faq.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
   }
 }

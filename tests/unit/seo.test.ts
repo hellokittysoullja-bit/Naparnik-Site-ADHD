@@ -60,17 +60,40 @@ describe('превью, статья под тестом, полный текс�
     expect(text).toMatch(/Clean-param: .*ysclid/)
   })
 
-  it('FAQPage — ровно вопросы и ответы, видимые на странице; диапазоны — как в подсчёте теста', () => {
-    expect(sdvgFaqLd().mainEntity.map((q) => [q.name, q.acceptedAnswer.text])).toEqual(SDVG_ARTICLE.faq.map((f) => [f.q, f.a]))
-    expect(SDVG_ARTICLE.bands.map((b) => b.range)).toEqual(['0–9', '10–13', '14–17', '18–24'])
+  it('FAQPage: каждый вопрос и ответ правда виден в статье; разметка привязана к странице', async () => {
+    const { renderToStaticMarkup } = await import('react-dom/server')
+    const { createElement } = await import('react')
+    const { SdvgArticle } = await import('@/components/sdvg/sdvg-article')
+    const html = renderToStaticMarkup(createElement(SdvgArticle))
+    const ld = sdvgFaqLd('https://x/sdvg-test')
+    expect(ld.mainEntity).toHaveLength(SDVG_ARTICLE.faq.length)
+    for (const q of ld.mainEntity) {
+      expect(html).toContain(q.name)
+      expect(html).toContain(q.acceptedAnswer.text)
+    }
+    expect(ld.isPartOf).toEqual({ '@id': 'https://x/sdvg-test' })
+    // вопросы ВОЗ в статье — дословно из лицензионного файла
+    for (const q of asrs.items) expect(html).toContain(q)
+  })
+
+  it('диапазоны в статье — те же, что считает тест (asrsBand)', async () => {
+    const { asrsBand } = await import('@/lib/sdvg')
+    const bands = ['low', 'below', 'above', 'high']
+    SDVG_ARTICLE.bands.forEach((b, i) => {
+      const [lo, hi] = b.range.split('–').map(Number)
+      expect([asrsBand(lo), asrsBand(hi)]).toEqual([bands[i], bands[i]])
+      if (i > 0) expect(asrsBand(lo - 1)).toBe(bands[i - 1])
+    })
     expect(SDVG_ARTICLE.updated).toMatch(/^\d{4}-\d{2}-\d{2}$/)
   })
 
-  it('llms-full.txt: вопросы ВОЗ дословно, все боли, без обещаний лечения; llms.txt на него ссылается', async () => {
+  it('llms-full.txt: без вопросов ВОЗ, все боли, без обещаний лечения; llms.txt на него ссылается', async () => {
     const text = await llmsFull().text()
-    for (const q of asrs.items) expect(text).toContain(q)
+    // скрининг ASRS живёт только на /sdvg-test рядом с © (красная линия 7) — в полный текст вопросы не попадают
+    for (const q of asrs.items) expect(text).not.toContain(q)
+    expect(text).toContain('/sdvg-test')
     for (const p of PAINS) expect(text).toContain(`/pomogaet/${p.slug}`)
-    expect(text).not.toMatch(/вылеч|лечит СДВГ|у тебя СДВГ/i)
+    expect(text).not.toMatch(/вылеч|лечит СДВГ|у тебя СДВГ|диагностиру/i)
     expect(await llms().text()).toContain('/llms-full.txt')
   })
 })

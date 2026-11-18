@@ -53,8 +53,9 @@ const browser = await chromium.launch();
   await p.setContent(testCard);
   await p.evaluate(() => document.fonts.ready);
   await p.waitForTimeout(200);
-  const out = "public/og/sdvg-test.png"; // после — в JPEG q88 (≈90 КБ вместо 665): python3 -c "from PIL import Image; Image.open('public/og/sdvg-test.png').convert('RGB').save('public/og/sdvg-test.jpg',quality=88,optimize=True,progressive=True)"
-  await p.screenshot({ path: path.join(root, out) });
+  // JPEG сразу: ~70 КБ вместо 665 КБ PNG — превью в мессенджерах грузится мгновенно
+  const out = "public/og/sdvg-test.jpg";
+  await p.screenshot({ path: path.join(root, out), type: "jpeg", quality: 88 });
   await p.close();
   console.log(out, (fs.statSync(path.join(root, out)).size / 1024).toFixed(0), "КБ");
 }

@@ -30,12 +30,12 @@ const base = pageLd({
     isAccessibleForFree: true,
     // свежесть — настоящая дата правки статьи под тестом (content/sdvg-article.ru.ts), не время сборки
     dateModified: SDVG_ARTICLE.updated,
-    primaryImageOfPage: siteUrl('/og/sdvg-test.jpg'),
+    primaryImageOfPage: { '@type': 'ImageObject', url: siteUrl('/og/sdvg-test.jpg'), width: 1200, height: 630 },
     significantLink: siteUrl('/sdvg-test/metod'),
   },
 })
 // вопросы-ответы статьи — ровно те, что видны на странице
-const ld = { ...base, '@graph': [...base['@graph'], sdvgFaqLd()] }
+const ld = { ...base, '@graph': [...base['@graph'], sdvgFaqLd(siteUrl('/sdvg-test'))] }
 
 export const dynamic = 'force-static'
 

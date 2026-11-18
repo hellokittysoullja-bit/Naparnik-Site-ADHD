@@ -1,4 +1,3 @@
-import asrs from '@/content/asrs-ru.json'
 import { PAINS } from '@/content/pains.ru'
 import { SDVG_ARTICLE as A } from '@/content/sdvg-article.ru'
 import { siteUrl } from '@/lib/site'
@@ -19,8 +18,9 @@ export function GET() {
 
   out.push(`## ${A.title}`, '', `Адрес: ${siteUrl('/sdvg-test')} · обновлено ${A.updated}`, '')
   out.push(...A.intro.flatMap((p) => [p, '']))
-  out.push(`### ${A.questionsTitle}`, '', A.questionsLead, '', asrs.instruction, '')
-  out.push(...asrs.items.map((q, i) => `${i + 1}. ${q}`), '', `Варианты ответа: ${asrs.options.join(', ')}.`, '')
+  // Сами вопросы ВОЗ сюда не кладём: скрининг ASRS живёт только на /sdvg-test, рядом с обязательной строкой © NYU/Harvard
+  // (красная линия 7, knowledge/INDEX.md; лицензия NYU — research/14-lead-magnets/owner-asrs-bridge.md, R3)
+  out.push(`### ${A.questionsTitle}`, '', `6 вопросов шкалы ASRS v1.1 в официальной русской формулировке — на странице теста: ${siteUrl('/sdvg-test')}`, '')
   out.push(`### ${A.scoringTitle}`, '', ...A.scoring, '', ...A.bands.map((b) => `- ${b.range} — ${b.text}`), '', A.scoringNote, '')
   out.push(`### ${A.faqTitle}`, '')
   for (const f of A.faq) out.push(`**${f.q}**`, '', f.a, '')
