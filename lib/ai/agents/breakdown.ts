@@ -5,6 +5,8 @@ import { memoryWords, renderTaskMemory } from '../memory/render'
 import { runTurn } from '../core/run-turn'
 import { examplesBlock } from './breakdown-examples'
 import { GOBLIN_PLANS } from './breakdown-goblin'
+import { GOBLIN_MINUTES } from './breakdown-minutes'
+import { estimateStep } from './step-time'
 import { TASK_ALIASES } from './breakdown-aliases'
 import { buildMatcher } from './breakdown-match'
 import { ALL_TEMPLATES } from '@/lib/templates'
@@ -16,7 +18,11 @@ type Ready = { steps: string[]; minutes?: number[]; wait?: boolean[] }
  * правильным названием
  */
 const READY_ENTRIES: [string, Ready][] = [
-  ...Object.entries(GOBLIN_PLANS).map(([t, s]): [string, Ready] => [t, { steps: [...s] }]),
+  // минуты шагов оценены вручную (breakdown-minutes.ts, 18.11): план из базы сразу приходит со временем каждого шага
+  ...Object.entries(GOBLIN_PLANS).map(([t, s]): [string, Ready] => {
+    const m = GOBLIN_MINUTES[t]
+    return [t, m && m.length === s.length ? { steps: [...s], minutes: [...m] } : { steps: [...s] }]
+  }),
   ...ALL_TEMPLATES.map((t): [string, Ready] => [t.title, { steps: t.steps.map((s) => s.text), minutes: t.steps.map((s) => s.minutes), wait: t.steps.map((s) => !!s.wait) }]),
 ]
 /** план дела по названию — тот же, что отдаёт поиск: при совпадении названий гоблин важнее шаблона (первый побеждает) */
@@ -244,5 +250,9 @@ export async function breakdown(input: {
     onCrisis: (reply) => ({ kind: 'care', reply }),
     signal: input.signal,
   })
-  return value.kind === 'steps' && outcome !== 'model' ? { ...value, source: 'fallback' } : value
+  if (value.kind !== 'steps') return value
+  if (outcome !== 'model') return { ...value, source: 'fallback' }
+  // шагам, которым модель не поставила минуты, — время самого похожего шага базы (step-time.ts): время есть везде
+  const deal = input.context?.['Это часть дела'] ?? input.task
+  return { ...value, minutes: value.steps.map((st, i) => value.minutes?.[i] ?? estimateStep(st, deal)) }
 }

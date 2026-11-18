@@ -1,10 +1,9 @@
 import { z } from 'zod'
 import { estimate } from '@/lib/ai/agents/estimate'
-import { newTurn } from '@/lib/ai/core/turn'
 import { handle, rateLimit, readJsonBody, sameOrigin } from '@/lib/api-guard'
 
-/** «Оценить» в «Делах»: минуты на каждый шаг (lib/ai/agents/estimate.ts) */
-export const maxDuration = 15
+/** «Оценить время» в «Делах»: минуты на каждый шаг из базы оценённых шагов (lib/ai/agents/step-time.ts), без модели */
+export const maxDuration = 10
 
 const Body = z.object({
   task: z.string().trim().min(1).max(200),
@@ -13,10 +12,8 @@ const Body = z.object({
 
 export const POST = handle(async (req) => {
   sameOrigin(req)
-  rateLimit(req, 'estimate', 10)
+  rateLimit(req, 'estimate', 30)
   const parsed = Body.safeParse(await readJsonBody(req, 16 * 1024))
   if (!parsed.success) return Response.json({ minutes: null }, { status: 400 })
-  const { task, steps } = parsed.data
-  const minutes = await estimate({ task, steps, ctx: newTurn({ task: 'estimate' }), signal: req.signal })
-  return Response.json({ minutes })
+  return Response.json({ minutes: estimate(parsed.data) })
 })

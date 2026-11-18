@@ -73,7 +73,7 @@ import { trimLabel } from '@/lib/utils'
 import { FIRST_MINUTES } from '@/lib/onboarding'
 import { trackEvent } from '@/lib/events'
 import { withAttribution } from '@/lib/visitor'
-import { addCard, addThought, markStepDone, nextAfter, updateCard, upsertDeal } from '@/lib/deals'
+import { addCard, addThought, markStepDone, nextAfter, updateCard, shortDuration, upsertDeal } from '@/lib/deals'
 
 // 5 минут — «просто начать» (этап 1, research/24 C: слепота ко времени, порог старта); оценка шага сама выбирает длительность
 const durations = [5, 15, 25, 45]
@@ -1393,7 +1393,7 @@ export function FocusSession() {
                 <p className="mt-1 h-4 truncate font-mono text-[10.5px] font-semibold uppercase tracking-widest text-[#8a5a2b]">
                   {!editing && brokenSteps[sel]?.wait && <span className="text-reward">пока ждёшь · </span>}
                   {/* длительность может быть спрятана (шаги не влезли) — тогда говорим, сколько поставили, а не «ниже» */}
-                  {!editing && estimate ? `≈ ${estimate} мин · ${compact ? `сессия ${minutes} мин` : 'уже поставил ниже'}` : ''}
+                  {!editing && estimate ? `≈ ${shortDuration(estimate)} · ${compact ? `сессия ${minutes} мин` : 'уже поставил ниже'}` : ''}
                 </p>
                 {/* кнопки карточки — всегда в один ряд, прижаты к низу без верхнего отступа: при шаге в две строки отступ выталкивал
                     их за строчку записки (iPhone владельца, 17.11) */}

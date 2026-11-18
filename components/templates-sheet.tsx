@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Sheet } from '@/components/ui/sheet'
-import { getMyReady, stepsCount } from '@/lib/deals'
+import { getMyReady, shortDuration, stepsCount } from '@/lib/deals'
 import { DealIcon } from '@/components/deal-icon'
 import { TEMPLATE_GROUPS, type Template } from '@/lib/templates'
 
@@ -36,7 +36,7 @@ export function TemplatesSheet({ open, onClose, onPick }: { open: boolean; onClo
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[15.5px] font-semibold">{t.title}</span>
                       <span className="block font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">
-                        {t.steps.some((s) => s.minutes) ? `≈ ${t.steps.reduce((a, s) => a + s.minutes, 0)} мин · первый шаг ${t.steps[0].minutes || 1} мин` : stepsCount(t.steps.length)}
+                        {t.steps.some((s) => s.minutes) ? `≈ ${shortDuration(t.steps.reduce((a, s) => a + s.minutes, 0))} · первый шаг ${shortDuration(t.steps[0].minutes || 1)}` : stepsCount(t.steps.length)}
                       </span>
                     </span>
                     <span className="grid h-7 min-w-7 shrink-0 place-items-center rounded-full bg-white/8 px-2 font-mono text-[12px] font-semibold tabular-nums text-foreground/80">

@@ -189,6 +189,20 @@ export function formatDuration(min: number): string {
   return rest ? `${hs} ${rest} ${plural(rest, 'минута', 'минуты', 'минут')}` : hs
 }
 
+/** Коротко для узких подписей (Фокус, «Готовые шаги»): «45 мин», «1 ч 30 мин», «2 дн» */
+export function shortDuration(min: number): string {
+  const m = Math.max(1, Math.round(min))
+  if (m < 60) return `${m} мин`
+  if (m < 1440) {
+    const h = Math.floor(m / 60)
+    const rest = m - h * 60
+    return rest ? `${h} ч ${rest} мин` : `${h} ч`
+  }
+  const d = Math.floor(m / 1440)
+  const h = Math.round((m - d * 1440) / 60)
+  return h ? `${d} дн ${h} ч` : `${d} дн`
+}
+
 /** Свои готовые дела («Сохранить как готовое дело» в «Делах»): лежат на устройстве и встают первыми в «Готовых шагах» */
 const MINE_KEY = 'naparnik:my-ready'
 export type MyReady = { key: string; title: string; icon: string; steps: { text: string; minutes: number }[] }
