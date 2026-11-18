@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import { PainsPage } from '@/components/pains/pains-page'
 import { PAINS } from '@/content/pains.ru'
 import { preloadFonts } from '@/lib/font-preload'
+import { JsonLd } from '@/components/json-ld'
+import { pageLd } from '@/lib/structured-data'
 
 export const dynamicParams = false
 
@@ -22,5 +24,20 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   const pain = PAINS.find((p) => p.slug === slug)
   if (!pain) notFound()
   preloadFonts('manrope-700-cyr')
-  return <PainsPage only={pain} />
+  const path = `/pomogaet/${pain.slug}`
+  const ld = pageLd({
+    path,
+    name: pain.title,
+    description: pain.lead,
+    crumbs: [
+      { name: 'Что мешает начать', path: '/pomogaet' },
+      { name: pain.tab, path },
+    ],
+  })
+  return (
+    <>
+      <PainsPage only={pain} />
+      <JsonLd data={ld} />
+    </>
+  )
 }

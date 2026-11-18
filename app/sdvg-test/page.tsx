@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import { SdvgTest } from '@/components/sdvg/sdvg-test'
+import { JsonLd } from '@/components/json-ld'
+import { adhdTopic, pageLd } from '@/lib/structured-data'
 import '../hero-poster.css'
 
 export const metadata: Metadata = {
@@ -11,11 +13,34 @@ export const metadata: Metadata = {
     title: 'Что мешает тебе начинать дела?',
     description: 'Тест на 1–2 минуты: 6 вопросов ВОЗ + 4 вопроса от Напарника. Без почты и регистрации.',
     url: '/sdvg-test',
+    // свой openGraph страницы заменяет общий целиком: без этой строки превью ссылки на тест шло без картинки
+    images: ['/opengraph-image.png'],
+  },
+  // иначе в превью Telegram/X — заголовок главной, а не теста
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Что мешает тебе начинать дела?',
+    description: 'Тест на 1–2 минуты: 6 вопросов ВОЗ + 4 вопроса от Напарника. Без почты и регистрации.',
+    images: ['/opengraph-image.png'],
   },
 }
+
+const ld = pageLd({
+  path: '/sdvg-test',
+  name: 'Тест на СДВГ для взрослых онлайн — ASRS v1.1 (ВОЗ)',
+  description:
+    '6 вопросов опросника ВОЗ ASRS v1.1 о признаках СДВГ у взрослых и 4 вопроса о том, как ты откладываешь дела. Это самопроверка, а не диагноз.',
+  crumbs: [{ name: 'Тест на СДВГ', path: '/sdvg-test' }],
+  extra: { about: adhdTopic, isAccessibleForFree: true },
+})
 
 export const dynamic = 'force-static'
 
 export default function SdvgTestPage() {
-  return <SdvgTest />
+  return (
+    <>
+      <SdvgTest />
+      <JsonLd data={ld} />
+    </>
+  )
 }
