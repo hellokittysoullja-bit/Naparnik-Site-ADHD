@@ -181,3 +181,11 @@ export function addCard(card: Omit<WinCard, 'id' | 'at'>): WinCard {
 export function updateCard(id: string, patch: Partial<WinCard>) {
   write(CARDS_KEY, getCards().map((c) => (c.id === id ? { ...c, ...patch } : c)))
 }
+
+/** «1 дело», «3 дела», «20 дел» */
+export function dealsCount(n: number) {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  const word = m10 === 1 && m100 !== 11 ? "дело" : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? "дела" : "дел";
+  return `${n} ${word}`;
+}
