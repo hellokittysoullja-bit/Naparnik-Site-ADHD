@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { GOBLIN_PLANS, goblinPlan } from '@/lib/ai/agents/breakdown-goblin'
 import { breakdown } from '@/lib/ai/agents/breakdown'
+import { GOBLIN_MINUTES } from '@/lib/ai/agents/breakdown-minutes'
 
 describe('готовые разбивки goblin.tools (дословно, владелец 16.11)', () => {
   it('дело ровно как в списке — план сразу, без учёта регистра, «ё» и знаков', () => {
@@ -26,7 +27,7 @@ describe('готовые разбивки goblin.tools (дословно, вла
   })
   it('breakdown отдаёт готовый план без модели', async () => {
     const r = await breakdown({ task: 'Вынести мусор' })
-    expect(r).toEqual({ kind: 'steps', steps: [...GOBLIN_PLANS['Вынести мусор']], source: 'library', title: 'Вынести мусор' })
+    expect(r).toEqual({ kind: 'steps', steps: [...GOBLIN_PLANS['Вынести мусор']], minutes: [...GOBLIN_MINUTES['Вынести мусор']], source: 'library', title: 'Вынести мусор' })
   })
   it('наш шаблон из «Дел» (у гоблина такого дела нет) — тоже сразу, с минутами и «пока ждёшь»', async () => {
     const r = await breakdown({ task: 'убрать ванную' })

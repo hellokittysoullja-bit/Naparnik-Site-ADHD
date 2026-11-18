@@ -137,7 +137,9 @@ describe('память доходит до модели в задачах Фок
     chain.steps = [{ id: 'm1', model: model('Открыть Overleaf\nНайти введение\nНаписать одну фразу', sent) }]
     vi.stubEnv('BREAKDOWN_EXAMPLES', '1')
     const r = await breakdown({ task: 'дописать раздел диплома про методику', memory: memory({ facts: [fact('task', 'Пишет диплом в Overleaf')] }) }).finally(() => vi.unstubAllEnvs())
-    expect(r).toEqual({ kind: 'steps', steps: ['Открыть Overleaf', 'Найти введение', 'Написать одну фразу'], source: 'model' })
+    // минуты, которых модель не дала, ставит база оценённых шагов (step-time.ts)
+    expect(r).toMatchObject({ kind: 'steps', steps: ['Открыть Overleaf', 'Найти введение', 'Написать одну фразу'], source: 'model' })
+    expect(r.kind === 'steps' && r.minutes?.every((m) => (m ?? 0) > 0)).toBe(true)
     // порядок: память (меняется редко) → образцы похожих дел (breakdown-examples.ts) → данные задачи
     const user = sent[0].filter((m) => m.role === 'user')
     expect(user).toHaveLength(3)

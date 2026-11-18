@@ -125,25 +125,27 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
 
   const runEstimate = async () => {
     if (!deal.steps.length) return setToolNote("Сначала разломай дело на шаги, потом оценю.");
-    const missing = deal.steps.some((st) => !st.minutes);
-    if (!missing) {
-      setDealEstimate(deal.id, []);
-      setTools(false);
-      return;
-    }
     setBusy(true);
     setToolNote(null);
+    // «считаю» всегда 1–1,5 с (владелец 18.11): мгновенный ответ не читается как работа, а время — как оценка
+    const hold = new Promise((r) => setTimeout(r, 1000 + Math.random() * 500));
     try {
-      const r = await fetch("/api/estimate", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ task: deal.title.slice(0, 200), steps: deal.steps.slice(0, 24).map((st) => st.text.slice(0, 200)) }),
-      });
-      const data = (await r.json().catch(() => null)) as { minutes?: number[] | null } | null;
-      if (!r.ok || !data?.minutes) throw new Error("no estimate");
-      setDealEstimate(deal.id, data.minutes);
+      let minutes: number[] = [];
+      if (deal.steps.some((st) => !st.minutes)) {
+        const r = await fetch("/api/estimate", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ task: deal.title.slice(0, 200), steps: deal.steps.slice(0, 24).map((st) => st.text.slice(0, 200)) }),
+        });
+        const data = (await r.json().catch(() => null)) as { minutes?: number[] | null } | null;
+        if (!r.ok || !data?.minutes) throw new Error("no estimate");
+        minutes = data.minutes;
+      }
+      await hold;
+      setDealEstimate(deal.id, minutes);
       setTools(false);
     } catch {
+      await hold;
       setToolNote("Не вышло оценить. Нажми ещё раз.");
     } finally {
       setBusy(false);
@@ -239,7 +241,7 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
               </button>
               <button type="button" disabled={busy} onClick={() => void runEstimate()} className="tool-btn">
                 <Clock className={`size-4 ${busy ? "animate-spin [animation-duration:1.6s]" : ""}`} aria-hidden="true" />
-                {busy ? "Оцениваю…" : "Оценить время"}
+                {busy ? "Считаю время…" : "Оценить время"}
               </button>
               {toolNote && <p className="px-1 text-[13px] text-muted-foreground">{toolNote}</p>}
             </div>

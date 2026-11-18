@@ -129,8 +129,6 @@ const ROUTES: Record<TaskName, readonly (keyof typeof PROFILES)[]> = {
   'memory-extract': DEFAULT_ROUTE,
   recall: DEFAULT_ROUTE,
   summarize: DEFAULT_ROUTE,
-  // «Оценить» в «Делах»: столбик минут, срочности нет
-  estimate: DEFAULT_ROUTE,
 }
 
 /**
