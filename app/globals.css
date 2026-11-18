@@ -2149,18 +2149,7 @@ body:is([data-home-camp], [data-own-scene]) .glass-nav {
   border-top-color: oklch(1 0 0 / 0.17);
   box-shadow: 0 2px 0 oklch(0 0 0 / 0.25);
 }
-.deal-sticker {
-  --ink: #2a1f17;
-  position: relative;
-  color: var(--ink);
-  border-radius: 13px;
-  border: 2px solid var(--ink);
-  background:
-    radial-gradient(90% 60% at 30% 12%, rgb(255 255 255 / 0.55), transparent 60%),
-    linear-gradient(165deg, oklch(0.9 0.09 var(--hue)) 0%, oklch(0.78 0.13 var(--hue)) 100%);
-  box-shadow: 0 3px 0 var(--ink);
-  transform: translateY(-1px);
-}
+.deal-sticker { --ink: #2a1f17; transform: translateY(-1px); }
 .deal-sticker-paw {
   background: var(--ink);
   -webkit-mask: url('/mascot/reveal/print.webp') center / contain no-repeat;

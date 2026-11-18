@@ -239,7 +239,7 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
               </button>
               <button type="button" disabled={busy} onClick={() => void runEstimate()} className="tool-btn">
                 <Clock className={`size-4 ${busy ? "animate-spin [animation-duration:1.6s]" : ""}`} aria-hidden="true" />
-                {busy ? "Оцениваю…" : "Оценить"}
+                {busy ? "Оцениваю…" : "Оценить время"}
               </button>
               {toolNote && <p className="px-1 text-[13px] text-muted-foreground">{toolNote}</p>}
             </div>
@@ -370,7 +370,8 @@ export function DealsScreen() {
       <header className="flex items-end justify-between">
         <div>
           <h1 className="text-[30px] font-bold leading-none tracking-[-0.02em]">{today.toLocaleDateString("ru-RU", { weekday: "long" }).replace(/^./, (c) => c.toUpperCase())}</h1>
-          <p className="mt-1.5 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{today.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}</p>
+          {/* дата — тем же шрифтом, что «Какое дело сейчас висит?» на Доме (владелец 18.11) */}
+          <p className="mt-1.5 text-[16px] font-extrabold leading-[22px] text-[oklch(0.93_0.04_90)]">{today.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}</p>
         </div>
         <button
           type="button"
