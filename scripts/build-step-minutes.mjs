@@ -4,8 +4,7 @@
 import fs from 'node:fs'
 const src = JSON.parse(fs.readFileSync('research/27-breakdown/minutes/minutes.json', 'utf8'))
 const lines = Object.entries(src).map(([t, m]) => `  ${JSON.stringify(t)}: [${m.join(', ')}],`)
-const out = `/* eslint-disable */
-// СГЕНЕРИРОВАНО scripts/build-step-minutes.mjs из research/27-breakdown/minutes/minutes.json — руками не править.
+const out = `// СГЕНЕРИРОВАНО scripts/build-step-minutes.mjs из research/27-breakdown/minutes/minutes.json — руками не править.
 /**
  * Минуты на каждый шаг готовых планов (breakdown-goblin.ts), по порядку шагов. Оценены вручную по правилам
  * research/27-breakdown/minutes/RULES.md: обычный взрослый делает сам, без спешки; ожидание (стирка, сушка,

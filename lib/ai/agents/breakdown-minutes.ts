@@ -1,4 +1,3 @@
-/* eslint-disable */
 // СГЕНЕРИРОВАНО scripts/build-step-minutes.mjs из research/27-breakdown/minutes/minutes.json — руками не править.
 /**
  * Минуты на каждый шаг готовых планов (breakdown-goblin.ts), по порядку шагов. Оценены вручную по правилам
