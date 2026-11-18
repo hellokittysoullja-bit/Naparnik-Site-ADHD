@@ -37,10 +37,10 @@ test('две вкладки: шаг, отмеченный в одной, сра�
   await a.goto('/app/deals')
   const b = await ctx.newPage()
   await b.goto('/app/deals')
-  await b.getByRole('button', { name: /Записаться к врачу/ }).click()
+  await b.getByRole('button', { name: /^Записаться к врачу/ }).click()
   await expect(b.getByRole('checkbox', { name: 'Сделано: Открыть запись' })).toBeVisible()
   // отмечаем в первой вкладке
-  await a.getByRole('button', { name: /Записаться к врачу/ }).click()
+  await a.getByRole('button', { name: /^Записаться к врачу/ }).click()
   await a.getByRole('checkbox', { name: 'Сделано: Открыть запись' }).click()
   // вторая вкладка узнаёт без перезагрузки
   await expect(b.getByRole('checkbox', { name: 'Снять отметку: Открыть запись' })).toBeVisible({ timeout: 5_000 })

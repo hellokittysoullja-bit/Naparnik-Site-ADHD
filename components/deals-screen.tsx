@@ -5,7 +5,7 @@ import { useFirstFrameReady } from "@/lib/first-frame";
 import { useClientMount } from "@/hooks/use-client-mount";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
-import { ChevronDown, Clock3, LayoutList, Moon, Play, Plus, SlidersHorizontal, Sparkles, Sun, Sunrise, X } from "lucide-react";
+import { BookmarkPlus, Check, ChevronDown, Clock, Clock3, Hammer, LayoutList, Moon, Play, Plus, SlidersHorizontal, Sparkles, Sun, Sunrise, X } from "lucide-react";
 import { MascotDoll } from "@/components/mascot-doll";
 import { DealIcon } from "@/components/deal-icon";
 import { StepCheck } from "@/components/step-check";
@@ -14,7 +14,11 @@ import { BreakdownPrefs, readFineness, type Fineness } from "@/components/breakd
 import {
   DAY_PARTS,
   dealIcon,
-  dealMinutes,
+  dealsCount,
+  dealTotalMinutes,
+  formatDuration,
+  saveMyReady,
+  setDealEstimate,
   getCards,
   getDeals,
   getThoughts,
@@ -82,13 +86,70 @@ function WeekStrip({ lit }: { lit: Set<string> }) {
   );
 }
 
+/** Тропинка из лапок под названием (предложение 18.11, ждёт согласования): шаг — отпечаток лапы нашего кота, сделанный
+ *  загорается. Больше двенадцати шагов — двенадцать лапок и «+N» */
+function PawTrail({ steps }: { steps: { done?: boolean }[] }) {
+  const shown = steps.slice(0, 12);
+  return (
+    <span className="mt-1.5 flex items-center gap-[3px]" aria-hidden="true">
+      {shown.map((st, k) => (
+        <span key={`${k}-${st.done ? 1 : 0}`} className={`paw-dot ${st.done ? "paw-dot-on" : ""}`} style={{ rotate: `${k % 2 ? 8 : -8}deg` }} />
+      ))}
+      {steps.length > 12 && <span className="ml-0.5 font-mono text-[10px] text-muted-foreground">+{steps.length - 12}</span>}
+    </span>
+  );
+}
+
+/** Время дела после «Оценить» — плашка, как у goblin.tools, только по-русски */
+function TimePill({ minutes, big = false }: { minutes: number; big?: boolean }) {
+  return (
+    <span className={`time-pill inline-flex items-center gap-1 rounded-full font-semibold tabular-nums ${big ? "h-7 px-2.5 text-[12.5px]" : "h-6 px-2 text-[11.5px]"}`}>
+      <Clock className={big ? "size-3.5" : "size-3"} aria-hidden="true" />
+      {formatDuration(minutes)}
+    </span>
+  );
+}
+
 function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolean }) {
   const reduce = useReducedMotion();
   const [open, setOpen] = useState(false);
+  // «Инструменты» под значком (как молоток у goblin.tools): «Сохранить как готовое дело» и «Оценить»
+  const [tools, setTools] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [toolNote, setToolNote] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const next = nextStepOf(deal);
   const done = deal.steps.filter((s) => s.done).length;
-  const left = dealMinutes(deal);
   const all = deal.steps.length > 0 && done === deal.steps.length;
+  const total = dealTotalMinutes(deal);
+
+  const runEstimate = async () => {
+    if (!deal.steps.length) return setToolNote("Сначала разломай дело на шаги, потом оценю.");
+    const missing = deal.steps.some((st) => !st.minutes);
+    if (!missing) {
+      setDealEstimate(deal.id, []);
+      setTools(false);
+      return;
+    }
+    setBusy(true);
+    setToolNote(null);
+    try {
+      const r = await fetch("/api/estimate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: deal.title.slice(0, 200), steps: deal.steps.slice(0, 24).map((st) => st.text.slice(0, 200)) }),
+      });
+      const data = (await r.json().catch(() => null)) as { minutes?: number[] | null } | null;
+      if (!r.ok || !data?.minutes) throw new Error("no estimate");
+      setDealEstimate(deal.id, data.minutes);
+      setTools(false);
+    } catch {
+      setToolNote("Не вышло оценить. Нажми ещё раз.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     // карточки встают по очереди, по 50 мс (не дольше восьми), 260 мс: так и «вываленные» дела раскладываются стопкой
     <motion.li
@@ -99,19 +160,43 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
       transition={{ duration: reduce ? 0.1 : 0.26, delay: reduce ? 0 : Math.min(i, 7) * 0.05, ease: EASE }}
       className={`deal-card rounded-[20px] ${current ? "deal-card-now" : ""}`}
     >
-      <div className="flex items-center gap-3 p-3">
-        <DealIcon name={dealIcon(deal.title)} size={44} dim={all} />
+      {/* название выше (владелец 18.11): строка не по центру карточки, а от верха — под значком теперь «инструменты» */}
+      <div className="flex items-start gap-3 p-3">
+        <div className="flex shrink-0 flex-col items-center gap-2">
+          <DealIcon name={dealIcon(deal.title)} size={40} done={all} />
+          <button
+            type="button"
+            onClick={() => {
+              setTools((v) => !v);
+              setToolNote(null);
+            }}
+            aria-expanded={tools}
+            aria-label={`Инструменты: ${deal.title}`}
+            className={`press inline-flex h-7 w-11 items-center justify-center gap-0.5 rounded-full border text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              tools ? "border-primary/60 bg-primary/12 text-primary" : "border-white/12"
+            }`}
+          >
+            <Hammer className="size-3.5" aria-hidden="true" />
+            <ChevronDown className={`size-3 transition-transform duration-200 ${tools ? "rotate-180" : ""}`} aria-hidden="true" />
+          </button>
+        </div>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="min-w-0 flex-1 rounded-lg py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className={`block truncate text-[16px] font-bold leading-snug ${all ? "text-muted-foreground line-through decoration-reward/70" : ""}`}>{deal.title}</span>
-          <span className="flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">
-            {deal.steps.length === 0 ? "ещё не разломано" : all ? "все шаги сделаны" : `${done} из ${deal.steps.length}${left ? ` · ≈ ${left} мин` : ""}`}
+          <span className="mt-0.5 flex flex-wrap items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">
+            {deal.steps.length === 0 ? "ещё не разломано" : all ? "все шаги сделаны" : `${done} из ${deal.steps.length}`}
             <ChevronDown className={`size-3 transition-transform duration-200 ${open ? "rotate-180" : ""}`} aria-hidden="true" />
           </span>
+          {deal.estimated && total > 0 && (
+            <span className="mt-1.5 block">
+              <TimePill minutes={total} big />
+            </span>
+          )}
+          {deal.steps.length > 1 && <PawTrail steps={deal.steps} />}
         </button>
         {next ? (
           <Link
@@ -131,12 +216,36 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
           </Link>
         ) : null}
       </div>
-      {next && !open && (
-        <p className="-mt-1 truncate px-3 pb-3 pl-[68px] text-[13.5px] text-foreground/80">
-          <span className="text-muted-foreground">дальше:</span> {next.text}
-          {next.minutes ? <span className="text-muted-foreground"> · {next.minutes} мин</span> : null}
-        </p>
-      )}
+      <AnimatePresence initial={false}>
+        {tools && (
+          <motion.div
+            initial={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            animate={reduce ? { opacity: 1 } : { height: "auto", opacity: 1 }}
+            exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            transition={{ duration: reduce ? 0.1 : 0.22, ease: EASE }}
+            className="overflow-hidden"
+          >
+            <div className="flex flex-col gap-2 px-3 pb-3" role="group" aria-label="Инструменты">
+              <button
+                type="button"
+                disabled={!deal.steps.length}
+                onClick={() => {
+                  if (saveMyReady(deal)) setSaved(true);
+                }}
+                className="tool-btn"
+              >
+                {saved ? <Check className="size-4" strokeWidth={3} aria-hidden="true" /> : <BookmarkPlus className="size-4" aria-hidden="true" />}
+                {saved ? "Лежит в «Готовых»" : "Сохранить как готовое дело"}
+              </button>
+              <button type="button" disabled={busy} onClick={() => void runEstimate()} className="tool-btn">
+                <Clock className={`size-4 ${busy ? "animate-spin [animation-duration:1.6s]" : ""}`} aria-hidden="true" />
+                {busy ? "Оцениваю…" : "Оценить время"}
+              </button>
+              {toolNote && <p className="px-1 text-[13px] text-muted-foreground">{toolNote}</p>}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
@@ -148,7 +257,7 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
           >
             <div className="flex flex-col gap-1 border-t border-white/8 px-3 pb-3 pt-2.5">
               {deal.steps.map((s, k) => (
-                <StepCheck key={`${k}-${s.text}`} text={s.text} done={Boolean(s.done)} minutes={s.minutes} onToggle={() => toggleStep(deal.id, k)} />
+                <StepCheck key={`${k}-${s.text}`} text={s.text} done={Boolean(s.done)} minutes={deal.estimated ? s.minutes : undefined} onToggle={() => toggleStep(deal.id, k)} />
               ))}
               {/* часть дня — без часов: «когда угодно» ничего не просрочивает */}
               <div className="mt-2 grid grid-cols-4 gap-1.5" role="group" aria-label="Когда">
@@ -189,6 +298,35 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
 }
 
 const CARD_HUE = [88, 205, 320];
+
+/** Убранство записки «вывали всё» — как у карточки первого шага в Фокусе: петельки по углам, печать-звезда «×N» (сколько
+ *  дел найдено в строке; пока ни одного — четвёртая петелька), красные лапки и звёздочки справа от кнопок */
+function DumpDeco({ count }: { count: number }) {
+  const loop = (
+    <svg viewBox="0 0 26 26" className="size-full overflow-visible">
+      <path d="M5 5 C12 7 20 13 20 18 C20 22.5 15 23.5 12.5 20.5 C10 17.5 9.5 11 5 5 Z" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinejoin="round" />
+      <circle cx="5" cy="5" r="4.6" fill="currentColor" />
+    </svg>
+  );
+  return (
+    <span aria-hidden="true" className="pointer-events-none absolute inset-0">
+      <span className="note-loop -left-[7px] -top-[7px]">{loop}</span>
+      <span className="note-loop -bottom-[7px] -left-[7px] -scale-y-100">{loop}</span>
+      <span className="note-loop -bottom-[7px] -right-[7px] -scale-100">{loop}</span>
+      {count > 0 ? (
+        <span className="note-seal -right-[18px] -top-[20px]">
+          <span className="note-seal-star" />
+          <span className="relative">×{count}</span>
+        </span>
+      ) : (
+        <span className="note-loop -right-[7px] -top-[7px] -scale-x-100">{loop}</span>
+      )}
+      <span className="note-paw bottom-[30px] right-[18px] rotate-[14deg]" />
+      <span className="note-paw bottom-[16px] right-[44px] rotate-[4deg] scale-75 opacity-80" />
+      <span className="note-star bottom-[44px] right-[52px] size-[9px] [animation-delay:.6s]" />
+    </span>
+  );
+}
 
 export function DealsScreen() {
   // переход по меню — дела из памяти в первом же кадре (hooks/use-client-mount.ts); раньше список появлялся кадром позже экрана
@@ -232,7 +370,8 @@ export function DealsScreen() {
       <header className="flex items-end justify-between">
         <div>
           <h1 className="text-[30px] font-bold leading-none tracking-[-0.02em]">{today.toLocaleDateString("ru-RU", { weekday: "long" }).replace(/^./, (c) => c.toUpperCase())}</h1>
-          <p className="mt-1.5 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{today.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}</p>
+          {/* дата — тем же шрифтом, что «Какое дело сейчас висит?» на Доме (владелец 18.11) */}
+          <p className="mt-1.5 text-[16px] font-extrabold leading-[22px] text-[oklch(0.93_0.04_90)]">{today.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}</p>
         </div>
         <button
           type="button"
@@ -245,46 +384,47 @@ export function DealsScreen() {
       </header>
       <WeekStrip lit={lit} />
 
-      {/* «Вывали всё»: одна строка — несколько дел. Сколько дел найдено, видно до нажатия */}
-      <form
-        className="deal-card flex flex-col gap-2 rounded-[20px] p-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (found.length) addDump();
-        }}
-      >
-        <label htmlFor="dump" className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.22em] text-primary/90">
-          вывали всё, что в голове
+      {/* «Вывали всё»: одна строка — несколько дел. Сколько дел найдено, видно до нажатия. Подпись — как «Какое дело сейчас
+          висит?» на Доме (владелец 18.11): над запиской, на тёмном фоне. Записка — та же, что карточка первого шага в Фокусе;
+          поле — общее `.field`; кнопки — как «Раздробить» и «Готовые шаги» Фокуса (вид 1:1, подпись «Готовые» — две в ряд на узком телефоне) */}
+      <div className="flex flex-col gap-3">
+        <label htmlFor="dump" className="text-[16px] font-extrabold leading-[22px] text-[oklch(0.93_0.04_90)]">
+          Вывали всё, что в голове
         </label>
-        <textarea
-          id="dump"
-          value={dump}
-          onChange={(e) => setDump(e.target.value.slice(0, 400))}
-          rows={2}
-          placeholder="отчёт, записаться к врачу, ещё посуда со вчера"
-          className="field"
-          enterKeyHint="enter"
-          autoCapitalize="sentences"
-        />
-        <div className="flex items-center gap-2">
-          <button
-            type="submit"
-            disabled={!found.length}
-            className="btn-press inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-[14px] bg-primary px-4 text-[14.5px] font-bold text-primary-foreground disabled:opacity-45"
-          >
-            <Plus className="size-4" strokeWidth={3} aria-hidden="true" />
-            {found.length > 1 ? `Разложить на ${found.length} ${found.length < 5 ? "дела" : "дел"}` : "Положить в Дела"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setTemplates(true)}
-            className="press inline-flex h-11 items-center gap-1.5 rounded-full border border-white/12 px-3.5 text-[14px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <LayoutList className="size-4 text-primary" aria-hidden="true" />
-            Готовые
-          </button>
-        </div>
-      </form>
+        <form
+          className="note-card relative flex flex-col gap-3 p-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (found.length) addDump();
+          }}
+        >
+          <DumpDeco count={found.length} />
+          <textarea
+            id="dump"
+            value={dump}
+            onChange={(e) => setDump(e.target.value.slice(0, 400))}
+            rows={2}
+            placeholder="отчёт, записаться к врачу, ещё посуда со вчера"
+            className="field"
+            enterKeyHint="enter"
+            autoCapitalize="sentences"
+          />
+          <div className="flex flex-nowrap gap-2">
+            <button type="submit" disabled={!found.length} className="note-btn note-btn-go flex-1 justify-center whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring !px-4 !text-sm">
+              <span className="inline-flex items-center gap-2 py-2">
+                <Plus className="size-4 shrink-0" strokeWidth={3} aria-hidden="true" />
+                {found.length > 1 ? `Положить ${dealsCount(found.length)}` : "Положить в Дела"}
+              </span>
+            </button>
+            <button type="button" onClick={() => setTemplates(true)} className="note-btn whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring !px-4 !text-sm">
+              <span className="inline-flex items-center gap-2 py-2">
+                <LayoutList className="size-4 shrink-0" aria-hidden="true" />
+                Готовые
+              </span>
+            </button>
+          </div>
+        </form>
+      </div>
 
       {empty && (
         <div className="flex flex-col items-center gap-3 py-6 text-center">
@@ -293,33 +433,20 @@ export function DealsScreen() {
         </div>
       )}
 
-      {deals &&
-        DAY_PARTS.map((p) => {
-          const list = deals.filter((d) => (d.when ?? "any") === p.key);
-          if (!list.length) return null;
-          const Icon = PART_ICON[p.key];
-          const current = p.key === now;
-          return (
-            <section key={p.key} aria-label={p.label} className="flex flex-col gap-2">
-              <h2
-                className={`inline-flex h-8 items-center gap-1.5 self-start rounded-full px-3 font-mono text-[10.5px] font-semibold uppercase tracking-[0.18em] ${
-                  current ? "bg-reward/15 text-reward" : "bg-white/6 text-muted-foreground"
-                }`}
-              >
-                <Icon className="size-3.5" aria-hidden="true" />
-                {p.label} · {list.length}
-                {current && <span className="normal-case tracking-normal">сейчас</span>}
-              </h2>
-              <ul className="flex flex-col gap-2">
-                <AnimatePresence initial={false}>
-                  {list.map((d, i) => (
-                    <DealCard key={d.id} deal={d} i={i} current={current} />
-                  ))}
-                </AnimatePresence>
-              </ul>
-            </section>
-          );
-        })}
+      {/* Одна лента: «N дел» вместо разделов по части дня (владелец 18.11, подпись — как «Какое дело сейчас висит?»).
+          Порядок прежний — «любое», утро, день, вечер; дела текущей части дня подсвечены рамкой */}
+      {deals && deals.length > 0 && (
+        <section aria-label="Дела" className="flex flex-col gap-2">
+          <h2 className="text-[16px] font-extrabold leading-[22px] text-[oklch(0.93_0.04_90)]">{dealsCount(deals.length)}</h2>
+          <ul className="flex flex-col gap-2">
+            <AnimatePresence initial={false}>
+              {DAY_PARTS.flatMap((p) => deals.filter((d) => (d.when ?? "any") === p.key)).map((d, i) => (
+                <DealCard key={d.id} deal={d} i={i} current={(d.when ?? "any") === now && now !== "any"} />
+              ))}
+            </AnimatePresence>
+          </ul>
+        </section>
+      )}
 
       {thoughts.length > 0 && (
         <section className="flex flex-col gap-2">
@@ -348,7 +475,7 @@ export function DealsScreen() {
       {/* Копилка итогов сессий (у Shimmer — лента карточек «ни одно озарение не теряется») */}
       {cards.length > 0 && (
         <section className="flex flex-col gap-2">
-          <h2 className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.2em] text-primary/90">что получилось</h2>
+          <h2 className="text-[16px] font-extrabold leading-[22px] text-primary/90">Что получилось</h2>
           <ul className="-mx-4 flex snap-x gap-2.5 overflow-x-auto px-4 pb-2 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {cards.slice(0, 8).map((c, i) => (
               <li

@@ -2023,7 +2023,6 @@ body:is([data-home-camp], [data-own-scene]) .glass-nav {
   35% { transform: translateY(-5px) scale(1.025); }
   100% { transform: translateY(0) scale(1); }
 }
-@keyframes step-strike { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes step-check-pop {
   0% { transform: scale(0.4); }
   60% { transform: scale(1.18); }
@@ -2036,21 +2035,51 @@ body:is([data-home-camp], [data-own-scene]) .glass-nav {
 }
 .step-row[data-burst] { animation: step-lift 420ms cubic-bezier(0.22, 1, 0.36, 1); }
 .step-row[data-burst] .step-check { animation: step-check-pop 380ms cubic-bezier(0.22, 1.4, 0.36, 1); }
-.step-strike { position: relative; }
-.step-strike::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 52%;
-  height: 2px;
-  border-radius: 2px;
-  background: color-mix(in oklab, var(--reward) 80%, transparent);
-  transform: scaleX(0);
-  transform-origin: left center;
+/* искры трёх видов: четырёхлучка, точка-конфетти, колечко */
+.spark[data-k="dot"] { clip-path: none; border-radius: 9999px; width: 8px; height: 8px; left: -4px; top: -4px; }
+.spark[data-k="ring"] { clip-path: none; background: none; border: 2px solid var(--c, var(--reward)); border-radius: 9999px; width: 10px; height: 10px; left: -5px; top: -5px; }
+/* Черта — от руки и у каждого шага своя (владелец 18.11: «красивее и разнообразнее»). Четыре почерка, у шага свой — по
+   тексту, поэтому после перезагрузки тот же: волна пером, маркер-выделитель, две тонкие черты, зигзаг. Черта — узор,
+   повторённый по строке (а не растянутая картинка: на коротком хвосте второй строки она сжималась в каракулю), на
+   прозрачной копии текста поверх него (.step-ink): копия переносится так же, поэтому черта идёт по каждой строке. Проводится
+   слева направо — копия открывается обрезкой. */
+.step-ink { position: absolute; inset: 0; color: transparent; pointer-events: none; }
+.step-ink > span {
+  background-repeat: repeat-x;
+  background-position: 0 55%;
+  background-size: 24px 0.62em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
-.step-row[data-done] .step-strike::after { transform: scaleX(1); }
-.step-row[data-burst] .step-strike::after { animation: step-strike 320ms 80ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.step-row[data-strike="0"] .step-ink > span {
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 10' preserveAspectRatio='none'><path d='M0 5 Q6 1.5 12 5 T24 5' fill='none' stroke='%23f2c14e' stroke-width='2.1' stroke-linecap='round'/></svg>");
+}
+.step-row[data-strike="1"] .step-ink > span {
+  background-image: linear-gradient(transparent 36%, rgb(190 240 80 / 0.34) 36%, rgb(190 240 80 / 0.34) 94%, transparent 94%);
+  background-position: 0 72%;
+  background-size: 8px 1em;
+}
+.step-row[data-strike="2"] .step-ink > span {
+  background-image: linear-gradient(transparent 28%, rgb(244 154 200 / 0.95) 28%, rgb(244 154 200 / 0.95) 42%, transparent 42%, transparent 60%, rgb(244 154 200 / 0.95) 60%, rgb(244 154 200 / 0.95) 74%, transparent 74%);
+  background-size: 8px 0.62em;
+}
+.step-row[data-strike="3"] .step-ink > span {
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 10' preserveAspectRatio='none'><path d='M0 6.5 L5 3.5 L10 6.5 L15 3.5 L20 6.5' fill='none' stroke='%237fd6e8' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-size: 20px 0.62em;
+}
+@keyframes step-draw { from { clip-path: inset(-20% 100% -20% 0); } to { clip-path: inset(-20% 0 -20% 0); } }
+.step-row[data-burst] .step-ink { animation: step-draw 440ms 90ms cubic-bezier(0.55, 0.1, 0.25, 1) both; }
+/* галочка рисуется штрихом, а не появляется целиком */
+.step-tick path { stroke-dasharray: 1; stroke-dashoffset: 0; }
+.step-row[data-burst] .step-tick path { animation: step-tick 300ms 60ms cubic-bezier(0.65, 0, 0.35, 1) both; }
+@keyframes step-tick { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+/* кольцо-волна от кружка */
+.step-ring {
+  position: absolute; left: 4px; top: 50%; width: 36px; height: 36px; margin-top: -18px; border-radius: 9999px;
+  border: 2px solid var(--reward); opacity: 0; pointer-events: none;
+  animation: step-ring 560ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+@keyframes step-ring { 0% { transform: scale(0.5); opacity: 0.9; } 100% { transform: scale(1.7); opacity: 0; } }
 .sparks { position: absolute; left: 22px; top: 50%; width: 0; height: 0; pointer-events: none; }
 .spark {
   position: absolute;
@@ -2064,8 +2093,8 @@ body:is([data-home-camp], [data-own-scene]) .glass-nav {
   animation: spark-fly 760ms cubic-bezier(0.16, 0.8, 0.3, 1) var(--d, 0ms) both;
 }
 @media (prefers-reduced-motion: reduce) {
-  .step-row[data-burst], .step-row[data-burst] .step-check, .step-row[data-burst] .step-strike::after { animation: none; }
-  .spark { display: none; }
+  .step-row[data-burst], .step-row[data-burst] .step-check, .step-row[data-burst] .step-ink, .step-row[data-burst] .step-tick path { animation: none; }
+  .spark, .step-ring { display: none; }
 }
 
 /* Карточки после сессии (Shimmer: «Session summaries & insight cards» — три цветные карточки внахлёст под наклоном).
@@ -2120,6 +2149,40 @@ body:is([data-home-camp], [data-own-scene]) .glass-nav {
   border-top-color: oklch(1 0 0 / 0.17);
   box-shadow: 0 2px 0 oklch(0 0 0 / 0.25);
 }
+.deal-sticker { --ink: #2a1f17; transform: translateY(-1px); }
+.deal-sticker-paw {
+  background: var(--ink);
+  -webkit-mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
+  mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
+}
+.deal-sticker-done { animation: sticker-hop 620ms cubic-bezier(0.22, 1.4, 0.36, 1) both; }
+@keyframes sticker-hop {
+  0% { transform: translateY(-1px) rotate(0); }
+  35% { transform: translateY(-7px) rotate(-8deg) scale(1.08); }
+  70% { transform: translateY(0) rotate(4deg); }
+  100% { transform: translateY(-1px) rotate(0); }
+}
+/* время после «Оценить» — плашка, как у goblin.tools, в цветах продукта */
+.time-pill { background: oklch(0.86 0.12 205 / 0.14); color: oklch(0.88 0.1 205); animation: pill-in 360ms cubic-bezier(0.22, 1.4, 0.36, 1) both; }
+@keyframes pill-in { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+/* кнопки «инструментов» дела */
+.tool-btn {
+  display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 8px; border-radius: 14px;
+  border: 1.5px solid color-mix(in oklab, var(--primary) 55%, transparent); color: var(--primary);
+  font-size: 14px; font-weight: 700; -webkit-tap-highlight-color: transparent; transition: background-color 120ms, transform 80ms;
+}
+.tool-btn:active:not(:disabled) { transform: translateY(1px); background: color-mix(in oklab, var(--primary) 12%, transparent); }
+.tool-btn:disabled { opacity: 0.5; }
+.tool-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+/* тропинка из лапок (предложение 18.11): отпечаток лапы нашего кота на шаг, сделанный загорается и подпрыгивает */
+.paw-dot {
+  width: 11px; height: 10px; background: oklch(1 0 0 / 0.16);
+  -webkit-mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
+  mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
+}
+.paw-dot-on { background: var(--reward); animation: paw-pop 420ms cubic-bezier(0.22, 1.5, 0.36, 1) both; }
+@keyframes paw-pop { 0% { transform: scale(0.3); } 60% { transform: scale(1.35); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .deal-sticker-done, .time-pill, .paw-dot-on { animation: none; } }
 .deal-card-now { border-color: color-mix(in oklab, var(--reward) 38%, transparent); }
 
 /* Каталог «боль → приём»: своё ночное небо градиентом (без видео — страница читается, а не смотрится) */
@@ -2150,7 +2213,12 @@ body:is([data-home-camp], [data-own-scene]) .glass-nav {
   transition: transform 110ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 110ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .deals-orb:active { transform: translateY(3px); box-shadow: 0 0 0 #b5a175, 0 6px 14px -8px rgb(0 0 0 / 0.6); }
-.deals-orb[data-active] { box-shadow: 0 3px 0 #b5a175, 0 0 0 3px var(--background), 0 0 0 5px var(--primary); }
+/* на своём экране (владелец 18.11: «некрасивая обводка» — было кольцо через чёрный зазор, и губа снизу из него торчала):
+   лаймовая окантовка внутри самого круга, губа лаймовая, вокруг мягкое свечение */
+.deals-orb[data-active] {
+  background: linear-gradient(#f7f1df, #ece2c6);
+  box-shadow: inset 0 0 0 2.5px #a6e22e, 0 3px 0 #7fb320, 0 0 18px 1px rgb(166 226 46 / 0.38);
+}
 @media (prefers-reduced-motion: reduce) { .deals-orb, .deals-orb:active { transition: none; transform: none; } }
 
 /* Нажимная кнопка одним элементом — тот же стандарт, что .btn-chunky (губа из primary, проседание на 4 px за 45 мс,
