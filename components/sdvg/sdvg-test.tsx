@@ -60,7 +60,8 @@ function nextStep(state: SdvgState): SdvgStep {
   return next
 }
 
-export function SdvgTest() {
+/** article — статья под экраном входа (серверная, components/sdvg/sdvg-article.tsx): видна только на входе */
+export function SdvgTest({ article }: { article?: ReactNode } = {}) {
   const router = useRouter()
   const [state, setState] = useState<SdvgState>(EMPTY)
   const [resume, setResume] = useState<{ url: string; n: number } | null>(null)
@@ -283,6 +284,8 @@ export function SdvgTest() {
           </div>
         </div>
       )}
+
+      {step === 'intro' && article}
 
       {step === 'age' && (
         <Screen>

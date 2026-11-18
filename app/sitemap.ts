@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next'
 import { PAINS } from '@/content/pains.ru'
 import { siteUrl } from '@/lib/site'
+import { SDVG_ARTICLE } from '@/content/sdvg-article.ru'
 
 // Публичные страницы. Экраны /app личные (память на устройстве), в выдаче не нужны: у них X-Robots-Tag noindex.
 // Варианты под ролики (/v/*), «после сессии» и карточки типа из теста — тоже noindex, их здесь нет.
@@ -8,7 +9,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     { url: siteUrl('/'), changeFrequency: 'weekly', priority: 1 },
     // тест — главный вход из поиска («тест на СДВГ»)
-    { url: siteUrl('/sdvg-test'), changeFrequency: 'monthly', priority: 0.9 },
+    // дата — настоящая правка текста (content/sdvg-article.ru.ts), не время сборки: поддельная свежесть поиску вредит
+    { url: siteUrl('/sdvg-test'), lastModified: SDVG_ARTICLE.updated, changeFrequency: 'monthly', priority: 0.9 },
     { url: siteUrl('/sdvg-test/metod'), changeFrequency: 'monthly', priority: 0.6 },
     // каталог «боль → приём»: публичные страницы, под поиск и под ролики
     { url: siteUrl('/pomogaet'), changeFrequency: 'monthly', priority: 0.7 },
