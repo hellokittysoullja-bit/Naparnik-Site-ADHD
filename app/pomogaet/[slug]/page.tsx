@@ -5,6 +5,7 @@ import { PAINS } from '@/content/pains.ru'
 import { preloadFonts } from '@/lib/font-preload'
 import { JsonLd } from '@/components/json-ld'
 import { pageLd } from '@/lib/structured-data'
+import { pageMetadata } from '@/lib/seo'
 
 export const dynamicParams = false
 
@@ -16,7 +17,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params
   const pain = PAINS.find((p) => p.slug === slug)
   if (!pain) return {}
-  return { title: `${pain.title} — Напарник`, description: `${pain.lead} ${pain.helps.map((h) => h.name).join(', ')}.`, alternates: { canonical: `/pomogaet/${pain.slug}` } }
+  return pageMetadata({
+    path: `/pomogaet/${pain.slug}`,
+    title: `${pain.title} — Напарник`,
+    description: `${pain.lead} ${pain.helps.map((h) => h.name).join(', ')}.`,
+    type: 'article',
+  })
 }
 
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {

@@ -246,9 +246,13 @@ test('первый экран: кот как на лендинге, засыпа
   await page.goto('/sdvg-test')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Тест на СДВГ')
   await expect(page.getByText('Что тебе мешает начинать дела?').first()).toBeVisible()
-  await expect(page.getByText('Ответы считаются в твоём браузере')).toHaveCount(0)
-  await expect(page.getByText('Это самопроверка, а не диагноз')).toHaveCount(0)
-  await expect(page.getByText('Тест бесплатный')).toHaveCount(0)
+  // решение владельца 10.11 — про ПЕРВЫЙ экран; статья ниже сгиба (sdvg-article.tsx, 18.11) может говорить о браузере
+  const first = page.locator('main > div').first()
+  await expect(first.getByText('Ответы считаются в твоём браузере')).toHaveCount(0)
+  await expect(first.getByText('Это самопроверка, а не диагноз')).toHaveCount(0)
+  await expect(first.getByText('Тест бесплатный')).toHaveCount(0)
+  // статья целиком под первым экраном
+  expect((await page.locator('.sdvg-article').boundingBox())!.y).toBeGreaterThanOrEqual(844)
   // кот — тот же размер, что на лендинге (clamp(141px, 33dvh, 262px)): на 844 px высоты это 262 px; и над заголовком по центру
   const cat = page.getByRole('button', { name: 'Погладить напарника' })
   const box = (await cat.boundingBox())!

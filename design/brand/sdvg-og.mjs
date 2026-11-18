@@ -41,7 +41,24 @@ const card = (title) => `<!doctype html><style>${css}</style><div class="c"><div
 <img class="cat" src="${cat}"><p class="k">Мой тип прокрастинации</p><h1>${title}</h1>
 <p class="q">А какой у тебя? Тест на 1–2 минуты</p><p class="d">adhd-naparnik.vercel.app/test</p></div>`;
 
+// Карточка самого теста (/sdvg-test): превью ссылки в Telegram/ВК и в выдаче (SEO 18.11, lib/seo.ts). Тексты — с экрана
+// входа и из title страницы, без балла и обещаний
+const testCard = `<!doctype html><style>${css}</style><div class="c"><div class="shade"></div><div class="knoll"></div>
+<img class="cat" src="${cat}"><p class="k">6 вопросов ВОЗ · 1–2 минуты</p><h1>Тест на СДВГ для взрослых</h1>
+<p class="q">${copy.entry.question}</p><p class="d">adhd-naparnik.vercel.app/test</p></div>`;
+
 const browser = await chromium.launch();
+{
+  const p = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1 });
+  await p.setContent(testCard);
+  await p.evaluate(() => document.fonts.ready);
+  await p.waitForTimeout(200);
+  // JPEG сразу: ~70 КБ вместо 665 КБ PNG — превью в мессенджерах грузится мгновенно
+  const out = "public/og/sdvg-test.jpg";
+  await p.screenshot({ path: path.join(root, out), type: "jpeg", quality: 88 });
+  await p.close();
+  console.log(out, (fs.statSync(path.join(root, out)).size / 1024).toFixed(0), "КБ");
+}
 for (const [t, slug] of Object.entries(SLUG)) {
   const p = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1 });
   await p.setContent(card(copy.types[t].title));

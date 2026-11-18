@@ -5,14 +5,15 @@ import { JsonLd } from '@/components/json-ld'
 import { PAINS } from '@/content/pains.ru'
 import { pageLd } from '@/lib/structured-data'
 import { siteUrl } from '@/lib/site'
+import { pageMetadata } from '@/lib/seo'
 
 export const dynamic = 'force-static'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: '/pomogaet',
   title: 'Что мешает начать и что с этим делает Напарник',
   description: 'Не могу начать, дело слишком большое, время утекает, в голове каша, скучно, бросаю после пропуска. На каждую боль три приёма и экран, который открывается сразу.',
-  alternates: { canonical: '/pomogaet' },
-}
+})
 
 // каталог как список страниц-болей: поисковику и нейропоиску видно, что у каждой боли своя страница
 const ld = pageLd({

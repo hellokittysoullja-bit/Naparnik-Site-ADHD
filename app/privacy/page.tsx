@@ -1,12 +1,13 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { LegalPage, OperatorBlock } from '@/components/legal-page'
+import { pageMetadata } from '@/lib/seo'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: '/privacy',
   title: 'Политика конфиденциальности — Напарник',
   description: 'Какие данные обрабатывает Напарник, зачем и как отозвать согласие.',
-  alternates: { canonical: '/privacy' },
-}
+})
 
 export const dynamic = 'force-static'
 

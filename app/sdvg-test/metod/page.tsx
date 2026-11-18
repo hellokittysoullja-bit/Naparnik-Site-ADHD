@@ -5,12 +5,14 @@ import copy from '@/content/sdvg-copy.ru.json'
 import { JsonLd } from '@/components/json-ld'
 import { adhdTopic, orgRef, pageLd } from '@/lib/structured-data'
 import { LEGAL_UPDATED_ISO } from '@/content/operator'
+import { pageMetadata } from '@/lib/seo'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: '/sdvg-test/metod',
   title: 'Как устроен тест на СДВГ — ASRS v1.1, подсчёт и ограничения | Напарник',
   description: 'Источник опросника ВОЗ ASRS v1.1, официальный подсчёт Harvard 0–24, что тест может и чего не может, где пройти очную диагностику.',
-  alternates: { canonical: '/sdvg-test/metod' },
-}
+  type: 'article',
+})
 
 export const dynamic = 'force-static'
 

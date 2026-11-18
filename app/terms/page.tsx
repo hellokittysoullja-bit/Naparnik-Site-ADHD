@@ -1,12 +1,13 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { LegalPage, OperatorBlock } from '@/components/legal-page'
+import { pageMetadata } from '@/lib/seo'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: '/terms',
   title: 'Условия использования — Напарник',
   description: 'Пользовательское соглашение сервиса «Напарник».',
-  alternates: { canonical: '/terms' },
-}
+})
 
 export const dynamic = 'force-static'
 

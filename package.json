@@ -14,7 +14,8 @@
     "eval:suite": "vitest run --config vitest.eval.config.ts evals/suite.eval.ts",
     "eval:breakdown": "npx tsx --tsconfig tsconfig.json evals/breakdown/run.mts",
     "test:e2e": "playwright test",
-    "check": "tsc --noEmit && eslint . && vitest run"
+    "check": "tsc --noEmit && eslint . && vitest run",
+    "indexnow": "node scripts/indexnow.mjs"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.114",

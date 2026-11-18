@@ -36,12 +36,9 @@ export const metadata: Metadata = {
     locale: "ru_RU",
     siteName: "Напарник",
   },
-  twitter: {
-    card: "summary_large_image",
-    title: "Напарник — сдвинем твоё дело за 2 минуты",
-    description:
-      "Сидит рядом, пока ты начинаешь, и растит остров из твоих стартов.",
-  },
+  // только тип карточки: заголовок и описание задаёт каждая публичная страница (lib/seo.ts), иначе превью в X у теста
+  // и «Помогает» показывало заголовок лендинга; без своих X берёт og:title
+  twitter: { card: "summary_large_image" },
 };
 
 export const viewport: Viewport = {

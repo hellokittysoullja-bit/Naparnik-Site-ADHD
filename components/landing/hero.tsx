@@ -370,7 +370,8 @@ export function Hero({ headline = DEFAULT_HEADLINE }: { headline?: EntryHeadline
               моменту, когда начинает рисоваться каракуля (0.95s) — взгляд
               сперва ловит проявление света, потом штрих */}
             <span className="chroma-appear">
-              {headline.top}
+              {/* пробел перед переносом: на экране не виден, а роботы без него читали «твоёдело» слитно */}
+              {headline.top}{" "}
               <br />
               {headline.before}
               <span
@@ -669,7 +670,7 @@ export function Hero({ headline = DEFAULT_HEADLINE }: { headline?: EntryHeadline
                   />
                 </svg>
                 <p className="-rotate-2 text-left text-[12px] font-medium leading-tight min-[380px]:whitespace-nowrap">
-                  даже если ты
+                  даже если ты{" "}
                   <br />
                   пропал на&nbsp;неделю
                 </p>

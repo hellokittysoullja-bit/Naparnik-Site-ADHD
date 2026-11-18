@@ -25,20 +25,27 @@ const AI_BOTS = [
   'YandexAdditionalBot',
 ]
 
-const CLEAN = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'src', 'intro', '_t']
+// + метки кликов поиска и рекламы: ysclid Яндекс сам дописывает к ссылкам из выдачи, yclid/gclid/fbclid — реклама
+const CLEAN = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'src', 'intro', '_t', 'ysclid', 'yclid', 'gclid', 'fbclid']
+
+// Content Signals (contentsignals.org, 2025): можно показывать в поиске и цитировать в ответах нейросетей. Обучение
+// моделей (ai-train) не задано — это решение владельца, не SEO. Строка в каждой группе: бот читает только свою группу
+const SIGNAL = 'Content-Signal: search=yes, ai-input=yes'
 
 export function GET() {
   const body = [
     'User-agent: *',
     'Allow: /',
     'Disallow: /api/',
+    SIGNAL,
     '',
     'User-agent: Yandex',
     'Allow: /',
     'Disallow: /api/',
+    SIGNAL,
     `Clean-param: ${CLEAN.join('&')}`,
     '',
-    ...AI_BOTS.flatMap((ua) => [`User-agent: ${ua}`, 'Allow: /', 'Disallow: /api/', '']),
+    ...AI_BOTS.flatMap((ua) => [`User-agent: ${ua}`, 'Allow: /', 'Disallow: /api/', SIGNAL, '']),
     `Sitemap: ${SITE_URL}/sitemap.xml`,
     '',
   ].join('\n')
