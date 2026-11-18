@@ -1285,6 +1285,9 @@ export function FocusSession() {
                   : '-mt-5 mb-4 [@media(min-height:740px)]:-mt-12'
             }`}
           >
+            {/* тень кота на выборе шага (владелец 17.11: «как у кота на полене», без земли): своя тень куклы чёрная и на ночном
+                небе не видна — под лапами слабый лунный отсвет, на нём тень читается. Только на выборе шага: в «деле» кот мал */}
+            {!deal && !stage && <span aria-hidden="true" className="focus-cat-glow" />}
             {/* в «деле» тело кота — крупное (размер «ожидания») и уменьшено масштабом до места кота (cat-fit) */}
             <div ref={catBodyRef} className={deal && !stage ? 'cat-fit absolute left-0 top-0 origin-top-left' : deal ? 'absolute left-0 top-0 origin-top-left' : ''}>
               <MascotSvg
