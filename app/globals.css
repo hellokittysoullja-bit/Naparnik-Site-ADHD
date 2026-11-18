@@ -1773,6 +1773,11 @@ body[data-focus-immersive] {
   position: absolute;
   border-radius: 50%;
 }
+/* лунный отсвет под котом выбора шага (Фокус): на нём видна чёрная тень куклы; координаты — от тени (.cat-shadow-soft) */
+.focus-cat-glow {
+  position: absolute; left: 1%; width: 92%; top: 88.5%; height: 15%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, rgb(200 222 255 / 0.34), rgb(200 222 255 / 0.15) 60%, transparent);
+}
 .cat-shadow-soft {
   left: 10.26%;
   width: 74.9%;

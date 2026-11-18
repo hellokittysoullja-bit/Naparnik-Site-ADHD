@@ -42,6 +42,15 @@ test('Фокус: ночная сцена, без чипов, «Раздроби
     expect(st.h).toBeGreaterThanOrEqual(44)
   }
   await expect(page.getByText(/рекомендуем/i)).toHaveCount(0)
+  // тень кота видна (владелец 17.11, «как на полене», без земли): под лапами лунный отсвет, тень куклы лежит на нём
+  const glow = await page.evaluate(() => {
+    const g = document.querySelector('.focus-cat-glow')
+    const sh = document.querySelector('.vt-cat .cat-shadow-soft')
+    if (!g || !sh) return null
+    const a = g.getBoundingClientRect(), b = sh.getBoundingClientRect()
+    return a.left <= b.left && a.right >= b.right && a.top <= b.top && a.bottom >= b.bottom
+  })
+  expect(glow).toBe(true)
 
   // нечего разламывать — кот просит слова, а не шлёт запрос
   let asked = false
