@@ -13,3 +13,5 @@ export const OPERATOR = {
 
 /** Дата редакции документов — меняется при каждой правке текста */
 export const LEGAL_UPDATED = '16 ноября 2026'
+/** Та же дата для поисковиков (dateModified в разметке страницы метода) — менять вместе */
+export const LEGAL_UPDATED_ISO = '2026-11-16'
