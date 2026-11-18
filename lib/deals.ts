@@ -13,7 +13,15 @@ export const DAY_PARTS: { key: DayPart; label: string; short: string }[] = [
   { key: 'day', label: 'День', short: 'День' },
   { key: 'evening', label: 'Вечер', short: 'Вечер' },
 ]
-export type Deal = { id: string; title: string; steps: DealStep[]; createdAt: number; when?: DayPart }
+export type Deal = {
+  id: string
+  title: string
+  steps: DealStep[]
+  createdAt: number
+  when?: DayPart
+  /** «Оценить» нажато: у дела и у шагов показано время (как у goblin.tools — по запросу, а не всегда) */
+  estimated?: boolean
+}
 /** Карточка после сессии (у Shimmer — «Win / Action / Insight»): что получилось, что дальше, что понял */
 export type WinCard = { id: string; at: number; win: string; next?: string; insight?: string; minutes?: number }
 export type Thought = { id: string; text: string; at: number }
@@ -137,6 +145,71 @@ export function toggleStep(id: string, index: number): boolean {
   st.done = !st.done
   write(DEALS_KEY, deals)
   return Boolean(st.done)
+}
+
+/** «Оценить»: время шагам. Уже стоящее у шага время не трогаем (оно из готового плана), дописываем только пустое */
+export function setDealEstimate(id: string, minutes: (number | undefined)[]) {
+  const deals = getDeals()
+  const d = deals.find((x) => x.id === id)
+  if (!d) return
+  d.steps.forEach((st, i) => {
+    const m = minutes[i]
+    if (!st.minutes && typeof m === 'number' && m > 0) st.minutes = Math.round(m)
+  })
+  d.estimated = true
+  write(DEALS_KEY, deals)
+}
+
+/** Время всего дела — все шаги, и сделанные тоже: «сколько это дело занимает» (как у goblin.tools) */
+export function dealTotalMinutes(deal: Deal): number {
+  return deal.steps.reduce((a, s) => a + (s.minutes ?? 0), 0)
+}
+
+const plural = (n: number, one: string, few: string, many: string) => {
+  const m10 = n % 10
+  const m100 = n % 100
+  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many
+}
+/** «1 шаг», «3 шага», «7 шагов» */
+export const stepsCount = (n: number) => `${n} ${plural(n, 'шаг', 'шага', 'шагов')}`
+
+/** «2 минуты», «1 час 57 минут», «3 дня и 8 часов» — как подписи goblin.tools, только по-русски */
+export function formatDuration(min: number): string {
+  const m = Math.max(1, Math.round(min))
+  if (m < 60) return `${m} ${plural(m, 'минута', 'минуты', 'минут')}`
+  const days = Math.floor(m / 1440)
+  if (days > 0) {
+    const h = Math.round((m - days * 1440) / 60)
+    const d = `${days} ${plural(days, 'день', 'дня', 'дней')}`
+    return h ? `${d} и ${h} ${plural(h, 'час', 'часа', 'часов')}` : d
+  }
+  const h = Math.floor(m / 60)
+  const rest = m - h * 60
+  const hs = `${h} ${plural(h, 'час', 'часа', 'часов')}`
+  return rest ? `${hs} ${rest} ${plural(rest, 'минута', 'минуты', 'минут')}` : hs
+}
+
+/** Свои готовые дела («Сохранить как готовое дело» в «Делах»): лежат на устройстве и встают первыми в «Готовых шагах» */
+const MINE_KEY = 'naparnik:my-ready'
+export type MyReady = { key: string; title: string; icon: string; steps: { text: string; minutes: number }[] }
+export function getMyReady(): MyReady[] {
+  const v = read<MyReady[]>(MINE_KEY, [])
+  return Array.isArray(v) ? v.filter((x) => x && typeof x.title === 'string' && Array.isArray(x.steps) && x.steps.length > 0) : []
+}
+export function saveMyReady(deal: Deal): boolean {
+  if (!deal.steps.length) return false
+  const item: MyReady = {
+    key: `mine-${uid()}`,
+    title: deal.title,
+    icon: dealIcon(deal.title),
+    steps: deal.steps.map((s) => ({ text: s.text, minutes: s.minutes ?? 0 })),
+  }
+  // то же название — заменяем: последняя версия плана важнее
+  write(MINE_KEY, [item, ...getMyReady().filter((x) => !same(x.title, deal.title))].slice(0, 40))
+  return true
+}
+export function isMyReady(title: string): boolean {
+  return getMyReady().some((x) => same(x.title, title))
 }
 
 export function dealMinutes(deal: Deal): number {

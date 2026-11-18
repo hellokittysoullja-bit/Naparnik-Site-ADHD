@@ -5,7 +5,7 @@ import { useFirstFrameReady } from "@/lib/first-frame";
 import { useClientMount } from "@/hooks/use-client-mount";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
-import { ChevronDown, Clock3, LayoutList, Moon, Play, Plus, SlidersHorizontal, Sparkles, Sun, Sunrise, X } from "lucide-react";
+import { BookmarkPlus, Check, ChevronDown, Clock, Clock3, Hammer, LayoutList, Moon, Play, Plus, SlidersHorizontal, Sparkles, Sun, Sunrise, X } from "lucide-react";
 import { MascotDoll } from "@/components/mascot-doll";
 import { DealIcon } from "@/components/deal-icon";
 import { StepCheck } from "@/components/step-check";
@@ -15,7 +15,10 @@ import {
   DAY_PARTS,
   dealIcon,
   dealsCount,
-  dealMinutes,
+  dealTotalMinutes,
+  formatDuration,
+  saveMyReady,
+  setDealEstimate,
   getCards,
   getDeals,
   getThoughts,
@@ -83,13 +86,70 @@ function WeekStrip({ lit }: { lit: Set<string> }) {
   );
 }
 
+/** Тропинка из лапок под названием (предложение 18.11, ждёт согласования): шаг — отпечаток лапы нашего кота, сделанный
+ *  загорается. Больше двенадцати шагов — двенадцать лапок и «+N» */
+function PawTrail({ steps }: { steps: { done?: boolean }[] }) {
+  const shown = steps.slice(0, 12);
+  return (
+    <span className="mt-1.5 flex items-center gap-[3px]" aria-hidden="true">
+      {shown.map((st, k) => (
+        <span key={`${k}-${st.done ? 1 : 0}`} className={`paw-dot ${st.done ? "paw-dot-on" : ""}`} style={{ rotate: `${k % 2 ? 8 : -8}deg` }} />
+      ))}
+      {steps.length > 12 && <span className="ml-0.5 font-mono text-[10px] text-muted-foreground">+{steps.length - 12}</span>}
+    </span>
+  );
+}
+
+/** Время дела после «Оценить» — плашка, как у goblin.tools, только по-русски */
+function TimePill({ minutes, big = false }: { minutes: number; big?: boolean }) {
+  return (
+    <span className={`time-pill inline-flex items-center gap-1 rounded-full font-semibold tabular-nums ${big ? "h-7 px-2.5 text-[12.5px]" : "h-6 px-2 text-[11.5px]"}`}>
+      <Clock className={big ? "size-3.5" : "size-3"} aria-hidden="true" />
+      {formatDuration(minutes)}
+    </span>
+  );
+}
+
 function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolean }) {
   const reduce = useReducedMotion();
   const [open, setOpen] = useState(false);
+  // «Инструменты» под значком (как молоток у goblin.tools): «Сохранить как готовое дело» и «Оценить»
+  const [tools, setTools] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [toolNote, setToolNote] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const next = nextStepOf(deal);
   const done = deal.steps.filter((s) => s.done).length;
-  const left = dealMinutes(deal);
   const all = deal.steps.length > 0 && done === deal.steps.length;
+  const total = dealTotalMinutes(deal);
+
+  const runEstimate = async () => {
+    if (!deal.steps.length) return setToolNote("Сначала разломай дело на шаги, потом оценю.");
+    const missing = deal.steps.some((st) => !st.minutes);
+    if (!missing) {
+      setDealEstimate(deal.id, []);
+      setTools(false);
+      return;
+    }
+    setBusy(true);
+    setToolNote(null);
+    try {
+      const r = await fetch("/api/estimate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: deal.title.slice(0, 200), steps: deal.steps.slice(0, 24).map((st) => st.text.slice(0, 200)) }),
+      });
+      const data = (await r.json().catch(() => null)) as { minutes?: number[] | null } | null;
+      if (!r.ok || !data?.minutes) throw new Error("no estimate");
+      setDealEstimate(deal.id, data.minutes);
+      setTools(false);
+    } catch {
+      setToolNote("Не вышло оценить. Нажми ещё раз.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     // карточки встают по очереди, по 50 мс (не дольше восьми), 260 мс: так и «вываленные» дела раскладываются стопкой
     <motion.li
@@ -100,19 +160,43 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
       transition={{ duration: reduce ? 0.1 : 0.26, delay: reduce ? 0 : Math.min(i, 7) * 0.05, ease: EASE }}
       className={`deal-card rounded-[20px] ${current ? "deal-card-now" : ""}`}
     >
-      <div className="flex items-center gap-3 p-3">
-        <DealIcon name={dealIcon(deal.title)} size={44} dim={all} />
+      {/* название выше (владелец 18.11): строка не по центру карточки, а от верха — под значком теперь «инструменты» */}
+      <div className="flex items-start gap-3 p-3">
+        <div className="flex shrink-0 flex-col items-center gap-2">
+          <DealIcon name={dealIcon(deal.title)} size={40} done={all} />
+          <button
+            type="button"
+            onClick={() => {
+              setTools((v) => !v);
+              setToolNote(null);
+            }}
+            aria-expanded={tools}
+            aria-label={`Инструменты: ${deal.title}`}
+            className={`press inline-flex h-7 w-11 items-center justify-center gap-0.5 rounded-full border text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              tools ? "border-primary/60 bg-primary/12 text-primary" : "border-white/12"
+            }`}
+          >
+            <Hammer className="size-3.5" aria-hidden="true" />
+            <ChevronDown className={`size-3 transition-transform duration-200 ${tools ? "rotate-180" : ""}`} aria-hidden="true" />
+          </button>
+        </div>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="min-w-0 flex-1 rounded-lg py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className={`block truncate text-[16px] font-bold leading-snug ${all ? "text-muted-foreground line-through decoration-reward/70" : ""}`}>{deal.title}</span>
-          <span className="flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">
-            {deal.steps.length === 0 ? "ещё не разломано" : all ? "все шаги сделаны" : `${done} из ${deal.steps.length}${left ? ` · ≈ ${left} мин` : ""}`}
+          <span className="mt-0.5 flex flex-wrap items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">
+            {deal.steps.length === 0 ? "ещё не разломано" : all ? "все шаги сделаны" : `${done} из ${deal.steps.length}`}
             <ChevronDown className={`size-3 transition-transform duration-200 ${open ? "rotate-180" : ""}`} aria-hidden="true" />
           </span>
+          {deal.estimated && total > 0 && (
+            <span className="mt-1.5 block">
+              <TimePill minutes={total} big />
+            </span>
+          )}
+          {deal.steps.length > 1 && <PawTrail steps={deal.steps} />}
         </button>
         {next ? (
           <Link
@@ -133,6 +217,36 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
         ) : null}
       </div>
       <AnimatePresence initial={false}>
+        {tools && (
+          <motion.div
+            initial={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            animate={reduce ? { opacity: 1 } : { height: "auto", opacity: 1 }}
+            exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            transition={{ duration: reduce ? 0.1 : 0.22, ease: EASE }}
+            className="overflow-hidden"
+          >
+            <div className="flex flex-col gap-2 px-3 pb-3" role="group" aria-label="Инструменты">
+              <button
+                type="button"
+                disabled={!deal.steps.length}
+                onClick={() => {
+                  if (saveMyReady(deal)) setSaved(true);
+                }}
+                className="tool-btn"
+              >
+                {saved ? <Check className="size-4" strokeWidth={3} aria-hidden="true" /> : <BookmarkPlus className="size-4" aria-hidden="true" />}
+                {saved ? "Лежит в «Готовых»" : "Сохранить как готовое дело"}
+              </button>
+              <button type="button" disabled={busy} onClick={() => void runEstimate()} className="tool-btn">
+                <Clock className={`size-4 ${busy ? "animate-spin [animation-duration:1.6s]" : ""}`} aria-hidden="true" />
+                {busy ? "Оцениваю…" : "Оценить"}
+              </button>
+              {toolNote && <p className="px-1 text-[13px] text-muted-foreground">{toolNote}</p>}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence initial={false}>
         {open && (
           <motion.div
             initial={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
@@ -143,7 +257,7 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
           >
             <div className="flex flex-col gap-1 border-t border-white/8 px-3 pb-3 pt-2.5">
               {deal.steps.map((s, k) => (
-                <StepCheck key={`${k}-${s.text}`} text={s.text} done={Boolean(s.done)} minutes={s.minutes} onToggle={() => toggleStep(deal.id, k)} />
+                <StepCheck key={`${k}-${s.text}`} text={s.text} done={Boolean(s.done)} minutes={deal.estimated ? s.minutes : undefined} onToggle={() => toggleStep(deal.id, k)} />
               ))}
               {/* часть дня — без часов: «когда угодно» ничего не просрочивает */}
               <div className="mt-2 grid grid-cols-4 gap-1.5" role="group" aria-label="Когда">

@@ -15,3 +15,22 @@ describe('«Дела»: подписи и черта', () => {
     expect(used.size).toBe(4)
   })
 })
+
+import { formatDuration, stepsCount } from '@/lib/deals'
+import { parseEstimate } from '@/lib/ai/agents/estimate'
+
+describe('«Оценить»: время по-русски и разбор ответа модели', () => {
+  it('время как у goblin.tools, только по-русски', () => {
+    expect([1, 2, 5, 10, 21, 60, 117, 125, 180, 1440, 4800].map(formatDuration)).toEqual([
+      '1 минута', '2 минуты', '5 минут', '10 минут', '21 минута', '1 час', '1 час 57 минут', '2 часа 5 минут', '3 часа', '1 день', '3 дня и 8 часов',
+    ])
+    expect(stepsCount(3)).toBe('3 шага')
+  })
+  it('столбик чисел по числу шагов; иначе — негоден', () => {
+    expect(parseEstimate('10\n15\n2', 3)).toEqual([10, 15, 2])
+    expect(parseEstimate('1. 10\n2. 15 минут', 2)).toEqual([10, 15])
+    expect(parseEstimate('10\n15', 3)).toBeNull()
+    expect(parseEstimate('10\nне знаю', 2)).toBeNull()
+    expect(parseEstimate('0\n5', 2)).toBeNull()
+  })
+})

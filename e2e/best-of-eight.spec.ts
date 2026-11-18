@@ -152,7 +152,7 @@ test('«Дела»: строка раскладывается на дела, ш�
   await page.locator('#dump').fill('отчёт для Марины, записаться на стрижку, ещё оплатить интернет')
   await page.getByRole('button', { name: 'Положить 3 дела' }).click()
   for (const t of ['Отчёт для Марины', 'Записаться на стрижку', 'Оплатить интернет']) await expect(page.getByText(t, { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: /Записаться к врачу/ }).click()
+  await page.getByRole('button', { name: /^Записаться к врачу/ }).click()
   const box = page.getByRole('checkbox', { name: 'Сделано: Открыть запись' })
   await box.click()
   await expect(page.locator('.step-row[data-burst] .spark').first()).toBeAttached()

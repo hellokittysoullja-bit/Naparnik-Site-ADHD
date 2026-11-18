@@ -1,6 +1,8 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { Clock } from 'lucide-react'
+import { formatDuration } from '@/lib/deals'
 import { hapticReward } from '@/lib/haptics'
 
 /**
@@ -94,7 +96,13 @@ export function StepCheck({
           </span>
         )}
       </span>
-      {minutes ? <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">{minutes} мин</span> : null}
+      {/* время шага — после «Оценить», плашкой по-русски, как у goblin.tools («10 минут») */}
+      {minutes ? (
+        <span className="time-pill inline-flex h-6 shrink-0 items-center gap-1 self-start rounded-full px-2 text-[11.5px] font-semibold tabular-nums">
+          <Clock className="size-3" aria-hidden="true" />
+          {formatDuration(minutes)}
+        </span>
+      ) : null}
       {burst > 0 && <span className="step-ring" aria-hidden="true" />}
       {burst > 0 && (
         <span className="sparks" aria-hidden="true">

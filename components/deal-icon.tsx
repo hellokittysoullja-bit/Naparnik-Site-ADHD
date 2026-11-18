@@ -57,21 +57,27 @@ const ICONS: Record<string, { icon: LucideIcon; hue: number }> = {
   spark: { icon: Sparkle, hue: 130 },
 }
 
-export function DealIcon({ name, size = 40, dim = false }: { name: string; size?: number; dim?: boolean }) {
-  const { icon: Icon, hue } = ICONS[name] ?? ICONS.spark
+/**
+ * Вид — «наклейка» в общем стиле записок продукта (владелец 18.11: «стилизуй красиво, как у нашего напарника»):
+ * цветная плитка с бликом сверху, тёмная обводка и бортик снизу, как у кнопок записки; значок — тем же тёмным
+ * «чернилом». Лапка — не значок из набора, а отпечаток лапы нашего кота (тот же, что на записке Фокуса).
+ */
+export function DealIcon({ name, size = 40, dim = false, done = false }: { name: string; size?: number; dim?: boolean; done?: boolean }) {
+  const { icon: Icon, hue: own } = ICONS[name] ?? ICONS.spark
+  // дело сделано целиком (предложение 18.11): наклейка становится золотой и один раз подпрыгивает
+  const hue = done ? 85 : own
+  const glyph = Math.round(size * 0.52)
   return (
     <span
       aria-hidden="true"
-      className="grid shrink-0 place-items-center rounded-[12px] transition-opacity duration-200"
-      style={{
-        width: size,
-        height: size,
-        background: `oklch(0.74 0.12 ${hue} / 0.18)`,
-        color: `oklch(0.88 0.13 ${hue})`,
-        opacity: dim ? 0.5 : 1,
-      }}
+      className={`deal-sticker grid shrink-0 place-items-center transition-opacity duration-200${done ? " deal-sticker-done" : ""}`}
+      style={{ width: size, height: size, ['--hue' as string]: hue, opacity: dim ? 0.5 : 1 }}
     >
-      <Icon style={{ width: size * 0.5, height: size * 0.5 }} strokeWidth={2.1} />
+      {name === 'paw' ? (
+        <span className="deal-sticker-paw" style={{ width: glyph, height: glyph }} />
+      ) : (
+        <Icon style={{ width: glyph, height: glyph }} strokeWidth={2.4} />
+      )}
     </span>
   )
 }
