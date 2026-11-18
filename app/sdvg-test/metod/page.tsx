@@ -2,6 +2,9 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { LegalPage } from '@/components/legal-page'
 import copy from '@/content/sdvg-copy.ru.json'
+import { JsonLd } from '@/components/json-ld'
+import { adhdTopic, orgRef, pageLd } from '@/lib/structured-data'
+import { LEGAL_UPDATED_ISO } from '@/content/operator'
 
 export const metadata: Metadata = {
   title: 'Как устроен тест на СДВГ — ASRS v1.1, подсчёт и ограничения | Напарник',
@@ -11,10 +14,29 @@ export const metadata: Metadata = {
 
 export const dynamic = 'force-static'
 
+// Статья с датой редакции и источниками: нейропоиск охотнее цитирует страницы, где видно, кто, когда и на что ссылается
+const ld = pageLd({
+  path: '/sdvg-test/metod',
+  name: 'Как устроен тест на СДВГ — ASRS v1.1, подсчёт и ограничения',
+  description: 'Источник опросника ВОЗ ASRS v1.1, официальный подсчёт Harvard 0–24, что тест может и чего не может, где пройти очную диагностику.',
+  crumbs: [
+    { name: 'Тест на СДВГ', path: '/sdvg-test' },
+    { name: 'Как устроен тест', path: '/sdvg-test/metod' },
+  ],
+  extra: {
+    '@type': ['WebPage', 'Article'],
+    headline: 'Как устроен тест на СДВГ',
+    dateModified: LEGAL_UPDATED_ISO,
+    author: orgRef,
+    about: adhdTopic,
+  },
+})
+
 /** Страница метода (research/14-lead-magnets/owner-asrs-bridge.md, раздел SEO) и «Где пройти очную диагностику». */
 export default function MethodPage() {
   return (
     <LegalPage title="Как устроен тест">
+      <JsonLd data={ld} />
       <section className="flex flex-col gap-2">
         <h2>Опросник</h2>
         <p>

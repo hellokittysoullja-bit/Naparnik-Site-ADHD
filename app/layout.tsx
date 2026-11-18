@@ -2,6 +2,7 @@ import { SiteAnalytics } from "@/components/analytics";
 import { VisitBeacon } from "@/components/visit-beacon";
 import { CookieNotice } from "@/components/cookie-notice";
 import type { Metadata, Viewport } from "next";
+import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 // Все шрифты — свои (public/fonts, app/fonts.css, генератор design/fonts/build.py): Manrope и Caveat — статические
@@ -11,7 +12,14 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   // адрес сайта для абсолютных ссылок превью (og:image); прежний ai-rc-one — старый домен
-  metadataBase: new URL("https://adhd-naparnik.vercel.app"),
+  // (CANONICAL_HOST в Vercel переводит его на свой домен — lib/site.ts)
+  metadataBase: new URL(SITE_URL),
+  // Подтверждение прав в Яндекс Вебмастере и Google Search Console: код из их кабинета — в переменные Vercel
+  // YANDEX_VERIFICATION и GOOGLE_SITE_VERIFICATION, затем Redeploy. Пусто — строки нет.
+  verification: {
+    ...(process.env.GOOGLE_SITE_VERIFICATION ? { google: process.env.GOOGLE_SITE_VERIFICATION } : {}),
+    ...(process.env.YANDEX_VERIFICATION ? { yandex: process.env.YANDEX_VERIFICATION } : {}),
+  },
   title: "Напарник — сдвинем твоё дело за 2 минуты",
   description:
     "Напарник сидит рядом, пока ты начинаешь, и растит остров из твоих стартов. Бесплатно, без регистрации, без стриков и стыда.",

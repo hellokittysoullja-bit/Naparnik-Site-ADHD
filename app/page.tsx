@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import { Landing } from "@/components/landing/landing";
+import { JsonLd } from "@/components/json-ld";
+import { landingLd } from "@/lib/structured-data";
 // вшитые подмножества шрифтов первого экрана — только здесь, /app их не грузит (design/fonts/build.py)
 import "./hero-fonts.css";
 import "./hero-poster.css";
@@ -7,6 +10,14 @@ import "./hero-poster.css";
 // с CDN в первом же байте, без промежуточного состояния загрузки.
 export const dynamic = "force-static";
 
+// Один адрес главной в выдаче: `/?src=…`, `/?intro=1`, utm и копии сайта на других адресах Vercel склеиваются сюда
+export const metadata: Metadata = { alternates: { canonical: "/" } };
+
 export default function LandingPage() {
-  return <Landing />;
+  return (
+    <>
+      <Landing />
+      <JsonLd data={landingLd} />
+    </>
+  );
 }

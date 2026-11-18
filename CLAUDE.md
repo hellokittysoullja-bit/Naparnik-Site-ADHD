@@ -577,6 +577,15 @@ squash) хвоста ветки, и следующий PR из-за этого �
   цепочке разбивки нет (5–7 с); замер по одному делу: медиана 1,35 с, p90 1,9 с. Разбивка идёт без общей инструкции кота
   (`noPersona`: «помогать НАЧИНАТЬ» тянуло план к старту), температура 0,3. Заготовка — не план: Фокус и бот говорят «не
   вышло, ещё раз». Проверка качества — `pnpm eval:breakdown out.json` (101 дело, судья только в стенде, не на сайте).
+- **SEO и нейропоиск (18.11, владелец: «делай GEO и SEO»).** Адрес сайта для поисковиков — `lib/site.ts` (`SITE_URL`: старый адрес
+  или `CANONICAL_HOST`; все абсолютные ссылки — через него). Canonical на каждой публичной странице, включая главную: ту же
+  сборку отдают несколько проектов Vercel на разных адресах, и `/?src=…`, `/?intro=1`, utm — одна страница. Разметка schema.org
+  (`lib/structured-data.ts`, `components/json-ld.tsx`): на главной Organization + WebSite + WebApplication, на тесте, методе и
+  «Помогает» — WebPage/Article/ItemList с крошками; только правда со страницы, без оценок и отзывов. `app/robots.txt/route.ts`
+  (текстом — у Next нет Clean-param для Яндекса): нейропоиск (GPTBot, ClaudeBot, PerplexityBot, YandexAdditional…) пущен явно,
+  /api закрыт, /app открыт намеренно (робот должен увидеть noindex). `app/llms.txt/route.ts` — карта сайта для ассистентов.
+  Подтверждение в Яндекс Вебмастере и Search Console — переменные Vercel `YANDEX_VERIFICATION`, `GOOGLE_SITE_VERIFICATION`.
+  Новая публичная страница — строка в `app/sitemap.ts`, в `llms.txt` и разметка. Тест — `tests/unit/seo.test.ts`.
 - **Проверки:** `pnpm check` (tsc + eslint + vitest), `pnpm test:e2e` (Playwright против прод-сборки, `e2e/`),
   CI — `.github/workflows/ci.yml`. Сборка больше не игнорирует ошибки типов. Каждый найденный баг — тест в `e2e/`
   или `tests/unit/`, который на старой сборке падает (проверено для всех текущих).
