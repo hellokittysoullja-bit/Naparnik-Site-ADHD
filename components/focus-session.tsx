@@ -1468,7 +1468,6 @@ export function FocusSession() {
                 }
               }}
               aria-label="Первый шаг"
-              autoFocus={!prefilledStep}
               enterKeyHint="go"
               placeholder="Открыть файл презентации"
               className="field"
