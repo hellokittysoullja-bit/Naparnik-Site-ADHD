@@ -443,7 +443,11 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
   const body = rect(stage.catBody)
   const bub = rect(stage.bubble)
   const clip = fin.list ? rect(fin.list) : null
-  const words = fin.texts.flatMap((el, j) => wordBoxes(el, j ? clip : null)).slice(0, a.geo.cells.length)
+  const allWords = fin.texts.flatMap((el, j) => wordBoxes(el, j ? clip : null))
+  const words = allWords.slice(0, a.geo.cells.length)
+  // слов больше, чем кусков (кусков не больше MAX_PIECES): лишние слова не ждут конца строки, а встают вместе с последними
+  // кусками — раньше «и пепельниц» появлялись позже соседей (владелец 19.11)
+  const extra = allWords.slice(a.geo.cells.length).filter((b) => b.visible)
   const s0 = fin.stamp0 ? rect(fin.stamp0) : null
   const pr = rect(a.print)
   window.clearTimeout(a.prep)
@@ -492,6 +496,24 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
   const O = { x: L.x + L.w * 0.5, y: L.y + L.h * 0.9 }
   let rnd = 97 + N
   const rand = () => ((rnd = (rnd * 16807) % 2147483647) / 2147483647)
+
+  const plateAt = (b: WordBox) => {
+    const box = div(layer, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px`, opacity: '0' })
+    const plate = div(box, { width: `${b.w}px`, height: `${b.h}px`, padding: '0', margin: '0' })
+    plate.className = 'wood-word'
+    const word = document.createElement('span')
+    word.textContent = b.text
+    Object.assign(word.style, { position: 'absolute', left: `${b.tx}px`, top: `${b.ty}px`, font: b.font, lineHeight: `${b.th}px`, whiteSpace: 'pre' })
+    plate.appendChild(word)
+    return box
+  }
+  extra.forEach((b, k) => {
+    const tL = landAt(Math.max(0, N - 1)) - T(60) + k * Math.min(stagger, T(25))
+    doneOf.set(b.el, Math.max(doneOf.get(b.el) ?? 0, tL + T(170)))
+    const box = plateAt(b)
+    ghostsOf.set(b.el, [...(ghostsOf.get(b.el) ?? []), box])
+    run(box, [{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'scale(1.12,.9)', offset: 0.55 }, { opacity: 1, transform: 'none' }], tL, tL + T(170), { fill: 'forwards', easing: 'ease-out' })
+  })
 
   words.forEach((b, i) => {
     const cell = a.geo.cells[i]

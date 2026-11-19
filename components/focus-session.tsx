@@ -1428,7 +1428,8 @@ export function FocusSession() {
                 )}
               </div>
               {/* остальные шаги — все, списком под карточкой, без прокрутки (владелец 17.11: вместо «ещё N — ждут в Делах») */}
-              <div data-rv-list className="-mx-1 min-h-0 flex-1 overflow-hidden px-1">
+              {/* relative z-[1]: тень записки (16 px вниз) ложится ПОД таблички — иначе верхняя строка темнела после сцены (19.11) */}
+              <div data-rv-list className="relative z-[1] -mx-1 min-h-0 flex-1 overflow-hidden px-1">
               {(fitRows ? others.slice(0, fitRows) : others).map((st, i) => (
                 <motion.button
                   key={st.text}
