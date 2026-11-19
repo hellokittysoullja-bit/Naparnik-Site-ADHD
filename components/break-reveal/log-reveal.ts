@@ -662,6 +662,8 @@ export function playLogReveal(
   const list: Animation[] = []
   const t0 = performance.now()
   const seen = new WeakMap<Element, Set<string>>()
+  // момент сцены, от которого считают задержки анимации раскола (см. doSplit); null — от момента создания
+  let frozen: number | null = null
   const run: Run = (el, kf, from, to, o) => {
     const props = new Set(kf.flatMap((k) => Object.keys(k).filter((p) => p !== 'offset' && p !== 'easing' && p !== 'composite')))
     const had = seen.get(el) ?? new Set<string>()
@@ -669,7 +671,7 @@ export function playLogReveal(
     props.forEach((p) => had.add(p))
     seen.set(el, had)
     // время сцены — от её начала: акт 2 создаётся позже, отрицательная задержка сразу ставит анимацию на нужный момент
-    const born = performance.now() - t0
+    const born = frozen ?? performance.now() - t0
     const a = el.animate(kf, { duration: Math.max(1, to - from), delay: from - born, fill, easing: 'ease', ...o })
     // метка «когда создана» — по ней покадровая проверка ставит любую анимацию на один и тот же момент сцены
     a.id = `rv:${Math.round(born)}`
@@ -689,7 +691,16 @@ export function playLogReveal(
     // отпечаток лапы улетает в карту штампов — переносим его из места полена (оно сейчас исчезнет) в слой сцены
     layer.appendChild(act1.print)
     const fin = hooks.split()
-    if (fin) shatter(scene, act1, before, fin)
+    if (!fin) return
+    // все анимации раскола отсчитываются от ОДНОГО момента — момента раскола. Раньше каждая — от своего создания: на
+    // слабом телефоне куски создаются 0,1 с и дольше, а стартуют в одном кадре, и созданные позже улетали вперёд соседей
+    // (рассинхрон слов); а если кадр раскола затягивался, начало взрыва пропадало — куски появлялись уже в полёте.
+    // Теперь первый нарисованный кадр — ровно начало взрыва, а конец сцены сдвигается на ту же задержку
+    frozen = Math.round(act1.tSplit)
+    shatter(scene, act1, before, fin)
+    frozen = null
+    const late = performance.now() - t0 - act1.tSplit
+    if (late > 0) end.effect?.updateTiming({ duration: Number(end.effect.getTiming().duration) + late })
   }
   const splitTimer = window.setTimeout(doSplit, Math.max(0, act1.tSplit - (performance.now() - t0)))
   const cleanup = () => {
