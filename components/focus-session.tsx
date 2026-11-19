@@ -512,7 +512,8 @@ export function FocusSession() {
             list = [...brokenSteps.slice(0, Math.max(0, i)), ...fresh, ...brokenSteps.slice(i + 1)]
           }
           setDealTitle(title)
-          if (!finer) startReveal(target, list, true)
+          // на полене — правильное название из базы (владелец 19.11: «Поемть» → «Поесть»), как и в «Делах»
+          if (!finer) startReveal(title, list, true)
           else setReceipt(null)
           setBrokenSteps(list)
           selectStep(fresh[0])
@@ -1338,7 +1339,7 @@ export function FocusSession() {
                 >
                   {brokenSteps &&
                     Array.from({ length: Math.min(brokenSteps.length + 1, 6) }, (_, i) => (
-                      <span key={i} className={`relative grid size-4 place-items-center rounded-full ${i === 0 ? 'bg-primary/20' : 'border border-dashed border-white/25'}`}>
+                      <span key={i} className={`relative grid size-4 place-items-center rounded-full ${i === 0 ? 'border border-[#0b0a0c] bg-[#4c4d52]' : 'border border-dashed border-white/25'}`}>
                         {i === 0 && <span data-rv-stamp className="rv-print block size-[11px]" />}
                         {i === 1 && <span className="absolute inset-0 rounded-full opacity-55" style={{ background: 'conic-gradient(var(--primary) 0 50%, transparent 50%)' }} />}
                       </span>
@@ -1428,7 +1429,8 @@ export function FocusSession() {
                 )}
               </div>
               {/* остальные шаги — все, списком под карточкой, без прокрутки (владелец 17.11: вместо «ещё N — ждут в Делах») */}
-              <div data-rv-list className="-mx-1 min-h-0 flex-1 overflow-hidden px-1">
+              {/* relative z-[1]: тень записки (16 px вниз) ложится ПОД таблички — иначе верхняя строка темнела после сцены (19.11) */}
+              <div data-rv-list className="relative z-[1] -mx-1 min-h-0 flex-1 overflow-hidden px-1">
               {(fitRows ? others.slice(0, fitRows) : others).map((st, i) => (
                 <motion.button
                   key={st.text}
@@ -1719,8 +1721,9 @@ export function FocusSession() {
                 {mm}:{ss}
               </div>
               {/* время окончания словами: при слепоте ко времени «к 19:40» понятнее, чем «осталось 12:31» */}
-              <p className="mt-0.5 font-mono text-[11px] uppercase tracking-widest text-primary/85">
-                {paused ? 'на паузе' : endLabel ? `закончишь к ${endLabel}` : ''}
+              {/* шрифт и цвет — как подпись «Какое дело сейчас висит?» на Доме (владелец 19.11) */}
+              <p className="mt-0.5 h-[18px] text-[16px] font-extrabold leading-[18px] text-[oklch(0.93_0.04_90)]">
+                {paused ? 'На паузе' : endLabel ? `Закончишь к ${endLabel}` : ''}
               </p>
             </div>
           )}
@@ -2080,13 +2083,13 @@ function RoundControl({
     >
       <span
         className={`grid place-items-center rounded-full transition-colors duration-150 group-focus-visible:ring-2 group-focus-visible:ring-ring ${
-          big ? 'size-14' : 'mt-1 size-12'
+          big ? 'size-14' : 'round-coin mb-1 mt-1 size-12'
         } ${
           active
             ? 'bg-primary text-primary-foreground'
             : big
               ? 'bg-[oklch(0.97_0.005_100)] text-[oklch(0.2_0.02_130)] shadow-[0_3px_0_oklch(0.7_0.01_100)]'
-              : 'border border-white/15 bg-white/5 text-foreground/90'
+              : 'text-foreground/90'
         }`}
       >
         {children}

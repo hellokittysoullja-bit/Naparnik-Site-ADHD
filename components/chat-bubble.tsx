@@ -183,7 +183,7 @@ export function ChatBubble({
     : 'chat-bubble-cat px-4 py-2.5 font-sans text-[0.95rem] leading-relaxed text-secondary-foreground'
 
   return (
-    <div className={`relative ${isUser ? 'ml-auto max-w-[82%]' : 'max-w-[88%]'}`}>
+    <div className={`relative max-w-[85%] ${isUser ? 'ml-auto' : ''}`}>
       {/* Иконка-цель ответа лежит ПОД пузырём, у края, который пузырь открывает протяжкой. Раньше она стояла
           СНАРУЖИ (-right-9): у пузыря человека это за правым краем экрана — иконку не было видно, а лента от неё
           становилась шире экрана и ездила вбок (скриншоты владельца 13.11). */}

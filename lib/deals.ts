@@ -160,6 +160,15 @@ export function setDealEstimate(id: string, minutes: (number | undefined)[]) {
   write(DEALS_KEY, deals)
 }
 
+/** «Очистить оценку» в инструментах дела: время снова скрыто до «Оценить» (минуты шагов остаются — посчитанное не теряется) */
+export function clearDealEstimate(id: string) {
+  const deals = getDeals()
+  const d = deals.find((x) => x.id === id)
+  if (!d || !d.estimated) return
+  d.estimated = false
+  write(DEALS_KEY, deals)
+}
+
 /** Время всего дела — все шаги, и сделанные тоже: «сколько это дело занимает» (как у goblin.tools) */
 export function dealTotalMinutes(deal: Deal): number {
   return deal.steps.reduce((a, s) => a + (s.minutes ?? 0), 0)

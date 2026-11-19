@@ -76,13 +76,6 @@ type FirstWord = {
  */
 const NIGHT_UNTIL_HOUR = 5;
 
-/** Готовые крошечные шаги: ноль решений до первого старта */
-const starterChips = [
-  "Открыть нужный файл",
-  "Убрать одну вещь со стола",
-  "Написать одно предложение",
-];
-
 /**
  * Дневник отсутствия: напарник жил на острове, пока человека не было.
  * Возврат через любопытство и привязанность, никогда — через вину.
@@ -229,7 +222,7 @@ function buildFirstWord(
       return {
         greeting:
           "Ты сказал, что вечно откладываешь. Это не лечится силой воли — только *крошечным стартом*. Я рядом.",
-        hint: "Выбери крошечный шаг ниже — или напиши, что висит.",
+        hint: "Напиши, что висит.",
         actionStep: null,
         showStarterChips: true,
       };
@@ -246,7 +239,7 @@ function buildFirstWord(
     return {
       greeting:
         "Привет. Я *Напарник*. Я не буду учить тебя жить — я помогаю начинать.",
-      hint: "Выбери крошечный шаг ниже — или напиши, что висит.",
+      hint: "Напиши, что висит.",
       actionStep: null,
       showStarterChips: true,
     };
@@ -810,24 +803,7 @@ export function HomeScreen() {
               </div>
             )}
 
-          {firstWord?.showStarterChips && (
-            <div className="flex flex-col gap-2">
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                Первый старт за 15 минут — тап и всё:
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {starterChips.map((chip) => (
-                  <Link
-                    key={chip}
-                    href={`/app/session?step=${encodeURIComponent(chip)}&d=15`}
-                    className="glass glass-interactive press inline-flex min-h-11 items-center rounded-full px-4 py-2 text-sm font-semibold text-foreground hover:text-primary"
-                  >
-                    {chip}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* «Первый старт за 15 минут — тап и всё:» и три чипа под ним убраны (владелец 19.11) */}
 
           {/* Весточки от напарника: предлагаем один раз, после того как
               человек уже назвал существо. Только там, где браузер их умеет.

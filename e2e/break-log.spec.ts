@@ -13,7 +13,8 @@ test('полено: сцена идёт поверх Фокуса, тап — с
   await page.waitForSelector('[data-rv="playing"]')
   // во время сцены шаги в DOM (диктор читает), но скрыты — их проявляет сцена; дело словами человека на карточке
   await expect(page.locator('[data-rv-source]')).toHaveText('Написать курсовую')
-  expect(await page.locator('[data-rv-step]').first().evaluate((el) => getComputedStyle(el).opacity)).toBe('0')
+  // строка шага может быть уже видна (раскол), но её таблички — только с посадки своих кусков
+  expect(await page.locator('[data-rv-step]').first().evaluate((el) => getComputedStyle(el).opacity === '0' || [...el.querySelectorAll('.wood-word')].every((w) => getComputedStyle(w).opacity === '0'))).toBe(true)
   // тап в любом месте — сразу итог
   await page.mouse.click(195, 120)
   await expect(page.locator('[data-rv="playing"]')).toHaveCount(0)
@@ -295,4 +296,62 @@ test('таблички шагов без line-clamp: слова целиком, 
     return { clamped: clamped.length, cut: cut.length, two }
   })
   expect(r).toEqual({ clamped: 0, cut: 0, two: true })
+})
+
+/**
+ * Скриншоты владельца 19.11: часть табличек вставала позже соседей («и пепельниц», «решении» полупрозрачная), вся строка
+ * подменялась разом, когда садилось её последнее слово. Теперь у каждого видимого слова свой кусок, и настоящая табличка
+ * показывается в кадр посадки своего куска — по порядку чтения, ровным шагом. Короткий, средний и очень длинный план.
+ */
+const plans: Record<string, string[]> = {
+  короткий: ['Открыть', 'Начать'],
+  средний: ['Выбросить сигареты и зажигалки из дома', 'Назначить конкретную дату отказа от курения', 'Запастись жвачкой или мятными конфетами против тяги', 'Избавиться от всех сигарет, зажигалок и пепельниц', 'Сообщить близким о своем решении', 'Пережить первые три дня'],
+  длинный: Array.from({ length: 8 }, (_, i) => `Очень длинный шаг номер ${i + 1} про то, как спокойно разобрать все бумаги на столе и сложить их в папки по темам`),
+}
+for (const [name, steps] of Object.entries(plans)) {
+  test(`таблички: ${name} план — каждое видимое слово встаёт в свой черёд, без отстающих`, async ({ page }) => {
+    await page.setViewportSize({ width: 430, height: 932 })
+    await page.route('**/api/breakdown', async (r) => {
+      await new Promise((x) => setTimeout(x, 600))
+      await r.fulfill({ json: { steps, source: 'library', title: 'Дело' } })
+    })
+    await page.goto('/app/session?step=' + encodeURIComponent('Дело') + '&break=1')
+    await page.waitForSelector('[data-rv="playing"]')
+    await page.waitForSelector('[data-rv-card]')
+    const res = await page.evaluate(() => {
+      const at = (el: Element) =>
+        el.getAnimations().filter((a) => a.id.startsWith('rv:')).map((a) => {
+          const k = (a.effect as KeyframeEffect).getKeyframes()
+          return k[0].opacity === '0' && k.at(-1)!.opacity === '1' ? +a.id.slice(3) + Number(a.effect!.getTiming().delay) : null
+        }).find((x) => x !== null)
+      const words = [...document.querySelectorAll('[data-rv-card] .wood-word, [data-rv-list] [data-rv-step] .wood-word')].filter((s) => {
+        const r = s.getBoundingClientRect()
+        const e = s.parentElement!.getBoundingClientRect()
+        const l = document.querySelector('[data-rv-list]')!.getBoundingClientRect()
+        return r.width > 0 && r.bottom <= e.bottom + 1 && r.right <= e.right + 1 && r.bottom <= l.bottom + 1
+      })
+      return words.map((w) => [w.textContent, at(w) ?? null] as const)
+    })
+    expect(res.length).toBeGreaterThan(1)
+    // у каждого видимого слова — своя посадка
+    expect(res.filter(([, t]) => t === null)).toEqual([])
+    const ts = res.map(([, t]) => t as number)
+    const steps2 = ts.slice(1).map((t, i) => t - ts[i])
+    // по порядку чтения и ровным шагом: ни одно слово не встаёт раньше предыдущего и не отстаёт больше чем на шаг каскада
+    expect(Math.min(...steps2)).toBeGreaterThanOrEqual(0)
+    expect(Math.max(...steps2) - Math.min(...steps2)).toBeLessThanOrEqual(2)
+  })
+}
+
+/** Владелец 19.11: дело с опечаткой («Поемть»), которое база узнала, на полене и дальше — правильным названием («Поесть») */
+test('полено: дело с опечаткой показывается правильным названием из базы', async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 664 })
+  await page.route('**/api/breakdown', async (r) => {
+    await new Promise((x) => setTimeout(x, 400))
+    await r.fulfill({ json: { steps: ['Решить, что съесть', 'Приготовить', 'Поесть спокойно'], source: 'library', title: 'Поесть' } })
+  })
+  await page.goto('/app/session?step=' + encodeURIComponent('Поемть') + '&break=1')
+  await page.waitForSelector('[data-rv="playing"]')
+  await expect(page.locator('[data-rv-source]')).toHaveText('Поесть')
+  await expect(page.locator('[data-rv-carve]').first()).toHaveText('Поесть')
 })

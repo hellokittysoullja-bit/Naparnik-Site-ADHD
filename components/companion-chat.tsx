@@ -9,8 +9,6 @@ import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from 'ai'
 import { AnimatePresence, motion, motionValue, useReducedMotion, type MotionValue } from 'motion/react'
 import { Button } from '@/components/ui/button'
-import { MascotDoll as MascotSvg } from '@/components/mascot-doll';
-import { type MascotAction, type MascotExpression } from '@/components/mascot-doll'
 import {
   ArrowDown,
   ArrowRight,
@@ -84,64 +82,12 @@ type CompanionChatProps = {
   holdFeed?: boolean
 }
 
-function CompanionAvatar({
-  reacting = false,
-  expression = 'calm',
-  action = 'idle',
-}: {
-  reacting?: boolean
-  expression?: MascotExpression
-  action?: MascotAction
-}) {
-  // Кружок-подложка: тёмный кот на тёмном фоне читался пятнышком.
-  // Тёплое кольцо — тот же очаг, что горит на лендинге и на «Доме»:
-  // отделяет существо от фона и держит один световой язык во всём
-  // продукте. Реакция на новую реплику — контингентный социальный
-  // отклик: существо отзывается на СОБЫТИЕ, а не мигает по таймеру.
-  // Два независимых сигнала: reacting — «это только что пришло» (кольцо),
-  // expression — «что вообще сказано» (мимика, читается из текста реплики
-  // в inferExpression). Радость от новизны и тон сообщения не всегда
-  // совпадают: кот может искренне обрадоваться (кольцо), сказав при этом
-  // что-то сфокусированное — оба сигнала живут не подменяя друг друга.
-  // Скейл-попап (#28) добавлен к кольцу: раньше «реакция» была только
-  // светом, без движения тела — существо будто моргало лампочкой, а не
-  // отзывалось. Один упругий вдох (1→1.2→1) на то же событие, что и
-  // кольцо — тот же контингентный триггер, ничего нового не добавлено
-  // в критерии срабатывания, только сила самого отклика.
-  const reduceMotion = useReducedMotion()
-  return (
-    <motion.div
-      className="relative flex size-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-secondary/80"
-      animate={
-        reduceMotion ? undefined : { scale: reacting ? [1, 1.2, 1] : 1 }
-      }
-      transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
-      style={{
-        boxShadow: reacting
-          ? '0 0 0 2px oklch(0.72 0.17 55 / 0.35), 0 0 14px -2px oklch(0.72 0.17 55 / 0.5)'
-          : '0 0 0 1px oklch(0.72 0.17 55 / 0.12)',
-        transition: 'box-shadow 260ms ease-out',
-      }}
-    >
-      <MascotSvg expression={reacting ? 'happy' : expression} action={action} size={30} />
-    </motion.div>
-  )
-}
-
-/** Мимика существа считается из содержимого его же реплики — ноль
-    дополнительного состояния, тот же приём, что у героя лендинга.
-    Карточка «Начинаю» — само предвкушение старта, excited оправдан сюжетно
-    сильнее, чем нейтральный calm. */
-function inferExpression(text: string, hasStartCard: boolean): MascotExpression {
-  if (hasStartCard) return 'excited'
-  if (/(!|отлично|получилось|горжусь|ура|красота|засчитан)/i.test(text)) return 'happy'
-  if (/\?\s*$/.test(text)) return 'focused'
-  return 'calm'
-}
 
 // Один форматтер на модуль: toLocaleTimeString создаёт его заново на каждый вызов — по разу на каждое сообщение на
 // каждый рендер ленты (MDN советует Intl.DateTimeFormat для повторного форматирования; аудит архитектуры 11.11).
 // Вывод тот же: те же локаль и опции.
+const noop = () => {}
+
 const CLOCK = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' })
 const DAY_MONTH = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' })
 
@@ -241,10 +187,8 @@ export function CompanionChat({
   const lastUserTextRef = useRef('')
   const reduceMotion = useReducedMotion()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  // Кот прикрывает глаза, когда человек надолго замолчал над непустым полем (ChatComposer сообщает о паузе).
   // Само поле, его текст, диктовка и стрелка отправки живут в ChatComposer: буква перерисовывает только поле,
-  // а не всю ленту с котами (замер: 30 реплик, CPU ×4 — ~30 мс работы на каждую букву).
-  const [userIdle, setUserIdle] = useState(false)
+  // а не всю ленту (замер: 30 реплик, CPU ×4 — ~30 мс работы на каждую букву)
 
   // Контекст держим И в ref (тело запроса читает его без рендера), И в
   // state: от него зависят быстрые ответы (#16), а ref перерисовку не
@@ -934,7 +878,9 @@ export function CompanionChat({
         // контекстом «Дома» верх ленты в покое (scrollTop 0) — это маскот и
         // приветствие: гасить их первые пиксели нельзя. Шапка и так открывает
         // ленту с чистого края (pt-4), растворять там нечего.
-        className={`flex flex-1 flex-col overflow-y-auto overflow-x-hidden ${
+        // overscroll-y-none: без «резинки» Safari — в самом низу ленты свайп вверх утягивал реплики и открывал под ними пустое
+        // небо (запись владельца 19.11). Вверху своё «потягивание» кота (PullToStretch), ему отскок не нужен
+        className={`flex flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-none ${
           header
             ? ""
             : "[mask-image:linear-gradient(to_bottom,transparent_0,black_24px)]"
@@ -945,7 +891,7 @@ export function CompanionChat({
             последний чип-подсказка целиком лежал под композером
             (elementFromPoint в его центре возвращал textarea, не сам чип) —
             реальному пальцу нечем было в него попасть без скролла. */}
-        <div className="mx-auto flex w-full max-w-md flex-col gap-3 px-4 pt-4 pb-6">
+        <div className="mx-auto flex w-full max-w-md flex-col gap-3 px-4 pt-4 pb-20">
           {/* Закреплённый контекст «Дома»: карточки едут в общем скролле над
               перепиской. Отделён от разговора крупной паузой (pb-2 + hairline),
               чтобы «контекст» и «беседа» читались как разные слои. */}
@@ -954,25 +900,8 @@ export function CompanionChat({
               {header}
             </div>
           ) : null}
-          {/* Полоса «переписка / напарник рядом» — только там, где над ней
-              уже стоит закреплённый контекст «Дома»: она отделяет «карточки
-              статуса» от «живого разговора» как два разных слоя экрана.
-              В чистом чате (Фокус) это нечего было бы отделять. */}
           {holdFeed ? null : (<>
-          {header ? (
-            <div className="conversation-rail flex items-center justify-between gap-3 px-1 pt-1">
-              <span className="font-mono text-[0.68rem] uppercase tracking-[0.18em] text-muted-foreground">
-                переписка
-              </span>
-              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span
-                  aria-hidden="true"
-                  className="size-1.5 rounded-full bg-primary shadow-[0_0_7px_oklch(0.86_0.22_130/0.5)]"
-                />
-                напарник рядом
-              </span>
-            </div>
-          ) : null}
+          {/* подписей «переписка» и «напарник рядом» нет (владелец 19.11) */}
           {/* приветствие — часть экрана, не событие: стоит с первого кадра (16.11, покадровый аудит — проявлялось при
               каждом открытии и обновлении) */}
           <motion.div
@@ -981,7 +910,6 @@ export function CompanionChat({
             animate={{ opacity: 1, y: 0 }}
             transition={SPRING_ITEM}
           >
-            <CompanionAvatar expression={userIdle ? 'listening' : 'calm'} />
             {/* Тот же материал, что у реплик ниже (.chat-bubble-cat):
                 приветствие и сообщения произносит один и тот же персонаж —
                 и один и тот же материал, с гарантированным контрастом
@@ -994,7 +922,7 @@ export function CompanionChat({
                 версию. --tail-fill/--tail-stroke зеркалят те же значения,
                 что ChatBubble ставит для isUser=false. */}
             <div
-              className="chat-bubble-cat relative max-w-[88%] rounded-2xl px-4 py-2.5 font-sans text-[0.95rem] leading-relaxed text-secondary-foreground"
+              className="chat-bubble-cat relative max-w-[85%] rounded-2xl px-4 py-2.5 font-sans text-[0.95rem] leading-relaxed text-secondary-foreground"
               style={{
                 ['--tail-fill' as string]: 'oklch(0.4 0.02 150 / 0.9)',
                 ['--tail-stroke' as string]: 'oklch(1 0 0 / 0.2)',
@@ -1007,7 +935,7 @@ export function CompanionChat({
 
           {messages.length === 0 && showSuggestions && (
             <motion.div
-              className="ml-10 flex flex-col gap-2"
+              className="flex flex-col gap-2"
               // без въезда: подсказки — часть экрана, а не событие; первый видимый кадр уже полный (16.11)
               initial={false}
             >
@@ -1063,18 +991,6 @@ export function CompanionChat({
             const isFirstOfGroup = !prev || prev.role !== message.role
             const isLastOfGroup = !next || next.role !== message.role
             const isUser = message.role === 'user'
-
-            // Мимика существа — из содержимого ЕГО ЖЕ реплики, ноль
-            // дополнительного состояния (тот же приём, что у героя
-            // лендинга). Карточка «Начинаю» — само предвкушение старта.
-            const fullText = message.parts
-              .filter((p) => p.type === 'text')
-              .map((p) => (p.type === 'text' ? p.text : ''))
-              .join(' ')
-            const hasStartCard = message.parts.some((p) => p.type === 'tool-startFocus')
-            const expression: MascotExpression = isUser
-              ? 'calm'
-              : inferExpression(fullText, hasStartCard)
 
             // Разделитель дня: только когда дата реально СМЕНИЛАСЬ между
             // соседними репликами — на свежем чате без истории делитель
@@ -1158,17 +1074,7 @@ export function CompanionChat({
                             }
                       }
                     >
-                      {!isUser &&
-                        (isFirstOfGroup ? (
-                          <CompanionAvatar
-                            reacting={reactingId === message.id}
-                            expression={userIdle ? 'listening' : expression}
-                          />
-                        ) : (
-                          // Место аватара держим всегда: без распорки вторая
-                          // реплика группы уезжала под аватар и колонка «плыла»
-                          <div className="size-9 shrink-0" aria-hidden="true" />
-                        ))}
+                      {/* аватарки кота у реплик нет (владелец 19.11, как в Telegram): кто говорит, видно по стороне и цвету */}
                       {/* Материал реплики вынесен в ChatBubble: там живут
                           SVG-хвостик (#10), глубина по скроллу (#13), реакции
                           долгим нажатием (#11) и swipe-to-reply (#12). */}
@@ -1203,7 +1109,7 @@ export function CompanionChat({
                   return (
                     <div
                       key={i}
-                      className="chat-bubble-cat ml-10 flex max-w-[85%] flex-col gap-1 rounded-2xl px-4 py-3"
+                      className="chat-bubble-cat flex max-w-[85%] flex-col gap-1 rounded-2xl px-4 py-3"
                     >
                       <span className="flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-primary">
                         <CalendarCheck className="size-3.5" aria-hidden="true" />
@@ -1228,7 +1134,7 @@ export function CompanionChat({
                   return (
                     <div
                       key={i}
-                      className="glass start-card-breathe ml-10 flex max-w-[85%] flex-col gap-2 rounded-2xl px-4 py-3"
+                      className="glass start-card-breathe flex max-w-[85%] flex-col gap-2 rounded-2xl px-4 py-3"
                       style={{ '--glass-border': 'color-mix(in oklab, var(--primary) 45%, transparent)' } as CSSProperties}
                     >
                       <span className="font-mono text-xs uppercase tracking-widest text-primary">
@@ -1266,7 +1172,7 @@ export function CompanionChat({
                   return (
                     <span
                       key={i}
-                      className="ml-10 flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-muted-foreground"
+                      className="flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-muted-foreground"
                     >
                       <Sparkles className="size-3" aria-hidden="true" />
                       {label}
@@ -1282,7 +1188,7 @@ export function CompanionChat({
                   return (
                     <span
                       key={i}
-                      className="ml-10 flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-muted-foreground"
+                      className="flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-muted-foreground"
                     >
                       <Sparkles className="size-3" aria-hidden="true" />
                       запомнил: {fact}
@@ -1344,7 +1250,6 @@ export function CompanionChat({
                   кот думает, а не радуется. */}
               {/* Кот «думает»: глаза вверх, мысли всплывают точками —
                   диегетичное ожидание вместо безликого спиннера */}
-              <CompanionAvatar expression="calm" action="think" />
               {/* Тот же .glass + тень, что у реплик: пузырь-ожидание — это
                   форма реплики В ПРОЦЕССЕ, а не отдельный виджет рядом с ней.
                   Три тлеющих угля (.ember-dot, globals.css) — тот же огонь,
@@ -1381,11 +1286,9 @@ export function CompanionChat({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            // Справа и НЕпрозрачная: кнопка плавает над лентой, а стекло
-            // пропускало текст сообщения насквозь и читалось как дефект.
-            // Край вместо центра — тот же выбор, что в мессенджерах: не
-            // закрывает середину реплики, куда смотрят при чтении.
-            className="press pointer-events-auto absolute bottom-28 right-4 z-20 flex size-11 items-center justify-center rounded-full border border-white/12 bg-secondary shadow-[0_6px_18px_-6px_oklch(0_0_0/0.7)]"
+            // НЕпрозрачная: кнопка плавает над лентой, а стекло пропускало текст насквозь. По центру над полем, как у
+            // ChatGPT (образец владельца 19.11); справа она садилась на угол реплики
+            className="press pointer-events-auto absolute inset-x-0 bottom-[4.5rem] z-20 mx-auto flex size-11 items-center justify-center rounded-full border border-white/12 bg-secondary shadow-[0_6px_18px_-6px_oklch(0_0_0/0.7)]"
           >
             <ArrowDown className="size-4 text-foreground" aria-hidden="true" />
           </motion.button>
@@ -1408,7 +1311,7 @@ export function CompanionChat({
         replyTo={replyTo}
         onCancelReply={cancelReply}
         onSend={send}
-        onIdleChange={setUserIdle}
+        onIdleChange={noop}
       />
     </div>
   )

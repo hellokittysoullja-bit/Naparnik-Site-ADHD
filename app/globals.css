@@ -730,9 +730,9 @@ body[data-focus-immersive] nav[aria-label="Основная навигация"]
   --glass-border-bottom: oklch(1 0 0 / 0.14);
   --glass-border: oklch(1 0 0 / 0.24);
   transform: translateY(-1px);
+  /* без лаймового отсвета: пустое поле не «горит» зелёным просто от фокуса (владелец 19.11) — свет только у .is-typing */
   box-shadow:
     inset 0 1px 0 oklch(1 0 0 / 0.24),
-    0 8px 16px -6px oklch(0.86 0.22 130 / 0.32),
     0 18px 30px -14px oklch(0 0 0 / 0.65);
 }
 
@@ -1347,6 +1347,23 @@ body[data-companion-speaking] .app-hearth {
   background: oklch(0.27 0.016 130 / 0.92);
   border: 1px solid oklch(1 0 0 / 0.1);
   color: var(--foreground);
+}
+/* «+5» и «мысль» под таймером — объёмные монетки (образец владельца 19.11): лицо со светом сверху, толстый бортик
+   снизу темнее; при нажатии лицо садится на бортик. Только transform/box-shadow — раскладка не прыгает */
+.round-coin {
+  --coin-lip: oklch(0.25 0.008 130);
+  background: linear-gradient(180deg, oklch(0.44 0.01 130), oklch(0.36 0.01 130));
+  box-shadow: 0 5px 0 var(--coin-lip), 0 6px 8px oklch(0 0 0 / 0.45), inset 0 1px 0 oklch(1 0 0 / 0.16);
+  transition: transform 110ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 110ms cubic-bezier(0.22, 1, 0.36, 1), background-color 150ms;
+}
+.round-coin.bg-primary {
+  --coin-lip: oklch(from var(--primary) calc(l - 0.2) calc(c * 0.92) h);
+  background-image: none;
+}
+.group:active .round-coin {
+  transform: translateY(5px);
+  box-shadow: 0 0 0 var(--coin-lip), 0 1px 2px oklch(0 0 0 / 0.45), inset 0 1px 0 oklch(1 0 0 / 0.16);
+  transition-duration: 45ms;
 }
 .btn-chunky[data-warm] {
   --lip: oklch(0.7 0.16 70);
@@ -2180,6 +2197,12 @@ body:is([data-home-camp], [data-own-scene]) .glass-nav {
 .tool-btn:active:not(:disabled) { transform: translateY(1px); background: color-mix(in oklab, var(--primary) 12%, transparent); }
 .tool-btn:disabled { opacity: 0.5; }
 .tool-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+/* меню молотка в «Делах» (19.11): тёмная подложка под списком, серая и красная кнопки */
+.tool-menu { background: oklch(0.19 0.01 130); border: 1px solid oklch(1 0 0 / 0.12); box-shadow: 0 18px 40px -12px oklch(0 0 0 / 0.8), 0 2px 0 oklch(0 0 0 / 0.3); }
+.tool-btn-muted { border-color: oklch(1 0 0 / 0.22); color: var(--muted-foreground); }
+.tool-btn-muted:active:not(:disabled) { background: oklch(1 0 0 / 0.06); }
+.tool-btn-danger { border-color: oklch(0.68 0.19 25 / 0.6); color: oklch(0.74 0.17 25); }
+.tool-btn-danger:active:not(:disabled) { background: oklch(0.68 0.19 25 / 0.12); }
 /* тропинка из лапок (предложение 18.11): отпечаток лапы нашего кота на шаг, сделанный загорается и подпрыгивает */
 .paw-dot {
   width: 11px; height: 10px; background: oklch(1 0 0 / 0.16);
@@ -2463,9 +2486,8 @@ html:has(.app-scroll) body {
 @media (max-width: 340px) { .note-btn { padding-inline: 6px; font-size: 11px; } .note-btn > svg { display: none; } }
 @media (prefers-reduced-motion: reduce) { .note-star, .note-seal-star { animation: none; } }
 .rv-print {
-  background: var(--primary);
-  -webkit-mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
-  mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
+  /* лапка как у кота (владелец 19.11): подушечки оранжевые с тёмным контуром, форма прежняя */
+  background: url('/mascot/reveal/print-cat.svg') center / contain no-repeat;
   transform: rotate(-12deg);
 }
 
