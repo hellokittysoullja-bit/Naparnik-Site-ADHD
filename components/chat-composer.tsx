@@ -87,9 +87,9 @@ export const ChatComposer = memo(function ChatComposer({
         e.preventDefault()
         submit()
       }}
-      // затухание тянется вниз до самого меню (-mb-20 — под отступ страницы под меню): раньше между полем и меню
-      // оставалась полоса фона с зелёным отсветом холма и линией — «шов» (скриншот владельца 19.11)
-      className="z-10 -mb-20 bg-gradient-to-t from-background via-background/85 to-transparent px-4 pt-6 pb-[calc(0.75rem+5rem)]"
+      // Поле парит поверх ленты, как в ChatGPT (владелец 19.11): реплики уезжают ПОД него, без затемнения и растворения —
+      // раньше лента обрезалась ровной линией над полем. Полоса формы касания не ловит, только цитата и само поле
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 pb-3 [&>*]:pointer-events-auto"
     >
       {/* #12 · Цитата отвечаемой реплики. Появляется над полем, а не внутри
           него: текст ответа не должен смешиваться с текстом цитаты. Крестик
@@ -142,7 +142,9 @@ export const ChatComposer = memo(function ChatComposer({
           тот же язык, что просил §7 разбора: поле как поверхность,
           которая ловит свет, а не мигает. */}
       <div
-        // тоньше, как поле Telegram (владелец 19.11): 40 px в одну строку вместо 57, без значков внутри
+        // тоньше, как поле Telegram (владелец 19.11): 44 px в одну строку вместо 57, без значков внутри
+        // непрозрачное, как у ChatGPT: лента идёт под полем, и стекло пропускало бы текст реплик сквозь подсказку
+        style={{ background: 'oklch(0.2 0.008 130)' }}
         className={`chat-input-dock glass mx-auto flex max-w-md items-end gap-1 rounded-[1.25rem] py-0 pl-4 pr-1 shadow-[0_10px_30px_-12px_oklch(0_0_0/0.55)] transition-[transform,box-shadow,border-color] duration-200 ${hasText ? 'is-typing' : ''}`}
       >
         <textarea
@@ -178,7 +180,7 @@ export const ChatComposer = memo(function ChatComposer({
           // всей ручной работы с .chat-input-dock ниже, что и было
           // настоящим источником «неонового кольца», а не сам док.
           // focus-visible:outline-none даёт (0,2,0) и наконец побеждает.
-          className="min-h-10 max-h-[7.5rem] flex-1 resize-none bg-transparent py-2 text-base leading-6 text-foreground caret-primary outline-none focus-visible:outline-none placeholder:text-muted-foreground"
+          className="min-h-11 max-h-[7.5rem] flex-1 resize-none bg-transparent py-2.5 text-base leading-6 text-foreground caret-primary outline-none focus-visible:outline-none placeholder:text-muted-foreground"
         />
         {/* #29 · Один слот справа вместо двух одновременных иконок.
             Микрофон и «отправить» никогда не нужны в один и тот же
@@ -198,7 +200,7 @@ export const ChatComposer = memo(function ChatComposer({
               animate={{ scale: 1, opacity: 1 }}
               exit={swapOut}
               transition={reduceMotion ? { duration: 0.1 } : SPRING_SNAPPY}
-              className="flex size-10 shrink-0 items-center justify-center"
+              className="flex size-11 shrink-0 items-center justify-center"
             >
               <Button
                 type="submit"

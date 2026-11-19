@@ -891,7 +891,7 @@ export function CompanionChat({
             последний чип-подсказка целиком лежал под композером
             (elementFromPoint в его центре возвращал textarea, не сам чип) —
             реальному пальцу нечем было в него попасть без скролла. */}
-        <div className="mx-auto flex w-full max-w-md flex-col gap-3 px-4 pt-4 pb-6">
+        <div className="mx-auto flex w-full max-w-md flex-col gap-3 px-4 pt-4 pb-20">
           {/* Закреплённый контекст «Дома»: карточки едут в общем скролле над
               перепиской. Отделён от разговора крупной паузой (pb-2 + hairline),
               чтобы «контекст» и «беседа» читались как разные слои. */}
@@ -1303,11 +1303,9 @@ export function CompanionChat({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            // Справа и НЕпрозрачная: кнопка плавает над лентой, а стекло
-            // пропускало текст сообщения насквозь и читалось как дефект.
-            // Край вместо центра — тот же выбор, что в мессенджерах: не
-            // закрывает середину реплики, куда смотрят при чтении.
-            className="press pointer-events-auto absolute bottom-28 right-4 z-20 flex size-11 items-center justify-center rounded-full border border-white/12 bg-secondary shadow-[0_6px_18px_-6px_oklch(0_0_0/0.7)]"
+            // НЕпрозрачная: кнопка плавает над лентой, а стекло пропускало текст насквозь. По центру над полем, как у
+            // ChatGPT (образец владельца 19.11); справа она садилась на угол реплики
+            className="press pointer-events-auto absolute inset-x-0 bottom-[4.5rem] z-20 mx-auto flex size-11 items-center justify-center rounded-full border border-white/12 bg-secondary shadow-[0_6px_18px_-6px_oklch(0_0_0/0.7)]"
           >
             <ArrowDown className="size-4 text-foreground" aria-hidden="true" />
           </motion.button>
