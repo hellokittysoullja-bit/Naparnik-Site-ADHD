@@ -110,7 +110,9 @@ export const ChatComposer = memo(function ChatComposer({
         e.preventDefault()
         submit()
       }}
-      className="z-10 bg-gradient-to-t from-background via-background/85 to-transparent px-4 pt-6 pb-3"
+      // затухание тянется вниз до самого меню (-mb-20 — под отступ страницы под меню): раньше между полем и меню
+      // оставалась полоса фона с зелёным отсветом холма и линией — «шов» (скриншот владельца 19.11)
+      className="z-10 -mb-20 bg-gradient-to-t from-background via-background/85 to-transparent px-4 pt-6 pb-[calc(0.75rem+5rem)]"
     >
       {/* #12 · Цитата отвечаемой реплики. Появляется над полем, а не внутри
           него: текст ответа не должен смешиваться с текстом цитаты. Крестик
