@@ -23,7 +23,7 @@
 import { celebrate, preloadConfetti } from './confetti'
 
 const PAW = '/mascot/reveal/paw.webp'
-const PRINT = '/mascot/reveal/print.webp'
+const PRINT = '/mascot/reveal/print-cat.svg'
 
 /** темп по стажу: первые разы — вся сцена, потом быстрее (привыкание, «Google приучил к долям секунды») */
 export function revealSpeed(nth: number) {
@@ -90,7 +90,9 @@ function div(layer: HTMLElement, style: Partial<CSSStyleDeclaration>, before?: N
 function logSvg(w: number, h: number, seed: number, shade?: LogShade) {
   const r = h / 2
   const capRx = h * 0.3
-  let rnd = seed
+  // узор коры у всех полен один (полено ожидания, полено сцены, куски): seed отвечает только за id градиентов —
+  // раньше узор шёл от него же, и на «Сейчас расколю!» полено подменялось другим (сучок и прожилки прыгали, владелец 19.11)
+  let rnd = 7
   const rand = () => ((rnd = (rnd * 16807) % 2147483647) / 2147483647)
   const grain: string[] = []
   for (let i = 0; i < 11; i++) {
@@ -401,7 +403,7 @@ function strike(s: Scene) {
   const ps = 24
   const print = div(under, {
     left: `${hit.x - ps / 2}px`, top: `${L.y + L.h * 0.16 - ps / 2}px`, width: `${ps}px`, height: `${(ps * 91) / 100}px`, opacity: '0',
-    background: '#a0ec2a', webkitMaskImage: `url(${PRINT})`, maskImage: `url(${PRINT})`, webkitMaskSize: '100% 100%', maskSize: '100% 100%',
+    background: `url(${PRINT}) center / contain no-repeat`,
   } as Partial<CSSStyleDeclaration>)
   run(print, [{ transform: 'scale(1.6) rotate(-30deg)', opacity: 0 }, { transform: 'scale(1) rotate(-12deg)', opacity: 0.95 }], tImp, tImp + T(60), { fill: 'forwards', easing: 'cubic-bezier(.6,0,.4,1)' })
 
@@ -719,7 +721,9 @@ export function nextBreakCount(): number {
 
 /** Лапа и отпечаток — заранее, чтобы на первом ударе они уже были (оба файла крошечные: 20 КБ и 1 КБ) */
 export function preloadReveal() {
-  preloadConfetti(PRINT)
+  preloadConfetti('/mascot/reveal/print.webp') // конфетти красит силуэт лапы сам
+  const stamp = typeof window !== 'undefined' ? new Image() : null
+  if (stamp) stamp.src = PRINT
   if (typeof window !== 'undefined') {
     const im = new Image()
     im.src = PAW

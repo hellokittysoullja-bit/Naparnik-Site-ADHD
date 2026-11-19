@@ -1338,7 +1338,7 @@ export function FocusSession() {
                 >
                   {brokenSteps &&
                     Array.from({ length: Math.min(brokenSteps.length + 1, 6) }, (_, i) => (
-                      <span key={i} className={`relative grid size-4 place-items-center rounded-full ${i === 0 ? 'bg-primary/20' : 'border border-dashed border-white/25'}`}>
+                      <span key={i} className={`relative grid size-4 place-items-center rounded-full ${i === 0 ? 'border border-[#0b0a0c] bg-[#4c4d52]' : 'border border-dashed border-white/25'}`}>
                         {i === 0 && <span data-rv-stamp className="rv-print block size-[11px]" />}
                         {i === 1 && <span className="absolute inset-0 rounded-full opacity-55" style={{ background: 'conic-gradient(var(--primary) 0 50%, transparent 50%)' }} />}
                       </span>
@@ -1719,8 +1719,9 @@ export function FocusSession() {
                 {mm}:{ss}
               </div>
               {/* время окончания словами: при слепоте ко времени «к 19:40» понятнее, чем «осталось 12:31» */}
-              <p className="mt-0.5 font-mono text-[11px] uppercase tracking-widest text-primary/85">
-                {paused ? 'на паузе' : endLabel ? `закончишь к ${endLabel}` : ''}
+              {/* шрифт и цвет — как подпись «Какое дело сейчас висит?» на Доме (владелец 19.11) */}
+              <p className="mt-0.5 h-[18px] text-[16px] font-extrabold leading-[18px] text-[oklch(0.93_0.04_90)]">
+                {paused ? 'На паузе' : endLabel ? `Закончишь к ${endLabel}` : ''}
               </p>
             </div>
           )}

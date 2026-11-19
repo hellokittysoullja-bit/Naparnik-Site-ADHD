@@ -2463,9 +2463,8 @@ html:has(.app-scroll) body {
 @media (max-width: 340px) { .note-btn { padding-inline: 6px; font-size: 11px; } .note-btn > svg { display: none; } }
 @media (prefers-reduced-motion: reduce) { .note-star, .note-seal-star { animation: none; } }
 .rv-print {
-  background: var(--primary);
-  -webkit-mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
-  mask: url('/mascot/reveal/print.webp') center / contain no-repeat;
+  /* лапка как у кота (владелец 19.11): подушечки оранжевые с тёмным контуром, форма прежняя */
+  background: url('/mascot/reveal/print-cat.svg') center / contain no-repeat;
   transform: rotate(-12deg);
 }
 
