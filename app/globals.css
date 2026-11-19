@@ -2197,6 +2197,12 @@ body:is([data-home-camp], [data-own-scene]) .glass-nav {
 .tool-btn:active:not(:disabled) { transform: translateY(1px); background: color-mix(in oklab, var(--primary) 12%, transparent); }
 .tool-btn:disabled { opacity: 0.5; }
 .tool-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+/* меню молотка в «Делах» (19.11): тёмная подложка под списком, серая и красная кнопки */
+.tool-menu { background: oklch(0.17 0.008 130 / 0.9); border: 1px solid oklch(1 0 0 / 0.08); }
+.tool-btn-muted { border-color: oklch(1 0 0 / 0.22); color: var(--muted-foreground); }
+.tool-btn-muted:active:not(:disabled) { background: oklch(1 0 0 / 0.06); }
+.tool-btn-danger { border-color: oklch(0.68 0.19 25 / 0.6); color: oklch(0.74 0.17 25); }
+.tool-btn-danger:active:not(:disabled) { background: oklch(0.68 0.19 25 / 0.12); }
 /* тропинка из лапок (предложение 18.11): отпечаток лапы нашего кота на шаг, сделанный загорается и подпрыгивает */
 .paw-dot {
   width: 11px; height: 10px; background: oklch(1 0 0 / 0.16);

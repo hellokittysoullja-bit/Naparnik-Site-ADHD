@@ -5,7 +5,7 @@ import { useFirstFrameReady } from "@/lib/first-frame";
 import { useClientMount } from "@/hooks/use-client-mount";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
-import { BookmarkPlus, Check, ChevronDown, Clock, Clock3, Hammer, LayoutList, Moon, Play, Plus, SlidersHorizontal, Sparkles, Sun, Sunrise, X } from "lucide-react";
+import { BookmarkPlus, Check, ChevronDown, Clock, Clock3, Eraser, Hammer, Trash2, LayoutList, Moon, Play, Plus, SlidersHorizontal, Sparkles, Sun, Sunrise, X } from "lucide-react";
 import { MascotDoll } from "@/components/mascot-doll";
 import { DealIcon } from "@/components/deal-icon";
 import { StepCheck } from "@/components/step-check";
@@ -18,6 +18,7 @@ import {
   dealTotalMinutes,
   formatDuration,
   saveMyReady,
+  clearDealEstimate,
   setDealEstimate,
   getCards,
   getDeals,
@@ -166,21 +167,7 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
       <div className="flex items-start gap-3 p-3">
         <div className="flex shrink-0 flex-col items-center gap-2">
           <DealIcon name={dealIcon(deal.title)} size={40} done={all} />
-          <button
-            type="button"
-            onClick={() => {
-              setTools((v) => !v);
-              setToolNote(null);
-            }}
-            aria-expanded={tools}
-            aria-label={`Инструменты: ${deal.title}`}
-            className={`press inline-flex h-7 w-11 items-center justify-center gap-0.5 rounded-full border text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-              tools ? "border-primary/60 bg-primary/12 text-primary" : "border-white/12"
-            }`}
-          >
-            <Hammer className="size-3.5" aria-hidden="true" />
-            <ChevronDown className={`size-3 transition-transform duration-200 ${tools ? "rotate-180" : ""}`} aria-hidden="true" />
-          </button>
+          {/* под значком пусто: молоток переехал под зелёную кнопку (владелец 19.11) */}
         </div>
         <button
           type="button"
@@ -200,23 +187,40 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
           )}
           {deal.steps.length > 1 && <PawTrail steps={deal.steps} />}
         </button>
-        {next ? (
-          <Link
-            href={sessionHref(next.text)}
-            aria-label={`Начать шаг: ${next.text}`}
-            className="btn-press grid size-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        <div className="flex shrink-0 flex-col items-center gap-2">
+          {next ? (
+            <Link
+              href={sessionHref(next.text)}
+              aria-label={`Начать шаг: ${next.text}`}
+              className="btn-press grid size-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              <Play className="size-[18px] translate-x-[1px] fill-current" aria-hidden="true" />
+            </Link>
+          ) : deal.steps.length === 0 ? (
+            <Link
+              href={sessionHref(deal.title, true)}
+              aria-label={`Разломать на шаги: ${deal.title}`}
+              className="press grid size-11 shrink-0 place-items-center rounded-full border border-primary/40 bg-primary/10 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Sparkles className="size-[18px]" aria-hidden="true" />
+            </Link>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              setTools((v) => !v);
+              setToolNote(null);
+            }}
+            aria-expanded={tools}
+            aria-label={`Инструменты: ${deal.title}`}
+            className={`press inline-flex h-7 w-11 items-center justify-center gap-0.5 rounded-full border text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              tools ? "border-primary/60 bg-primary/12 text-primary" : "border-white/12"
+            }`}
           >
-            <Play className="size-[18px] translate-x-[1px] fill-current" aria-hidden="true" />
-          </Link>
-        ) : deal.steps.length === 0 ? (
-          <Link
-            href={sessionHref(deal.title, true)}
-            aria-label={`Разломать на шаги: ${deal.title}`}
-            className="press grid size-11 shrink-0 place-items-center rounded-full border border-primary/40 bg-primary/10 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <Sparkles className="size-[18px]" aria-hidden="true" />
-          </Link>
-        ) : null}
+            <Hammer className="size-3.5" aria-hidden="true" />
+            <ChevronDown className={`size-3 transition-transform duration-200 ${tools ? "rotate-180" : ""}`} aria-hidden="true" />
+          </button>
+        </div>
       </div>
       <AnimatePresence initial={false}>
         {tools && (
@@ -227,7 +231,26 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
             transition={{ duration: reduce ? 0.1 : 0.22, ease: EASE }}
             className="overflow-hidden"
           >
-            <div className="flex flex-col gap-2 px-3 pb-3" role="group" aria-label="Инструменты">
+            {/* список инструментов, как меню goblin.tools, в наших цветах (владелец 19.11): кнопки-строки во всю ширину,
+                удаление отдельно и красным */}
+            <div className="tool-menu mx-3 mb-3 flex flex-col gap-2 rounded-2xl p-2.5" role="group" aria-label="Инструменты">
+              <button type="button" disabled={busy} onClick={() => void runEstimate()} className="tool-btn">
+                <Clock className={`size-4 ${busy ? "animate-spin [animation-duration:1.6s]" : ""}`} aria-hidden="true" />
+                {busy ? "Считаю время…" : "Оценить время"}
+              </button>
+              {deal.estimated && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearDealEstimate(deal.id);
+                    setTools(false);
+                  }}
+                  className="tool-btn tool-btn-muted"
+                >
+                  <Eraser className="size-4" aria-hidden="true" />
+                  Очистить оценку
+                </button>
+              )}
               <button
                 type="button"
                 disabled={!deal.steps.length}
@@ -239,9 +262,10 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
                 {saved ? <Check className="size-4" strokeWidth={3} aria-hidden="true" /> : <BookmarkPlus className="size-4" aria-hidden="true" />}
                 {saved ? "Лежит в «Готовых»" : "Сохранить как готовое дело"}
               </button>
-              <button type="button" disabled={busy} onClick={() => void runEstimate()} className="tool-btn">
-                <Clock className={`size-4 ${busy ? "animate-spin [animation-duration:1.6s]" : ""}`} aria-hidden="true" />
-                {busy ? "Считаю время…" : "Оценить время"}
+              <span aria-hidden="true" className="my-0.5 h-px bg-white/8" />
+              <button type="button" onClick={() => removeDeal(deal.id)} className="tool-btn tool-btn-danger">
+                <Trash2 className="size-4" aria-hidden="true" />
+                Удалить дело
               </button>
               {toolNote && <p className="px-1 text-[13px] text-muted-foreground">{toolNote}</p>}
             </div>

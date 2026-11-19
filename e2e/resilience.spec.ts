@@ -91,5 +91,5 @@ test('испорченная память и переход по табу: До�
   await page.getByRole('link', { name: 'Поговорить с котом' }).click()
   await expect(page.getByText('Следующий старт вырастит')).toBeVisible()
   await expect(page.getByText('Я споткнулся')).toHaveCount(0)
-  await expect(page.locator('.conversation-rail')).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Сообщение напарнику' })).toBeVisible()
 })

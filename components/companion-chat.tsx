@@ -900,25 +900,8 @@ export function CompanionChat({
               {header}
             </div>
           ) : null}
-          {/* Полоса «переписка / напарник рядом» — только там, где над ней
-              уже стоит закреплённый контекст «Дома»: она отделяет «карточки
-              статуса» от «живого разговора» как два разных слоя экрана.
-              В чистом чате (Фокус) это нечего было бы отделять. */}
           {holdFeed ? null : (<>
-          {header ? (
-            <div className="conversation-rail flex items-center justify-between gap-3 px-1 pt-1">
-              <span className="font-mono text-[0.68rem] uppercase tracking-[0.18em] text-muted-foreground">
-                переписка
-              </span>
-              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span
-                  aria-hidden="true"
-                  className="size-1.5 rounded-full bg-primary shadow-[0_0_7px_oklch(0.86_0.22_130/0.5)]"
-                />
-                напарник рядом
-              </span>
-            </div>
-          ) : null}
+          {/* подписей «переписка» и «напарник рядом» нет (владелец 19.11) */}
           {/* приветствие — часть экрана, не событие: стоит с первого кадра (16.11, покадровый аудит — проявлялось при
               каждом открытии и обновлении) */}
           <motion.div
