@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFirstFrameReady } from "@/lib/first-frame";
 import { useClientMount } from "@/hooks/use-client-mount";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -119,6 +119,21 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
   const [busy, setBusy] = useState(false);
   const [toolNote, setToolNote] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // меню закрывается тапом мимо него и Esc, как любое всплывающее меню
+  const toolsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!tools) return;
+    const away = (e: PointerEvent) => {
+      if (!toolsRef.current?.contains(e.target as Node)) setTools(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setTools(false);
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [tools]);
   const next = nextStepOf(deal);
   const done = deal.steps.filter((s) => s.done).length;
   const all = deal.steps.length > 0 && done === deal.steps.length;
@@ -161,7 +176,7 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96, transition: { duration: 0.16 } }}
       transition={{ duration: reduce ? 0.1 : 0.26, delay: reduce ? 0 : Math.min(i, 7) * 0.05, ease: EASE }}
-      className={`deal-card rounded-[20px] ${current ? "deal-card-now" : ""}`}
+      className={`deal-card relative rounded-[20px] ${current ? "deal-card-now" : ""} ${tools ? "z-30" : ""}`}
     >
       {/* название выше (владелец 18.11): строка не по центру карточки, а от верха — под значком теперь «инструменты» */}
       <div className="flex items-start gap-3 p-3">
@@ -187,7 +202,7 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
           )}
           {deal.steps.length > 1 && <PawTrail steps={deal.steps} />}
         </button>
-        <div className="flex shrink-0 flex-col items-center gap-2">
+        <div ref={toolsRef} className="relative flex shrink-0 flex-col items-center gap-2">
           {next ? (
             <Link
               href={sessionHref(next.text)}
@@ -220,58 +235,58 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
             <Hammer className="size-3.5" aria-hidden="true" />
             <ChevronDown className={`size-3 transition-transform duration-200 ${tools ? "rotate-180" : ""}`} aria-hidden="true" />
           </button>
-        </div>
-      </div>
-      <AnimatePresence initial={false}>
-        {tools && (
-          <motion.div
-            initial={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
-            animate={reduce ? { opacity: 1 } : { height: "auto", opacity: 1 }}
-            exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
-            transition={{ duration: reduce ? 0.1 : 0.22, ease: EASE }}
-            className="overflow-hidden"
-          >
-            {/* список инструментов, как меню goblin.tools, в наших цветах (владелец 19.11): кнопки-строки во всю ширину,
-                удаление отдельно и красным */}
-            <div className="tool-menu mx-3 mb-3 flex flex-col gap-2 rounded-2xl p-2.5" role="group" aria-label="Инструменты">
-              <button type="button" disabled={busy} onClick={() => void runEstimate()} className="tool-btn">
-                <Clock className={`size-4 ${busy ? "animate-spin [animation-duration:1.6s]" : ""}`} aria-hidden="true" />
-                {busy ? "Считаю время…" : "Оценить время"}
-              </button>
-              {deal.estimated && (
+          {/* меню молотка всплывает поверх, как у goblin.tools (владелец 19.11): карточка не раскрывается */}
+          <AnimatePresence>
+            {tools && (
+              <motion.div
+                initial={reduce ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={reduce ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.98, transition: { duration: 0.12 } }}
+                transition={{ duration: reduce ? 0.1 : 0.18, ease: EASE }}
+                style={{ transformOrigin: "top right" }}
+                className="absolute right-0 top-full z-30 mt-2 w-[min(17.5rem,calc(100vw-3.5rem))]"
+              >
+              <div className="tool-menu flex flex-col gap-2 rounded-2xl p-2.5" role="group" aria-label="Инструменты">
+                <button type="button" disabled={busy} onClick={() => void runEstimate()} className="tool-btn">
+                  <Clock className={`size-4 ${busy ? "animate-spin [animation-duration:1.6s]" : ""}`} aria-hidden="true" />
+                  {busy ? "Считаю время…" : "Оценить время"}
+                </button>
+                {deal.estimated && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearDealEstimate(deal.id);
+                      setTools(false);
+                    }}
+                    className="tool-btn tool-btn-muted"
+                  >
+                    <Eraser className="size-4" aria-hidden="true" />
+                    Очистить оценку
+                  </button>
+                )}
                 <button
                   type="button"
+                  disabled={!deal.steps.length}
                   onClick={() => {
-                    clearDealEstimate(deal.id);
-                    setTools(false);
+                    if (saveMyReady(deal)) setSaved(true);
                   }}
-                  className="tool-btn tool-btn-muted"
+                  className="tool-btn"
                 >
-                  <Eraser className="size-4" aria-hidden="true" />
-                  Очистить оценку
+                  {saved ? <Check className="size-4" strokeWidth={3} aria-hidden="true" /> : <BookmarkPlus className="size-4" aria-hidden="true" />}
+                  {saved ? "Лежит в «Готовых»" : "Сохранить как готовое дело"}
                 </button>
-              )}
-              <button
-                type="button"
-                disabled={!deal.steps.length}
-                onClick={() => {
-                  if (saveMyReady(deal)) setSaved(true);
-                }}
-                className="tool-btn"
-              >
-                {saved ? <Check className="size-4" strokeWidth={3} aria-hidden="true" /> : <BookmarkPlus className="size-4" aria-hidden="true" />}
-                {saved ? "Лежит в «Готовых»" : "Сохранить как готовое дело"}
-              </button>
-              <span aria-hidden="true" className="my-0.5 h-px bg-white/8" />
-              <button type="button" onClick={() => removeDeal(deal.id)} className="tool-btn tool-btn-danger">
-                <Trash2 className="size-4" aria-hidden="true" />
-                Удалить дело
-              </button>
-              {toolNote && <p className="px-1 text-[13px] text-muted-foreground">{toolNote}</p>}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                <span aria-hidden="true" className="my-0.5 h-px bg-white/8" />
+                <button type="button" onClick={() => removeDeal(deal.id)} className="tool-btn tool-btn-danger">
+                  <Trash2 className="size-4" aria-hidden="true" />
+                  Удалить дело
+                </button>
+                {toolNote && <p className="px-1 text-[13px] text-muted-foreground">{toolNote}</p>}
+              </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
       <AnimatePresence initial={false}>
         {open && (
           <motion.div

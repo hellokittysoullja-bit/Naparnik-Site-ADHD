@@ -14,7 +14,7 @@ test('хранилище заблокировано (Safari «Блокирова
   await page.goto('/app')
   await expect(page.getByText('Какое дело сейчас висит?')).toBeVisible()
   await page.goto('/app/chat')
-  await expect(page.getByText('Первый старт за 15 минут')).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Сообщение напарнику' })).toBeVisible()
   await expect(page.getByText('Я споткнулся')).toHaveCount(0)
   expect(errors).toEqual([])
 })
