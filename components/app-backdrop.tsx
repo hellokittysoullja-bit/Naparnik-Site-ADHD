@@ -130,6 +130,9 @@ const PREPAINT_CSS = [
 ].join("");
 
 
+/** экраны, где общий фон с грядой виден (на остальных — своя сцена) */
+const RIDGE_ROUTES = ["/app/world", "/app/deals", "/app/stuck"];
+
 export function AppBackdrop() {
   const [hasAurora, setHasAurora] = useState(false);
   const [hasMoon, setHasMoon] = useState(false);
@@ -217,11 +220,11 @@ export function AppBackdrop() {
   }, []);
 
   // #2 · Прорастание играет один раз — в момент, когда человек реально
-  // видит горизонт за перепиской (с 13.11 это /app/chat: на Доме «Привал» своя
-  // сцена, а этот фон скрыт — там рост ушёл бы в невидимое и сгорел, проверка
-  // 13.11). Как только показали — фиксируем «видел», чтобы не проигрывать снова.
+  // видит горизонт: на экране, где этот фон есть. На Доме, в Фокусе и (с 19.11) в
+  // переписке своя ночная сцена, а этот фон скрыт — там рост ушёл бы в невидимое
+  // и сгорел (проверка 13.11). Как только показали — фиксируем «видел».
   useEffect(() => {
-    if (pathname !== "/app/chat" || pendingGrowth === null) return;
+    if (!RIDGE_ROUTES.includes(pathname) || pendingGrowth === null) return;
     setGrownIndex(pendingGrowth);
     try {
       window.localStorage.setItem("naparnik:ridgeSeen", String(pendingGrowth + 1));

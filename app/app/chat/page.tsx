@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { FocusScene } from "@/components/focus-scene";
 import { HomeScreen } from "@/components/home-screen";
 
 export const metadata: Metadata = {
@@ -12,7 +13,11 @@ export const metadata: Metadata = {
 export default function ChatPage() {
   return (
     <main className="app-page-enter relative flex h-dvh flex-col overflow-hidden pb-20">
-      <HomeScreen />
+      {/* фон — ночная сцена Дома и лендинга (владелец 19.11); общий фон /app с грядой здесь не рисуется */}
+      <FocusScene />
+      <div className="relative z-[1] flex min-h-0 flex-1 flex-col">
+        <HomeScreen />
+      </div>
     </main>
   );
 }

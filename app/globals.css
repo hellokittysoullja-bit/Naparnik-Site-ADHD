@@ -730,9 +730,9 @@ body[data-focus-immersive] nav[aria-label="Основная навигация"]
   --glass-border-bottom: oklch(1 0 0 / 0.14);
   --glass-border: oklch(1 0 0 / 0.24);
   transform: translateY(-1px);
+  /* без лаймового отсвета: пустое поле не «горит» зелёным просто от фокуса (владелец 19.11) — свет только у .is-typing */
   box-shadow:
     inset 0 1px 0 oklch(1 0 0 / 0.24),
-    0 8px 16px -6px oklch(0.86 0.22 130 / 0.32),
     0 18px 30px -14px oklch(0 0 0 / 0.65);
 }
 
