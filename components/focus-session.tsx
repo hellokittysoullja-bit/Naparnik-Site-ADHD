@@ -2081,13 +2081,13 @@ function RoundControl({
     >
       <span
         className={`grid place-items-center rounded-full transition-colors duration-150 group-focus-visible:ring-2 group-focus-visible:ring-ring ${
-          big ? 'size-14' : 'mt-1 size-12'
+          big ? 'size-14' : 'round-coin mb-1 mt-1 size-12'
         } ${
           active
             ? 'bg-primary text-primary-foreground'
             : big
               ? 'bg-[oklch(0.97_0.005_100)] text-[oklch(0.2_0.02_130)] shadow-[0_3px_0_oklch(0.7_0.01_100)]'
-              : 'border border-white/15 bg-white/5 text-foreground/90'
+              : 'text-foreground/90'
         }`}
       >
         {children}

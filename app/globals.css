@@ -1348,6 +1348,23 @@ body[data-companion-speaking] .app-hearth {
   border: 1px solid oklch(1 0 0 / 0.1);
   color: var(--foreground);
 }
+/* «+5» и «мысль» под таймером — объёмные монетки (образец владельца 19.11): лицо со светом сверху, толстый бортик
+   снизу темнее; при нажатии лицо садится на бортик. Только transform/box-shadow — раскладка не прыгает */
+.round-coin {
+  --coin-lip: oklch(0.25 0.008 130);
+  background: linear-gradient(180deg, oklch(0.44 0.01 130), oklch(0.36 0.01 130));
+  box-shadow: 0 5px 0 var(--coin-lip), 0 6px 8px oklch(0 0 0 / 0.45), inset 0 1px 0 oklch(1 0 0 / 0.16);
+  transition: transform 110ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 110ms cubic-bezier(0.22, 1, 0.36, 1), background-color 150ms;
+}
+.round-coin.bg-primary {
+  --coin-lip: oklch(from var(--primary) calc(l - 0.2) calc(c * 0.92) h);
+  background-image: none;
+}
+.group:active .round-coin {
+  transform: translateY(5px);
+  box-shadow: 0 0 0 var(--coin-lip), 0 1px 2px oklch(0 0 0 / 0.45), inset 0 1px 0 oklch(1 0 0 / 0.16);
+  transition-duration: 45ms;
+}
 .btn-chunky[data-warm] {
   --lip: oklch(0.7 0.16 70);
 }
