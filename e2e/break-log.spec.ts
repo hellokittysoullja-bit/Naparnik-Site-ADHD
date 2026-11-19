@@ -342,3 +342,16 @@ for (const [name, steps] of Object.entries(plans)) {
     expect(Math.max(...steps2) - Math.min(...steps2)).toBeLessThanOrEqual(2)
   })
 }
+
+/** Владелец 19.11: дело с опечаткой («Поемть»), которое база узнала, на полене и дальше — правильным названием («Поесть») */
+test('полено: дело с опечаткой показывается правильным названием из базы', async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 664 })
+  await page.route('**/api/breakdown', async (r) => {
+    await new Promise((x) => setTimeout(x, 400))
+    await r.fulfill({ json: { steps: ['Решить, что съесть', 'Приготовить', 'Поесть спокойно'], source: 'library', title: 'Поесть' } })
+  })
+  await page.goto('/app/session?step=' + encodeURIComponent('Поемть') + '&break=1')
+  await page.waitForSelector('[data-rv="playing"]')
+  await expect(page.locator('[data-rv-source]')).toHaveText('Поесть')
+  await expect(page.locator('[data-rv-carve]').first()).toHaveText('Поесть')
+})

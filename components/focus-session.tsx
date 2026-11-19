@@ -512,7 +512,8 @@ export function FocusSession() {
             list = [...brokenSteps.slice(0, Math.max(0, i)), ...fresh, ...brokenSteps.slice(i + 1)]
           }
           setDealTitle(title)
-          if (!finer) startReveal(target, list, true)
+          // на полене — правильное название из базы (владелец 19.11: «Поемть» → «Поесть»), как и в «Делах»
+          if (!finer) startReveal(title, list, true)
           else setReceipt(null)
           setBrokenSteps(list)
           selectStep(fresh[0])
