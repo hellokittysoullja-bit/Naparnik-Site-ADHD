@@ -934,7 +934,9 @@ export function CompanionChat({
         // контекстом «Дома» верх ленты в покое (scrollTop 0) — это маскот и
         // приветствие: гасить их первые пиксели нельзя. Шапка и так открывает
         // ленту с чистого края (pt-4), растворять там нечего.
-        className={`flex flex-1 flex-col overflow-y-auto overflow-x-hidden ${
+        // overscroll-y-none: без «резинки» Safari — в самом низу ленты свайп вверх утягивал реплики и открывал под ними пустое
+        // небо (запись владельца 19.11). Вверху своё «потягивание» кота (PullToStretch), ему отскок не нужен
+        className={`flex flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-none ${
           header
             ? ""
             : "[mask-image:linear-gradient(to_bottom,transparent_0,black_24px)]"
