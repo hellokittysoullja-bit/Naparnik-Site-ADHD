@@ -32,7 +32,10 @@ export function revealSpeed(nth: number) {
 
 /** сколько кусков будет у полена: по слову шагов, но не больше 24 (2 ряда по 12 — кусок не мельче ~30 px) */
 export const MAX_PIECES = 24
-export const wordCount = (texts: string[]) => Math.min(MAX_PIECES, texts.reduce((n, t) => n + (t.match(/\S+/g)?.length ?? 0), 0))
+/** кусков-табличек на слова: у КАЖДОГО видимого слова свой летящий кусок (владелец 19.11: ни одно слово не встаёт позже
+ *  соседей); клеток разреза полена — не больше MAX_PIECES, на длинных планах несколько кусков вылетают из одной клетки */
+export const MAX_WORDS = 96
+export const wordCount = (texts: string[]) => Math.min(MAX_WORDS, texts.reduce((n, t) => n + (t.match(/\S+/g)?.length ?? 0), 0))
 
 type WordBox = {
   text: string
@@ -46,6 +49,8 @@ type WordBox = {
   ty: number
   th: number
   font: string
+  /** сама табличка в разметке: показывается в тот кадр, когда на неё садится кусок */
+  sp: HTMLElement
   /** строка шага, которой принадлежит слово */
   el: HTMLElement
   visible: boolean
@@ -64,10 +69,10 @@ function wordBoxes(el: HTMLElement, clip: DOMRect | null): WordBox[] {
     const t = r.getBoundingClientRect()
     const font = getComputedStyle(sp).font
     const visible = b.width > 0 && b.right <= er.right + 1 && b.top >= er.top - 1 && b.bottom <= er.bottom + 1 && b.top >= top - 1 && b.bottom <= bottom + 1
-    if (visible) return { text: sp.textContent ?? '', x: b.left, y: b.top, w: b.width, h: b.height, tx: t.left - b.left, ty: t.top - b.top, th: t.height, font, el, visible }
+    if (visible) return { text: sp.textContent ?? '', x: b.left, y: b.top, w: b.width, h: b.height, tx: t.left - b.left, ty: t.top - b.top, th: t.height, font, sp, el, visible }
     const hh = b.height || 20
     const below = er.bottom > bottom
-    return { text: sp.textContent ?? '', x: below ? er.left + 24 : er.right - 14, y: (below ? bottom : er.bottom) - hh, w: 12, h: hh, tx: 0, ty: 0, th: hh, font, el, visible: false }
+    return { text: sp.textContent ?? '', x: below ? er.left + 24 : er.right - 14, y: (below ? bottom : er.bottom) - hh, w: 12, h: hh, tx: 0, ty: 0, th: hh, font, sp, el, visible: false }
   })
 }
 
@@ -264,6 +269,8 @@ type Scene = {
   layer: HTMLElement
   stage: StageRefs
   M: number
+  /** кусков-табличек: по одному на слово на экране */
+  P: number
 }
 
 /** Акт 1: удар. Возвращает всё, что нужно расколу */
@@ -414,7 +421,7 @@ function strike(s: Scene) {
   const prepare = () => {
     for (let i = faces.length; i < geo.cells.length; i++) {
       // слой куска — размером со свой кусок, а не со всё полено: меньше памяти видеокарты и быстрее сборка кадра
-      const c = geo.cells[i]
+      const c = geo.cells[i % geo.cells.length]
       const bx = Math.max(-24, Math.min(...c.pts.map((p) => p[0])))
       const by = Math.max(-14, Math.min(...c.pts.map((p) => p[1])))
       const bw = Math.min(L.w + 24, Math.max(...c.pts.map((p) => p[0]))) - bx
@@ -444,10 +451,11 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
   const bub = rect(stage.bubble)
   const clip = fin.list ? rect(fin.list) : null
   const allWords = fin.texts.flatMap((el, j) => wordBoxes(el, j ? clip : null))
-  const words = allWords.slice(0, a.geo.cells.length)
-  // слов больше, чем кусков (кусков не больше MAX_PIECES): лишние слова не ждут конца строки, а встают вместе с последними
-  // кусками — раньше «и пепельниц» появлялись позже соседей (владелец 19.11)
-  const extra = allWords.slice(a.geo.cells.length).filter((b) => b.visible)
+  // куски — только словам, которые видно: слово за обрезкой строки раньше летело и гасло полупрозрачным у края (19.11)
+  const onScreen = allWords.filter((b) => b.visible)
+  const words = onScreen.slice(0, s.P)
+  // запас на случай, если слов на экране больше MAX_WORDS: лишние встают вместе с последними кусками
+  const extra = onScreen.slice(s.P)
   const s0 = fin.stamp0 ? rect(fin.stamp0) : null
   const pr = rect(a.print)
   window.clearTimeout(a.prep)
@@ -490,9 +498,7 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
   const D = T(660)
   const stagger = N > 1 ? Math.min(T(55), T(480) / (N - 1)) : 0
   const landAt = (i: number) => at + D + i * stagger
-  const doneOf = new Map<HTMLElement, number>()
   const firstOf = new Map<HTMLElement, number>()
-  const ghostsOf = new Map<HTMLElement, HTMLElement[]>()
   const O = { x: L.x + L.w * 0.5, y: L.y + L.h * 0.9 }
   let rnd = 97 + N
   const rand = () => ((rnd = (rnd * 16807) % 2147483647) / 2147483647)
@@ -507,28 +513,35 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
     plate.appendChild(word)
     return box
   }
+  // подмена копии на настоящую табличку — у КАЖДОГО слова в свой кадр, сразу после его шлепка, пока слово ещё в
+  // вспышке посадки. Раньше вся строка подменялась разом, когда садилось её последнее слово: копия стоит на долю пикселя
+  // иначе, и уже севшие слова строки «щёлкали» позже (покадровая проверка, 19.11)
+  const swap = (b: WordBox, box: HTMLElement, t: number) => {
+    run(b.sp, [{ opacity: 0 }, { opacity: 1 }], t, t + 1)
+    run(box, [{ opacity: 1 }, { opacity: 0 }], t, t + 1)
+  }
   extra.forEach((b, k) => {
     const tL = landAt(Math.max(0, N - 1)) - T(60) + k * Math.min(stagger, T(25))
-    doneOf.set(b.el, Math.max(doneOf.get(b.el) ?? 0, tL + T(170)))
     const box = plateAt(b)
-    ghostsOf.set(b.el, [...(ghostsOf.get(b.el) ?? []), box])
-    run(box, [{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'scale(1.12,.9)', offset: 0.55 }, { opacity: 1, transform: 'none' }], tL, tL + T(170), { fill: 'forwards', easing: 'ease-out' })
+    run(box, [{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'scale(1.04,.9)', offset: 0.55 }, { opacity: 1, transform: 'none' }], tL, tL + T(170), { fill: 'forwards', easing: 'ease-out' })
+    swap(b, box, tL + T(170))
   })
 
   words.forEach((b, i) => {
-    const cell = a.geo.cells[i]
+    const cell = a.geo.cells[i % a.geo.cells.length]
     const tL = landAt(i)
-    doneOf.set(b.el, Math.max(doneOf.get(b.el) ?? 0, tL))
     if (!firstOf.has(b.el)) firstOf.set(b.el, tL)
     // кусок: контейнер стоит на слове; в начале сдвинут так, что его центр — центр клетки полена
     const box = div(layer, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px`, transformOrigin: '50% 50%', willChange: 'transform' })
-    ghostsOf.set(b.el, [...(ghostsOf.get(b.el) ?? []), box])
-    // лицо — та же кора полена, вырезанная по клетке
-    const front = a.faces[i]
-    Object.assign(front.style, { left: `${b.w / 2 - (cell.cx - Number(front.dataset.bx))}px`, top: `${b.h / 2 - (cell.cy - Number(front.dataset.by))}px` })
-    box.appendChild(front)
+    // лицо — та же кора полена, вырезанная по клетке. Коры — по клетке на кусок (≤ MAX_PIECES): на длинном плане
+    // остальные слова вылетают из тех же клеток сразу табличками — 90 копий коры замораживали слабый телефон на 0,3–0,6 с
+    const front = a.faces[i] as HTMLElement | undefined
+    if (front) {
+      Object.assign(front.style, { left: `${b.w / 2 - (cell.cx - Number(front.dataset.bx))}px`, top: `${b.h / 2 - (cell.cy - Number(front.dataset.by))}px` })
+      box.appendChild(front)
+    }
     // изнанка — та же деревянная табличка, что останется на экране (.wood-word), со словом на своём месте
-    const back = div(box, { width: `${b.w}px`, height: `${b.h}px`, opacity: '0' })
+    const back = div(box, { width: `${b.w}px`, height: `${b.h}px`, opacity: front ? '0' : '1' })
     const plate = div(back, { width: `${b.w}px`, height: `${b.h}px`, padding: '0', margin: '0' })
     plate.className = 'wood-word'
     const word = document.createElement('span')
@@ -569,18 +582,24 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
     }
     run(box, kf, at, tL, { easing: 'linear' })
     const flipAt = at + (tL - at) * 0.31
-    run(front, [{ opacity: 1 }, { opacity: 0 }], flipAt, flipAt + 1)
-    run(back, [{ opacity: 0 }, { opacity: 1 }], flipAt, flipAt + 1)
+    if (front) {
+      run(front, [{ opacity: 1 }, { opacity: 0 }], flipAt, flipAt + 1)
+      run(back, [{ opacity: 0 }, { opacity: 1 }], flipAt, flipAt + 1)
+    }
     if (!b.visible) {
       // слово за краем строки: кусок долетает до конца строки и гаснет
       run(box, [{ opacity: 1 }, { opacity: 0 }], tL - T(120), tL, { easing: 'ease-in' })
       return
     }
     // посадка: шлепок, вспышка, дерево сгорает, остаётся настоящий текст
-    run(box, [{ transform: 'scale(1.2,.82)' }, { transform: 'scale(.95,1.06)', offset: 0.5 }, { transform: 'none' }], tL, tL + T(170), { easing: 'ease-out' })
+    // шлепок без наезда на соседей: растяжение по ширине — не больше зазора между табличками (раньше 1,2 — сосед будто
+    // дёргался, когда садилось слово рядом, 19.11)
+    const sq = 1 + Math.min(0.12, 3.5 / Math.max(1, b.w))
+    run(box, [{ transform: `scale(${sq.toFixed(3)},.84)` }, { transform: 'scale(.98,1.05)', offset: 0.5 }, { transform: 'none' }], tL, tL + T(170), { easing: 'ease-out' })
     const glow = div(layer, { left: `${tg.x - 40}px`, top: `${tg.y - 22}px`, width: '80px', height: '44px', borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(255,220,140,.85), rgba(255,160,60,0))', opacity: '0' }, box)
     run(glow, [{ transform: 'scale(.4)', opacity: 0.95 }, { transform: 'scale(1.5)', opacity: 0 }], tL, tL + T(260), { fill: 'forwards', easing: OUT })
-    for (let e = 0; e < 4; e++) {
+    swap(b, box, tL + T(170))
+    for (let e = 0; e < (front ? 4 : 0); e++) {
       const sx = e % 2 ? b.x + b.w : b.x
       const em = div(layer, { left: `${sx - 2}px`, top: `${tg.y - 2}px`, width: '3px', height: '3px', borderRadius: '50%', background: '#ffd27a', boxShadow: '0 0 5px 2px rgba(255,150,50,.6)', opacity: '0' })
       run(em, [{ transform: 'none', opacity: 1 }, { transform: `translate(${(e % 2 ? 1 : -1) * (10 + e * 5)}px, ${-12 - e * 7}px) scale(.3)`, opacity: 0 }], tL, tL + T(320), { fill: 'forwards', easing: 'ease-out' })
@@ -608,10 +627,9 @@ function shatter(s: Scene, a: ReturnType<typeof strike>, before: { catBody: DOMR
     run(fin.stamp0, [{ opacity: 0, transform: 'scale(1.8)' }, { opacity: 1, transform: 'none' }], tS, tS + T(200), { easing: SPRING })
   } else run(a.print, [{ opacity: 0.95 }, { opacity: 0 }], at, at + T(160))
   fin.texts.forEach((el, j) => {
-    // табличка-копия стоит ровно на настоящей: подмена в одном кадре, когда все слова строки сели
-    const done = (doneOf.get(el) ?? at + D) + T(180)
-    run(el, [{ opacity: 0 }, { opacity: 1 }], done, done + 1)
-    for (const gbox of ghostsOf.get(el) ?? []) run(gbox, [{ opacity: 1 }, { opacity: 0 }], done, done + 1)
+    // строка видна с раскола, но её таблички — каждая с посадки своего куска (swap выше); таблички за обрезкой строки
+    // и так не видны
+    run(el, [{ opacity: 1 }, { opacity: 1 }], at, at + 1)
     const bullet = j > 0 ? fin.bullets[j - 1] : null
     const t0 = firstOf.get(el) ?? at + D
     if (bullet) run(bullet, [{ opacity: 0, transform: 'scale(0)' }, { opacity: 1, transform: 'scale(1)' }], t0 - T(40), t0 + T(100), { easing: SPRING })
@@ -636,6 +654,7 @@ export function playLogReveal(
 ): { finished: Promise<void>; skip: () => void; stop: () => void } {
   const f = revealSpeed(nth)
   const M = Math.max(1, Math.min(MAX_PIECES, hooks.pieces))
+  const P = Math.max(1, Math.min(MAX_WORDS, hooks.pieces))
   const layer = document.createElement('div')
   layer.setAttribute('aria-hidden', 'true')
   Object.assign(layer.style, { position: 'fixed', inset: '0', zIndex: '60', pointerEvents: 'none', overflow: 'hidden' })
@@ -657,9 +676,9 @@ export function playLogReveal(
     list.push(a)
     return a
   }
-  const scene: Scene = { run, f, layer, stage, M }
+  const scene: Scene = { run, f, layer, stage, M, P }
   const act1 = strike(scene)
-  const end = run(layer, [{ opacity: 1 }, { opacity: 1 }], 0, sceneLength(M, f))
+  const end = run(layer, [{ opacity: 1 }, { opacity: 1 }], 0, sceneLength(P, f))
   const impact = window.setTimeout(hooks.onImpact, act1.tImp)
   let didSplit = false
   const doSplit = () => {
