@@ -46,11 +46,31 @@ export function breakCommand(text: string): string | null {
   return rest.slice(0, 120)
 }
 
-/** Весь план списком, с минутами, если они есть: «1. Открыть письмо · 2 мин» */
+/** Текст человека или модели в сообщении с разметкой HTML: <, > и & — как текст, а не теги */
+const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const KEYCAP = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟']
+const dur = (m: number) => shortDuration(m).replace(/ /g, '\u00a0')
+
+/**
+ * Весь план (вариант Б, владелец 20.11), разметка HTML:
+ * 🐾 <b>Помыть посуду</b>
+ * Разломал на 7 микрошагов · около 33 мин
+ *
+ * 1️⃣ Собрать всю грязную посуду · <i>3 мин</i>
+ * …
+ * 👉 Начнём с первого. Я рядом.
+ */
 export function planText(title: string, steps: string[], minutes?: (number | undefined)[]) {
-  const lines = steps.map((s, i) => `${i + 1}. ${s}${minutes?.[i] ? ` · ${shortDuration(minutes[i]!).replace(/ /g, '\u00a0')}` : ''}`)
-  return `Разломал «${title}» на ${steps.length} ${plural(steps.length, 'шаг', 'шага', 'шагов')}:\n\n${lines.join('\n')}\n\nНачнём с первого: «${steps[0]}». Я рядом.`
+  const n = steps.length
+  const known = steps.every((_, i) => (minutes?.[i] ?? 0) > 0)
+  const total = known ? minutes!.reduce((a: number, m) => a + (m ?? 0), 0) : 0
+  const head = `🐾 <b>${esc(title)}</b>\nРазломал на ${n} ${plural(n, 'микрошаг', 'микрошага', 'микрошагов')}${total ? ` · около ${dur(total)}` : ''}`
+  const lines = steps.map((s, i) => `${KEYCAP[i] ?? `${i + 1}.`} ${esc(s)}${minutes?.[i] ? `\u00a0·\u00a0<i>${dur(minutes[i]!)}</i>` : ''}`)
+  return `${head}\n\n${lines.join('\n')}\n\n👉 Начнём с первого. Я рядом.`
 }
+
+/** то же без разметки — в переписку, которую видит кот */
+const plain = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
 
 function plural(n: number, one: string, few: string, many: string) {
   const a = n % 10, b = n % 100
@@ -156,6 +176,8 @@ export const T = {
     'Приветик. Я Напарник, кот, который сидит рядом, пока ты делаешь что-то маленькое. Без стыда и без серий, которые сгорают.\n\nЧто сейчас висит? Нажми или напиши своими словами.',
   helloBack: 'О, привет-привет! Что сейчас висит? Нажми или напиши своими словами.',
   step: (step: string) => `Самый маленький шаг: «${step}».\nДве минуты. Я рядом.`,
+  planStep: (k: number, n: number, step: string) => `Шаг ${k} из ${n}: «${step}».\nЯ рядом.`,
+  planDone: (n: number) => `Это был последний из ${n}. Если всё позади, ты молодец. Новое дело: кнопка «🐾 Разбить задачу» внизу.`,
   stepFromTask: (task: string, step: string) => `Разломал «${task}». Первый кусочек: «${step}».\nДве минуты. Я рядом.`,
   thinking: 'Секунду, ломаю на кусочки…',
   breakAsk: 'Напиши задачу, и я разобью её на микрошаги 🐾\nНапример: помыть посуду, курсовая, разобрать почту.',
@@ -323,7 +345,10 @@ function goUrl(d: Deps, u: TgUser) {
 
 function stepKeyboard(d: Deps, u: TgUser): Keyboard {
   // у шага из плана «другого» нет: о нём человек договорился сам
-  return u.plan ? [[{ text: 'Сесть рядом →', url: goUrl(d, u) }]] : [[{ text: 'Сесть рядом →', url: goUrl(d, u) }], [{ text: 'Другой шаг', callback_data: 'nx' }]]
+  if (u.plan) return [[{ text: 'Сесть рядом →', url: goUrl(d, u) }]]
+  // план из разбивки — шаги по порядку, кнопки в один ряд (вариант Б); шаг по сфере — «другой» из заготовок
+  if (u.task) return [[{ text: 'Сесть рядом →', url: goUrl(d, u) }, { text: 'Следующий шаг', callback_data: 'nx' }]]
+  return [[{ text: 'Сесть рядом →', url: goUrl(d, u) }], [{ text: 'Другой шаг', callback_data: 'nx' }]]
 }
 
 function remindKeyboard(): Keyboard {
@@ -363,9 +388,15 @@ const sayMenu = (d: Deps, u: TgUser, text: string) => {
   return d.send('sendMessage', { chat_id: u.id, text, link_preview_options: { is_disabled: true }, reply_markup: MENU })
 }
 
-const say = (d: Deps, chat: number, text: string, keyboard?: Keyboard) =>
-  // без превью и без разметки: текст шага приходит от человека, бот не должен превращать его в карточку чужого сайта
-  d.send('sendMessage', { chat_id: chat, text, link_preview_options: { is_disabled: true }, ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}) })
+const say = (d: Deps, chat: number, text: string, keyboard?: Keyboard, html = false) =>
+  // без превью; разметка только там, где текст собран кодом и экранирован (planText): шаг человека не станет карточкой
+  d.send('sendMessage', {
+    chat_id: chat,
+    text,
+    link_preview_options: { is_disabled: true },
+    ...(html ? { parse_mode: 'HTML' } : {}),
+    ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
+  })
 
 // ——— состояние ———
 
@@ -385,8 +416,8 @@ export async function reschedule(d: Pick<Deps, 'store' | 'now'>, u: TgUser) {
   return d.store.schedule(u.id, nextAt(u.hour, u.tz, from, intervalDays(u.ignored)))
 }
 
-async function offerStep(d: Deps, u: TgUser, text: string) {
-  await say(d, u.id, text, stepKeyboard(d, u))
+async function offerStep(d: Deps, u: TgUser, text: string, html = false) {
+  await say(d, u.id, text, stepKeyboard(d, u), html)
   if (u.hour === undefined) await say(d, u.id, T.askRemind, remindKeyboard())
 }
 
@@ -586,9 +617,9 @@ async function breakAndOffer(d: Deps, u: TgUser, task: string, whole: boolean) {
   u.stepIdx = 0
   const msg = whole ? planText(name, steps, minutes) : T.stepFromTask(name, steps[0])
   // ответ остаётся в переписке: «а второй шаг какой?» кот поймёт из истории
-  if (whole) remember(u, 'cat', msg, d.now())
+  if (whole) remember(u, 'cat', plain(msg), d.now())
   await d.store.saveUser(u)
-  await offerStep(d, u, msg)
+  await offerStep(d, u, msg, whole)
 }
 
 /** Реплика кота из обвязки → сообщение бота: текст, кнопка старта, сохранённый план */
@@ -670,13 +701,27 @@ async function onCallback(q: NonNullable<TgUpdate['callback_query']>, d: Deps) {
     await d.store.saveUser(u)
     await offerStep(d, u, T.step(u.steps[0]))
   } else if (data === 'nx') {
-    const steps = u.steps ?? STEPS[u.sphere ?? 'unsure']
-    u.steps = steps
     // «другой шаг» под шагом из плана (старая кнопка): план снят, показываем первый шаг по сфере, а не второй
-    u.stepIdx = u.plan ? 0 : ((u.stepIdx ?? 0) + 1) % steps.length
-    u.plan = undefined
+    if (u.plan) {
+      u.plan = undefined
+      u.task = undefined
+      u.steps = STEPS[u.sphere ?? 'unsure']
+      u.stepIdx = 0
+    } else if (u.task && u.steps?.length) {
+      // разбитое дело: шаги по порядку; после последнего — не по кругу, а честное «это был последний»
+      if ((u.stepIdx ?? 0) + 1 >= u.steps.length) {
+        await d.store.saveUser(u)
+        return void (await say(d, chat, T.planDone(u.steps.length)))
+      }
+      u.stepIdx = (u.stepIdx ?? 0) + 1
+    } else {
+      u.steps ??= STEPS[u.sphere ?? 'unsure']
+      u.stepIdx = ((u.stepIdx ?? 0) + 1) % u.steps.length
+    }
+    const steps = u.steps!
+    const k = u.stepIdx ?? 0
     await d.store.saveUser(u)
-    await say(d, chat, T.step(steps[u.stepIdx]), stepKeyboard(d, u))
+    await say(d, chat, u.task ? T.planStep(k + 1, steps.length, steps[k]) : T.step(steps[k]), stepKeyboard(d, u))
   } else if (data.startsWith('rm:')) {
     const v = data.slice(3)
     if (v === 'none') {

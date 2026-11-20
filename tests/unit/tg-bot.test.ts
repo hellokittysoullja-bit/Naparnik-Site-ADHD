@@ -269,13 +269,21 @@ describe('бот: «Разбей …» — база готовых планов 
     await r.msg('разбей памыть пасуду')
     expect(asked).toEqual(['памыть пасуду'])
     expect(talked).toBe(0)
-    const plan = r.texts().find((t) => t.startsWith('Разломал'))!
-    expect(plan).toBe('Разломал «Помыть посуду» на 3 шага:\n\n1. Собрать посуду в раковину · 2\u00a0мин\n2. Помыть тарелки · 10\u00a0мин\n3. Вытереть стол · 1\u00a0ч\u00a030\u00a0мин\n\nНачнём с первого: «Собрать посуду в раковину». Я рядом.')
+    const planMsg = r.sent.find((s) => String(s.body.text).startsWith('🐾 <b>'))!
+    expect(planMsg.body.parse_mode).toBe('HTML')
+    expect(planMsg.body.text).toBe('🐾 <b>Помыть посуду</b>\nРазломал на 3 микрошага · около 1\u00a0ч\u00a042\u00a0мин\n\n1️⃣ Собрать посуду в раковину\u00a0·\u00a0<i>2\u00a0мин</i>\n2️⃣ Помыть тарелки\u00a0·\u00a0<i>10\u00a0мин</i>\n3️⃣ Вытереть стол\u00a0·\u00a0<i>1\u00a0ч\u00a030\u00a0мин</i>\n\n👉 Начнём с первого. Я рядом.')
     const u = await r.store.getUser(CHAT)
     expect(u?.task).toBe('Помыть посуду')
     expect(u?.steps).toHaveLength(3)
-    const kb = (r.sent.find((s) => String(s.body.text).startsWith('Разломал'))!.body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard
-    expect(kb[0][0].text).toBe('Сесть рядом →')
+    const kb = (planMsg.body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard
+    expect(kb[0].map((b) => b.text)).toEqual(['Сесть рядом →', 'Следующий шаг'])
+    // «Следующий шаг» — по порядку, после последнего не по кругу
+    await r.tap('nx')
+    expect(r.texts().at(-1)).toBe('Шаг 2 из 3: «Помыть тарелки».\nЯ рядом.')
+    await r.tap('nx')
+    await r.tap('nx')
+    expect(r.texts().at(-1)).toBe(T.planDone(3))
+    expect((await r.store.getUser(CHAT))?.stepIdx).toBe(2)
   })
 
   it('просьба без дела — вопрос, что разломать; дробление не зовётся', async () => {
@@ -320,10 +328,10 @@ describe('бот: «Разбей …» — база готовых планов 
     await r.msg('/start')
     await r.msg('Разбей помыть посуду')
     const want = readyPlan('помыть посуду')!.value
-    const plan = r.texts().find((t) => t.startsWith('Разломал'))!
-    expect(plan).toContain(`«${want.steps[0]}»`)
-    expect(plan.split('\n').filter((l) => /^\d+\. /.test(l))).toHaveLength(want.steps.length)
-    expect(plan).toMatch(/ · \d+\u00a0(мин|ч)/)
+    const plan = r.texts().find((t) => t.startsWith('🐾 <b>Помыть посуду</b>'))!
+    expect(plan).toContain(`1️⃣ ${want.steps[0]}`)
+    expect(plan.split('\n').filter((l) => /^\d\uFE0F\u20E3|^🔟/u.test(l))).toHaveLength(want.steps.length)
+    expect(plan).toMatch(/\u00a0·\u00a0<i>\d+\u00a0(мин|ч)/)
   })
 })
 
@@ -365,7 +373,7 @@ describe('бот: нижняя кнопка «🐾 Разбить задачу»
     await r.msg('помыть посуду')
     expect(asked).toEqual(['помыть посуду'])
     expect(talked).toBe(0)
-    expect(r.texts().some((t) => t.startsWith('Разломал «помыть посуду» на 3 шага'))).toBe(true)
+    expect(r.texts().some((t) => t.startsWith('🐾 <b>помыть посуду</b>\nРазломал на 3 микрошага'))).toBe(true)
     // ожидание снято: следующее сообщение снова разговор с котом
     expect((await r.store.getUser(CHAT))?.awaiting).toBeNull()
     await r.msg('спасибо')
@@ -384,5 +392,26 @@ describe('бот: нижняя кнопка «🐾 Разбить задачу»
     await r.msg('Разбить задачу')
     await r.msg('курсовая')
     expect(asked).toEqual(['курсовая'])
+  })
+})
+
+describe('бот: оформление плана (вариант Б)', () => {
+  it('текст человека экранируется: теги из дела не становятся разметкой', async () => {
+    const { planText } = await import('@/lib/tg/bot')
+    const t = planText('<b>я</b> & ты', ['Открыть <a href="x">ссылку</a>', 'Два'], [5, undefined])
+    expect(t).toContain('🐾 <b>&lt;b&gt;я&lt;/b&gt; &amp; ты</b>')
+    expect(t).toContain('1️⃣ Открыть &lt;a href="x"&gt;ссылку&lt;/a&gt;\u00a0·\u00a0<i>5\u00a0мин</i>')
+    // минут нет у одного шага — общего времени нет, а не неправда
+    expect(t).toContain('Разломал на 2 микрошага\n')
+    expect(t).toContain('2️⃣ Два\n')
+  })
+
+  it('больше десяти шагов: после 🔟 обычные номера; склонение «микрошагов»', async () => {
+    const { planText } = await import('@/lib/tg/bot')
+    const steps = Array.from({ length: 12 }, (_, i) => `Шаг ${i + 1}`)
+    const t = planText('Дело', steps)
+    expect(t).toContain('Разломал на 12 микрошагов')
+    expect(t).toContain('🔟 Шаг 10\n11. Шаг 11\n12. Шаг 12')
+    expect(planText('Д', ['a'])).toContain('1 микрошаг\n')
   })
 })
