@@ -429,8 +429,39 @@ export async function handleUpdate(update: TgUpdate, d: Deps): Promise<void> {
   const chat = update.callback_query?.message?.chat.id ?? update.message?.chat.id
   // Telegram повторяет апдейт, если не дождался ответа: второй раз тот же разговор не ведём
   if (typeof update.update_id === 'number' && (await d.store.seen(update.update_id))) return
-  if (update.callback_query) await onCallback(update.callback_query, d)
-  else await onMessage(update.message, d)
+  // по очереди внутри чата: следующее сообщение ждёт, пока бот ответит на предыдущее (разные люди не ждут друг друга)
+  const token = chat ? await waitLock(d, chat) : null
+  try {
+    if (update.callback_query) await onCallback(update.callback_query, d)
+    else await onMessage(update.message, d)
+    await afterUpdate(d, update, chat)
+  } finally {
+    if (chat && token) await d.store.unlock(chat, token).catch(() => {})
+  }
+}
+
+/** Замок чата: ждём до 30 с (ход кота до 25 с; 30 + 25 укладывается в maxDuration 60 с); не дождались — отвечаем всё равно, а не молчим */
+export const LOCK_TTL_MS = 60_000
+export async function waitLock(d: Pick<Deps, 'store'>, chat: number, waitMs = 30_000): Promise<string | null> {
+  const until = Date.now() + waitMs
+  for (let pause = 50; ; pause = Math.min(pause * 1.5, 400)) {
+    const token = await d.store.lock(chat, LOCK_TTL_MS).catch(() => null)
+    if (token || Date.now() >= until) return token
+    await new Promise((r) => setTimeout(r, pause))
+  }
+}
+
+/** Запись человека меняется не из вебхука (клик «Сесть рядом», план с сайта): тоже по очереди, ждём недолго */
+export async function withChatLock<T>(d: Pick<Deps, 'store'>, chat: number, fn: () => Promise<T>, waitMs = 3000): Promise<T> {
+  const token = await waitLock(d, chat, waitMs)
+  try {
+    return await fn()
+  } finally {
+    if (token) await d.store.unlock(chat, token).catch(() => {})
+  }
+}
+
+async function afterUpdate(d: Deps, update: TgUpdate, chat: number | undefined) {
   // человек откликнулся — следующее напоминание снова через сутки (а не через 3–7 дней «редкого» режима)
   const u = chat ? await d.store.getUser(chat) : null
   if (!u) return
@@ -768,13 +799,14 @@ async function onCallback(q: NonNullable<TgUpdate['callback_query']>, d: Deps) {
 
 /** Клик «Сесть рядом»: человек откликнулся — считаем его активным. Вернёт адрес сессии. */
 export async function onGo(d: Deps, chatId: number, step: string): Promise<string> {
-  const u = await d.store.getUser(chatId)
-  if (u) {
+  await withChatLock(d, chatId, async () => {
+    const u = await d.store.getUser(chatId)
+    if (!u) return
     touch(u, d.now())
     u.clicks = (u.clicks ?? 0) + 1
     await d.store.saveUser(u)
     await reschedule(d, u)
-  }
+  })
   const q = new URLSearchParams({ step: step.slice(0, 120), d: String(FIRST_MINUTES), src: 'tg' })
   return `${d.site}/app/session?${q.toString()}`
 }
@@ -800,6 +832,20 @@ export async function tick(d: Deps, limit = 100): Promise<number> {
 }
 
 async function remindOne(d: Deps, id: number, now: number): Promise<number> {
+  // человек прямо сейчас пишет боту (чат занят): напоминание не нужно и не должно затереть его запись — через 10 минут
+  const token = await d.store.lock(id, LOCK_TTL_MS)
+  if (!token) {
+    await d.store.schedule(id, now + 600_000)
+    return 0
+  }
+  try {
+    return await remindLocked(d, id, now)
+  } finally {
+    await d.store.unlock(id, token).catch(() => {})
+  }
+}
+
+async function remindLocked(d: Deps, id: number, now: number): Promise<number> {
   const u = await d.store.getUser(id)
   if (!u || u.stopped || u.quiet || u.hour == null) {
     await d.store.schedule(id, null)

@@ -424,14 +424,18 @@ describe('проверка 13.11: чужие и кривые входы', () => 
     expect(r.sent.length).toBe(n)
   })
 
-  it('ответ кота, пришедший после /forget, запись не воскрешает', async () => {
+  it('/forget, присланный, пока кот думает: стирает после ответа, запись не воскресает', async () => {
+    // с замком чата (20.11) /forget ждёт конца хода кота и стирает уже сохранённый ответ
+    let pending: Promise<void> | undefined
     const r: ReturnType<typeof rig> = rig(T0, async () => {
-      await r.msg('/forget')
+      pending = r.msg('/forget')
       return { text: 'Мур.' }
     })
     await r.msg('/start')
     await r.msg('расскажи что-нибудь')
+    await pending
     expect(await r.store.getUser(CHAT)).toBeNull()
+    expect(r.texts().at(-1)).toBe(T.forgotten)
   })
 
   it('«Другой шаг» при плане снимает план: кнопка и напоминание говорят об одном шаге', async () => {

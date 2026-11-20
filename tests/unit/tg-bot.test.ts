@@ -415,3 +415,57 @@ describe('бот: оформление плана (вариант Б)', () => {
     expect(planText('Д', ['a'])).toContain('1 микрошаг\n')
   })
 })
+
+describe('бот: сообщения одного чата по очереди (замок чата)', () => {
+  it('кнопка и задача почти одновременно: задача ждёт, пока бот ответит на кнопку, и разбивается', async () => {
+    const r = rig()
+    await r.msg('/start')
+    const asked: string[] = []
+    r.deps.breakdown = async (task) => (asked.push(task), { steps: ['Раз', 'Два', 'Три'], fallback: false })
+    let talked = 0
+    r.deps.converse = async () => (talked++, null)
+    // Telegram отвечает медленно: без замка второе сообщение прочло бы запись до того, как первое её сохранило
+    const send = r.deps.send
+    r.deps.send = async (m, b) => (await new Promise((res) => setTimeout(res, 40)), send(m, b))
+    await Promise.all([
+      handleUpdate({ update_id: 1, message: { chat: { id: CHAT, type: 'private' }, text: '🐾 Разбить задачу' } }, r.deps),
+      new Promise((res) => setTimeout(res, 5)).then(() => handleUpdate({ update_id: 2, message: { chat: { id: CHAT, type: 'private' }, text: 'помыть посуду' } }, r.deps)),
+    ])
+    expect(asked).toEqual(['помыть посуду'])
+    expect(talked).toBe(0)
+    expect(r.store.locks.size).toBe(0)
+  })
+
+  it('разные чаты друг друга не ждут; упавший обработчик снимает замок', async () => {
+    const r = rig()
+    await r.msg('/start')
+    r.deps.converse = async () => {
+      throw new Error('сеть')
+    }
+    r.deps.breakdown = async () => {
+      throw new Error('сеть')
+    }
+    await expect(r.msg('привет')).rejects.toThrow()
+    expect(r.store.locks.size).toBe(0)
+    const t0 = Date.now()
+    await handleUpdate({ message: { chat: { id: 7, type: 'private' }, text: '/help' } }, r.deps)
+    expect(Date.now() - t0).toBeLessThan(500)
+  })
+
+  it('напоминание не пишет в чат, который сейчас занят, и переносится на 10 минут', async () => {
+    const r = rig()
+    await r.msg('/start')
+    const u = (await r.store.getUser(CHAT))!
+    u.hour = 9
+    await r.store.saveUser(u)
+    await r.store.schedule(CHAT, T0)
+    const token = await r.store.lock(CHAT, 60_000)
+    const before = r.sent.length
+    expect(await tick(r.deps)).toBe(0)
+    expect(r.sent.length).toBe(before)
+    expect(r.store.dueAt.get(CHAT)).toBe(T0 + 600_000)
+    await r.store.unlock(CHAT, token!)
+    r.setNow(T0 + 600_000)
+    expect(await tick(r.deps)).toBe(1)
+  })
+})
