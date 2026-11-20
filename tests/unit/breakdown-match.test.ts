@@ -92,6 +92,10 @@ describe('готовое дело узнаётся, как бы его ни на
     expect(plan('сделать дз')).toEqual(plan('Сделать домашку'))
     expect(readyPlan('покушать')?.title).toBe('Покушать')
   })
+  it('сон не уходит в туалет: «проспаться» — выспаться, «спать» — лечь спать (20.11)', () => {
+    expect(readyPlan('Проспаться')?.value.steps).toEqual(readyPlan('Выспаться')?.value.steps)
+    expect(readyPlan('Спать')?.value.steps).toEqual(readyPlan('Лечь спать')?.value.steps)
+  })
   it('опечатки в синонимах тоже узнаются', () => {
     expect(readyPlan('покущать')?.value.steps).toEqual(readyPlan('Поесть')?.value.steps)
     expect(readyPlan('пинять душ')?.value.steps).toEqual(readyPlan('Сходить в душ')?.value.steps)
