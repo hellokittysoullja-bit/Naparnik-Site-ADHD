@@ -1,4 +1,5 @@
 import { SPHERES, STEPS, FIRST_MINUTES, type Sphere } from '@/lib/onboarding'
+import { shortDuration } from '@/lib/deals'
 import { linkCode } from './link'
 import { HISTORY_MAX, HISTORY_TTL_MS, LINK_TTL_S, type LinkPayload, type Store, type TgUser, type Tone } from './store'
 
@@ -17,7 +18,44 @@ import { HISTORY_MAX, HISTORY_TTL_MS, LINK_TTL_S, type LinkPayload, type Store, 
 
 export type Send = (method: string, body: Record<string, unknown>) => Promise<unknown>
 /** care — в поле дела кризисный текст: вместо шагов проверенный бережный ответ обвязки */
-export type Breakdown = (task: string) => Promise<{ steps: string[]; fallback: boolean; care?: string }>
+export type Breakdown = (task: string) => Promise<{
+  steps: string[]
+  fallback: boolean
+  care?: string
+  /** минуты шагов (у планов из базы есть всегда) */
+  minutes?: (number | undefined)[]
+  /** название дела из базы: человек написал с опечаткой или с уточнением («покормить пса вечером») */
+  title?: string
+}>
+
+/**
+ * Просьба разбить дело (владелец 20.11): «Разбей помыть посуду», «разбить: курсовая», «помоги раздробить уборку»,
+ * «разломай на шаги отчёт», /break посуда. Возвращает дело ('' — просьба без дела), null — это не просьба.
+ * «Разложить …» сюда не входит: в базе это настоящие дела («Разложить вещи по местам»).
+ */
+const BREAK_VERB = /^(?:\/(?:break|razbit|razbej)(?:@\w+)?|(?:пожалуйста\s+|плиз\s+)?(?:помоги(?:те)?\s+(?:мне\s+)?|можешь\s+|можно\s+)?(?:раз(?:бей|бейте|бить|били|лом(?:ай|айте|ать|и))|раздроб(?:и|ите|ить)|раздели(?:ть)?\s+на\s+шаги|распиши(?:те)?\s+(?:на|по)\s+шаг(?:и|ам)))(?=$|[\s:,.!—-])/iu
+const BREAK_TAIL = /^(?:\s*(?:мне|пожалуйста|плиз|дело|задачу|на\s+(?:шаги|шажки|шажочки|кусочки|кусоч?ки|части|этапы|микрошаги)|по\s+шагам))+/iu
+export function breakCommand(text: string): string | null {
+  const m = BREAK_VERB.exec(text.trim())
+  if (!m) return null
+  let rest = text.trim().slice(m[0].length).replace(/^[\s:,.!—-]+/u, '')
+  rest = rest.replace(BREAK_TAIL, '').replace(/^[\s:,.!—-]+/u, '')
+  // хвост «… на шаги» после дела и кавычки вокруг дела
+  rest = rest.replace(/\s+(?:на\s+(?:шаги|шажки|шажочки|кусочки|части|этапы|микрошаги)|по\s+шагам)\s*[.!?]*$/iu, '')
+  rest = rest.replace(/^[«"'„“]+|[»"'“”]+$/gu, '').replace(/[.!?]+$/u, '').trim()
+  return rest.slice(0, 120)
+}
+
+/** Весь план списком, с минутами, если они есть: «1. Открыть письмо · 2 мин» */
+export function planText(title: string, steps: string[], minutes?: (number | undefined)[]) {
+  const lines = steps.map((s, i) => `${i + 1}. ${s}${minutes?.[i] ? ` · ${shortDuration(minutes[i]!)}` : ''}`)
+  return `Разломал «${title}» на ${steps.length} ${plural(steps.length, 'шаг', 'шага', 'шагов')}:\n\n${lines.join('\n')}\n\nНачнём с первого: «${steps[0]}». Я рядом.`
+}
+
+function plural(n: number, one: string, few: string, many: string) {
+  const a = n % 10, b = n % 100
+  return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many
+}
 
 /** Реплика кота на свободный текст (обвязка lib/ai): текст, кнопка старта, согласованный план */
 export type CatReply = {
@@ -35,6 +73,8 @@ export type Deps = {
   /** https://adhd-naparnik.vercel.app — для ссылок «Сесть рядом» */
   site: string
   breakdown: Breakdown
+  /** дело есть в базе готовых планов (readyPlan): «Разбить большой проект на части» — само дело, а не просьба */
+  known?: (task: string) => boolean
   /** разговор с котом через обвязку; без него бот работает по правилам */
   converse?: Converse
   /** Подпись ссылки «Сесть рядом» (lib/tg/telegram.ts) */
@@ -112,6 +152,7 @@ export const T = {
   step: (step: string) => `Самый маленький шаг: «${step}».\nДве минуты. Я рядом.`,
   stepFromTask: (task: string, step: string) => `Разломал «${task}». Первый кусочек: «${step}».\nДве минуты. Я рядом.`,
   thinking: 'Секунду, ломаю на кусочки…',
+  breakAsk: 'Что разломать? Напиши дело своими словами, например: «Разбей помыть посуду».',
   askRemind:
     'Хочешь, буду звать тебя раз в день? Одно сообщение, в то время, которое выберешь. Выключить можно в любой момент.',
   remindSet: (h: number, tz: number) =>
@@ -128,7 +169,7 @@ export const T = {
   stop: 'Больше не пишу. Захочешь вернуть, жми /remind.',
   farewell: 'Я замолчу, чтобы не мешать. Напиши «привет», когда захочешь. Остров ждёт.',
   help:
-    'Я помогаю начать дело за 2 минуты.\n\nНапиши, что висит, и разломаю на маленький шаг.\n/step новый шаг\n/remind когда звать\n/tone как говорить\n/time твой часовой пояс\n/pause пауза на неделю\n/stop без напоминаний\n/unlink отвязать сайт\n/forget стереть всё, что я о тебе знаю',
+    'Я помогаю начать дело за 2 минуты.\n\nНапиши, что висит, и разломаю на маленький шаг.\nВесь план сразу: «Разбей …» и дело, например «Разбей помыть посуду».\n/step новый шаг\n/remind когда звать\n/tone как говорить\n/time твой часовой пояс\n/pause пауза на неделю\n/stop без напоминаний\n/unlink отвязать сайт\n/forget стереть всё, что я о тебе знаю',
   timeAsk: 'Сколько у тебя сейчас времени? Напиши, например, 14:30.',
   // привязка сайта (lib/tg/link.ts)
   linked: 'Готово, мы на связи: сайт и этот чат теперь вместе.',
@@ -407,6 +448,20 @@ async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
   touch(u, now)
   const cmd = text.split(/\s+/)[0].toLowerCase()
 
+  // «Разбей …» — сразу в дробление (база готовых планов, потом модель), раньше разговора и вопросов про время:
+  // «разбей дз к 7 утра» — это дело, а не час напоминания
+  const breakTask = breakCommand(text)
+  if (breakTask !== null) {
+    u.awaiting = null
+    if (!breakTask && !d.known?.(text)) {
+      await d.store.saveUser(u)
+      return void (await say(d, chat, T.breakAsk))
+    }
+    // фраза целиком — дело базы, а остаток нет («Разбить большой проект на части»): ломаем само дело
+    const task = d.known && !(breakTask && d.known(breakTask)) && d.known(text) ? text.slice(0, 120) : breakTask
+    return void (await breakAndOffer(d, u, task, true))
+  }
+
   if (cmd === '/step') {
     u.awaiting = null
     await d.store.saveUser(u)
@@ -482,19 +537,30 @@ async function freeText(d: Deps, u: TgUser, text: string, isNew: boolean) {
   if (!isNew && !(await d.store.getUser(chat))) return
   if (reply) return void (await catSays(d, u, text, reply))
   // модели не ответили или разговора нет: текст считаем делом и ломаем на шаги (у дробления своя заготовка)
-  const task = text.slice(0, 120)
-  const { steps, care, fallback } = await d.breakdown(task)
+  await breakAndOffer(d, u, text.slice(0, 120), false)
+}
+
+/** Дробление дела (то же, что на сайте: база готовых планов, понимание и опечатки, потом модель) → шаг или весь план */
+async function breakAndOffer(d: Deps, u: TgUser, task: string, whole: boolean) {
+  const chat = u.id
+  if (whole) await d.send('sendChatAction', { chat_id: chat, action: 'typing' })
+  const { steps, care, fallback, minutes, title } = await d.breakdown(task)
   // заготовка («Открыть то, что нужно для дела») — не план: честно просим ещё раз, а не выдаём её за шаги
   if (care || steps.length === 0 || fallback) {
     await d.store.saveUser(u)
     return void (await say(d, chat, care ?? T.aiDown))
   }
-  u.task = task
+  const name = title || task
+  if (whole) remember(u, 'user', task, d.now())
+  u.task = name
   u.plan = undefined
   u.steps = steps
   u.stepIdx = 0
+  const msg = whole ? planText(name, steps, minutes) : T.stepFromTask(name, steps[0])
+  // ответ остаётся в переписке: «а второй шаг какой?» кот поймёт из истории
+  if (whole) remember(u, 'cat', msg, d.now())
   await d.store.saveUser(u)
-  await offerStep(d, u, T.stepFromTask(task, steps[0]))
+  await offerStep(d, u, msg)
 }
 
 /** Реплика кота из обвязки → сообщение бота: текст, кнопка старта, сохранённый план */

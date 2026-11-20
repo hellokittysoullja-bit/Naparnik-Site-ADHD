@@ -227,3 +227,101 @@ describe('QStash: подпись', () => {
     expect(verifyQStash(null, '{}', { now })).toBe(false)
   })
 })
+
+describe('бот: «Разбей …» — база готовых планов (владелец 20.11)', () => {
+  it('просьба разбить → дело без слова-просьбы', async () => {
+    const { breakCommand } = await import('@/lib/tg/bot')
+    const cases: [string, string | null][] = [
+      ['Разбей помыть посуду', 'помыть посуду'],
+      ['разбить: «Написать курсовую»', 'Написать курсовую'],
+      ['Разбей на шаги помыть посуду', 'помыть посуду'],
+      ['разбей помыть посуду на шаги', 'помыть посуду'],
+      ['помоги разбить уборку', 'уборку'],
+      ['Пожалуйста разбей мне дело: отчёт', 'отчёт'],
+      ['раздроби сделать дз', 'сделать дз'],
+      ['Разломай выбросить мусор!', 'выбросить мусор'],
+      ['раздели на шаги переезд', 'переезд'],
+      ['распиши по шагам ремонт', 'ремонт'],
+      ['/break помыть пол', 'помыть пол'],
+      ['/break@naparnik_bot помыть пол', 'помыть пол'],
+      ['Разбей', ''],
+      ['разбей на шаги', ''],
+      // не просьба: настоящие дела и обычные слова
+      ['Разложить вещи по местам', null],
+      ['разбитая чашка', null],
+      ['помыть посуду', null],
+      ['раздробленность', null],
+    ]
+    for (const [text, want] of cases) expect([text, breakCommand(text)]).toEqual([text, want])
+  })
+
+  it('весь план списком с минутами, название из базы, кнопка «Сесть рядом»; модель разговора не зовётся', async () => {
+    const r = rig()
+    const asked: string[] = []
+    r.deps.breakdown = async (task) => {
+      asked.push(task)
+      return { steps: ['Собрать посуду в раковину', 'Помыть тарелки', 'Вытереть стол'], fallback: false, minutes: [2, 10, 90], title: 'Помыть посуду' }
+    }
+    let talked = 0
+    r.deps.converse = async () => (talked++, null)
+    await r.msg('/start')
+    await r.msg('разбей памыть пасуду')
+    expect(asked).toEqual(['памыть пасуду'])
+    expect(talked).toBe(0)
+    const plan = r.texts().find((t) => t.startsWith('Разломал'))!
+    expect(plan).toBe('Разломал «Помыть посуду» на 3 шага:\n\n1. Собрать посуду в раковину · 2 мин\n2. Помыть тарелки · 10 мин\n3. Вытереть стол · 1 ч 30 мин\n\nНачнём с первого: «Собрать посуду в раковину». Я рядом.')
+    const u = await r.store.getUser(CHAT)
+    expect(u?.task).toBe('Помыть посуду')
+    expect(u?.steps).toHaveLength(3)
+    const kb = (r.sent.find((s) => String(s.body.text).startsWith('Разломал'))!.body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard
+    expect(kb[0][0].text).toBe('Сесть рядом →')
+  })
+
+  it('просьба без дела — вопрос, что разломать; дробление не зовётся', async () => {
+    const r = rig()
+    let calls = 0
+    r.deps.breakdown = async () => (calls++, { steps: ['a', 'b', 'c'], fallback: false })
+    await r.msg('/start')
+    await r.msg('разбей')
+    expect(calls).toBe(0)
+    expect(r.texts().at(-1)).toMatch(/^Что разломать\?/)
+  })
+
+  it('фраза целиком — дело базы, а остаток нет: ломается само дело («Разбить большой проект на части»)', async () => {
+    const r = rig()
+    const asked: string[] = []
+    r.deps.known = (t) => t === 'Разбить большой проект на части'
+    r.deps.breakdown = async (task) => (asked.push(task), { steps: ['a', 'b', 'c'], fallback: false })
+    await r.msg('/start')
+    await r.msg('Разбить большой проект на части')
+    expect(asked).toEqual(['Разбить большой проект на части'])
+  })
+
+  it('бот ждёт час, а человек просит разбить дело со временем — это дело, а не час', async () => {
+    const r = rig()
+    const asked: string[] = []
+    r.deps.breakdown = async (task) => (asked.push(task), { steps: ['a', 'b', 'c'], fallback: false })
+    await r.msg('/start')
+    const u = (await r.store.getUser(CHAT))!
+    u.awaiting = 'hour'
+    await r.store.saveUser(u)
+    await r.msg('разбей сделать дз к 7')
+    expect(asked).toEqual(['сделать дз к 7'])
+    expect((await r.store.getUser(CHAT))?.hour).toBeUndefined()
+  })
+
+  it('настоящая база: «разбей помыть посуду» получает план и минуты из базы, без модели', async () => {
+    const { botBreakdown } = await import('@/lib/tg/deps')
+    const { readyPlan } = await import('@/lib/ai/agents/breakdown')
+    const r = rig()
+    r.deps.breakdown = botBreakdown
+    r.deps.known = (t) => readyPlan(t) !== null
+    await r.msg('/start')
+    await r.msg('Разбей помыть посуду')
+    const want = readyPlan('помыть посуду')!.value
+    const plan = r.texts().find((t) => t.startsWith('Разломал'))!
+    expect(plan).toContain(`«${want.steps[0]}»`)
+    expect(plan.split('\n').filter((l) => /^\d+\. /.test(l))).toHaveLength(want.steps.length)
+    expect(plan).toMatch(/ · \d+ (мин|ч)/)
+  })
+})

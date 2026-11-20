@@ -1,6 +1,6 @@
 import { BREAK_UNCLEAR } from '@/lib/break-task'
 import type { ModelMessage, TextStreamPart, ToolSet } from 'ai'
-import { breakdown } from '@/lib/ai/agents/breakdown'
+import { breakdown, readyPlan } from '@/lib/ai/agents/breakdown'
 import { chatTurn } from '@/lib/ai/agents/chat'
 import { collectReply, pseudonym } from '@/lib/ai/channels/telegram'
 import { newTurn } from '@/lib/ai/core/turn'
@@ -60,6 +60,18 @@ export const converse: Converse = async (u, text) => {
   return { text: reply.text, startFocus: reply.startFocus, plan }
 }
 
+/**
+ * Дробление в боте — то же, что на сайте: сначала база готовых планов (readyPlan: дословно, понимание, опечатки),
+ * потом модель через обвязку (проверки входа и вывода, страховка моделей, заготовка)
+ */
+export const botBreakdown: Deps['breakdown'] = async (task) => {
+  const r = await breakdown({ task, ctx: newTurn({ task: 'breakdown', channel: 'telegram' }) })
+  if (r.kind === 'steps') return { steps: r.steps, fallback: r.source === 'fallback', minutes: r.minutes, title: r.title }
+  // не понял дело — та же честная просьба, что на сайте (lib/break-task.ts), без звёздочек выделения
+  if (r.kind === 'unclear') return { steps: [], fallback: true, care: BREAK_UNCLEAR.replace(/\*/g, '') }
+  return { steps: [], fallback: true, care: r.reply }
+}
+
 /** Настоящие зависимости бота: Upstash (или память процесса), Telegram API, кот и дробление через обвязку */
 export function liveDeps(site: string): Deps {
   return {
@@ -67,14 +79,8 @@ export function liveDeps(site: string): Deps {
     send: (method, body) => tg(method, body),
     now: () => Date.now(),
     site,
-    // то же дробление, что на сайте, через обвязку (lib/ai): проверки входа и вывода, страховка моделей, заготовка
-    breakdown: async (task) => {
-      const r = await breakdown({ task, ctx: newTurn({ task: 'breakdown', channel: 'telegram' }) })
-      if (r.kind === 'steps') return { steps: r.steps, fallback: r.source === 'fallback' }
-      // не понял дело — та же честная просьба, что на сайте (lib/break-task.ts), без звёздочек выделения
-      if (r.kind === 'unclear') return { steps: [], fallback: true, care: BREAK_UNCLEAR.replace(/\*/g, '') }
-      return { steps: [], fallback: true, care: r.reply }
-    },
+    breakdown: botBreakdown,
+    known: (task) => readyPlan(task) !== null,
     converse,
     sign,
   }
