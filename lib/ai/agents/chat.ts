@@ -68,7 +68,7 @@ export async function chatTurn(input: {
     memory: renderMemory(snapshot),
     summary: summary.block,
     skills: renderSkills(snapshot, input.userTexts.at(-1) ?? ''),
-    situation: situation(input.clientHour, input.reminders),
+    situation: situation(input.clientHour, input.reminders, input.ctx.channel === 'telegram' ? 'telegram' : undefined),
     // знания под реплику (каталог пуст до утверждения владельцем — тогда блока нет)
     knowledge: renderKnowledge(selectKnowledge(KNOWLEDGE, [input.userTexts.at(-1) ?? ''])),
     // бюджет истории (prompt/context-budget.ts): сайт укладывается и так, боту с длинной историей — обязательно
