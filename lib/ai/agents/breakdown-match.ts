@@ -153,7 +153,7 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
    * Второй этап — «понимание» (breakdown-understand.ts). Только после того, как первый ничего не нашёл. Убирает уточнения
    * (сначала как можно меньше), переводит формы и синонимы и ищет дело ДОСЛОВНО, без опечаток. Два разных плана — null.
    */
-  function understand(text: string): { e: E; details: string[] } | null {
+  function understand(text: string, typos = false): { e: E; details: string[] } | null {
     const toks = [...text.matchAll(/[\p{L}\p{N}]+/gu)].map((m) => ({ w: normalize(m[0]), start: m.index!, end: m.index! + m[0].length }))
     if (!toks.length || toks.length > 12) return null
     const tw = toks.map((t) => t.w)
@@ -174,7 +174,9 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
       if (j < tw.length && TIME_TAIL.has(tw[j])) j++
       add(i, j)
     }
-    if (tw.some((w) => STUDY_HEADS.has(w) || STUDY_HEADS.has(ASPECT[w] ?? ''))) {
+    // учебное слово — как есть; во втором проходе и с опечаткой в одну букву («курсавую»), но только у слов от 5 букв
+    const studyHead = (w: string) => STUDY_HEADS.has(w) || (typos && w.length >= 5 && [...STUDY_HEADS].some((h) => h.length >= 5 && distance(w, h, 1) <= 1))
+    if (tw.some(studyHead)) {
       const i = tw.indexOf('по')
       if (i > 0 && !taken.has(i) && SUBJECTS.has(tw[i + 1] ?? '')) {
         add(i, SUBJECT_TAIL.has(tw[i + 2] ?? '') ? i + 3 : i + 2)
@@ -189,7 +191,9 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
     }
     // уровни: убрать 0, 1, 2… уточнений; первый уровень, где что-то нашлось, решает. Внутри уровня слово как написано
     // сильнее замены: «готовиться к экзамену» — своё дело, хотя замена дала бы и «Подготовиться к экзамену»
-    for (let size = 0; size <= spans.length; size++) {
+    // с опечатками — только когда уточнение отрезано (вся фраза с опечатками уже проверена третьим этапом) и без замен
+    // слов: опечатку правит тот же tryWords, что и для фразы целиком, со всеми его запретами (туалетное, два дела)
+    for (let size = typos ? 1 : 0; size <= spans.length; size++) {
       const found = new Map<T, { e: E; details: string[] }>()
       let fewest = Infinity
       const subsets = (from: number, acc: number[]): number[][] =>
@@ -198,6 +202,12 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
         const cut = new Set(sub.flatMap((n) => Array.from({ length: spans[n][1] - spans[n][0] }, (_, k) => spans[n][0] + k)))
         const rest = meaningful(tw.filter((_, k) => !cut.has(k)))
         if (!rest.length || rest.length > 8) continue
+        const details = () => sub.map((n) => spans[n]).sort((a, b) => a[0] - b[0]).map(([a, b]) => text.slice(toks[a].start, toks[b - 1].end))
+        if (typos) {
+          const e = tryWords(rest)
+          if (e) found.set(e.value, found.get(e.value) ?? { e, details: details() })
+          continue
+        }
         const opts = rest.map(variants)
         if (opts.reduce((n, o) => n * o.length, 1) > 32) continue
         const walk = (i: number, acc: string[], subs: number) => {
@@ -208,8 +218,7 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
               fewest = subs
               found.clear()
             }
-            const details = sub.map((n) => spans[n]).sort((a, b) => a[0] - b[0]).map(([a, b]) => text.slice(toks[a].start, toks[b - 1].end))
-            found.set(e.value, found.get(e.value) ?? { e, details })
+            found.set(e.value, found.get(e.value) ?? { e, details: details() })
             return
           }
           for (const o of opts[i]) walk(i + 1, [...acc, o], subs + (o === rest[i] ? 0 : 1))
@@ -240,6 +249,14 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
       }
       // 3) опечатки
       if (!e) e = tryWords(ws) ?? (fws ? tryWords(fws) : null)
+      // 4) опечатки в деле с уточнением: «пакормить собаку вечером» — последним, когда остальное не нашло ничего
+      if (!e && opts.understand) {
+        const u = understand(text, true)
+        if (u) {
+          const title = [u.e.title, ...u.details.map((d) => d.toLowerCase())].join(' ')
+          return { title, value: u.e.value, corrected: true }
+        }
+      }
       if (!e) return null
       return { title: e.title, value: e.value, corrected: normalize(text) !== normalize(e.title) }
     },

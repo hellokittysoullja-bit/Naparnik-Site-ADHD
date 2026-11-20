@@ -23,7 +23,7 @@ describe('проверочный набор узнавания дел (tests/fix
     expect(wrong).toEqual([])
   })
 
-  it('узнаётся всё ожидаемое (без «понимания» 20.11 было 126 из 219)', () => {
+  it('узнаётся всё ожидаемое (без «понимания» 20.11 было 126 из 219; с опечатками и уточнением набор 228)', () => {
     const want = GOLDEN.filter(([, exp]) => exp)
     const ok = want.filter(([phrase, exp]) => JSON.stringify(steps(phrase)) === JSON.stringify(steps(exp!))).length
     expect(ok).toBeGreaterThanOrEqual(want.length)
