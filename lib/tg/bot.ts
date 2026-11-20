@@ -93,6 +93,8 @@ export type Deps = {
   /** https://adhd-naparnik.vercel.app — для ссылок «Сесть рядом» */
   site: string
   breakdown: Breakdown
+  /** пауза между кадрами полоски (в тестах — без ожидания) */
+  wait?: (ms: number) => Promise<void>
   /** дело есть в базе готовых планов (readyPlan): «Разбить большой проект на части» — само дело, а не просьба */
   known?: (task: string) => boolean
   /** разговор с котом через обвязку; без него бот работает по правилам */
@@ -633,12 +635,17 @@ async function freeText(d: Deps, u: TgUser, text: string, isNew: boolean) {
 /** Дробление дела (то же, что на сайте: база готовых планов, понимание и опечатки, потом модель) → шаг или весь план */
 async function breakAndOffer(d: Deps, u: TgUser, task: string, whole: boolean) {
   const chat = u.id
-  if (whole) await d.send('sendChatAction', { chat_id: chat, action: 'typing' })
-  const { steps, care, fallback, minutes, title } = await d.breakdown(task)
+  // просьба разбить — с полоской «котик разбивает задачу…», которая потом сама становится планом (владелец 20.11)
+  // дробление стартует сразу, полоска рисуется параллельно
+  const job = d.breakdown(task).catch(() => ({ steps: [] as string[], fallback: true, care: undefined, minutes: undefined, title: undefined }))
+  const progress = whole ? await startProgress(d, chat) : null
+  const { steps, care, fallback, minutes, title } = progress ? await progress.run(job) : await job
   // заготовка («Открыть то, что нужно для дела») — не план: честно просим ещё раз, а не выдаём её за шаги
   if (care || steps.length === 0 || fallback) {
     await d.store.saveUser(u)
-    return void (await say(d, chat, care ?? T.aiDown))
+    const text = care ?? T.aiDown
+    if (progress && (await progress.become(text))) return
+    return void (await say(d, chat, text))
   }
   const name = title || task
   if (whole) remember(u, 'user', task, d.now())
@@ -650,7 +657,55 @@ async function breakAndOffer(d: Deps, u: TgUser, task: string, whole: boolean) {
   // ответ остаётся в переписке: «а второй шаг какой?» кот поймёт из истории
   if (whole) remember(u, 'cat', plain(msg), d.now())
   await d.store.saveUser(u)
+  // полоска превращается в план тем же сообщением; не вышло (сообщение удалили, сеть) — план приходит новым
+  if (progress && (await progress.become(msg, stepKeyboard(d, u), true))) {
+    if (u.hour === undefined) await say(d, chat, T.askRemind, remindKeyboard())
+    return
+  }
   await offerStep(d, u, msg, whole)
+}
+
+/** «🐈 котик разбивает задачу...» и полоска из 10 делений */
+export function progressText(pct: number) {
+  const n = Math.round(pct / 10)
+  return `🐈 котик разбивает задачу...\n[${'▓'.repeat(n)}${'░'.repeat(10 - n)}] ${pct}%`
+}
+
+/**
+ * Полоска одним сообщением, которое правится (editMessageText), а в конце само становится планом.
+ * Без гонок: все правки идут строго по очереди в одной функции, дробление считается параллельно, а полоска
+ * доходит до 90 % и ждёт его; 100 % — только когда план готов. Кадров мало и с паузой 450 мс: Telegram
+ * ограничивает частоту правок в чате, а частые правки дали бы «Too Many Requests» и рваную анимацию.
+ * Пропавший промежуточный кадр не страшен (следующий его перекроет); не прошла последняя правка — план новым сообщением.
+ */
+const FRAMES = [30, 60, 90]
+export const FRAME_MS = 450
+
+async function startProgress(d: Deps, chat: number) {
+  const sent = (await d.send('sendMessage', { chat_id: chat, text: progressText(0) }).catch(() => null)) as { message_id?: number } | null
+  const id = sent && typeof sent === 'object' ? sent.message_id : undefined
+  if (typeof id !== 'number') return null
+  const wait = d.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  const edit = (text: string, extra: Record<string, unknown> = {}) =>
+    d.send('editMessageText', { chat_id: chat, message_id: id, text, link_preview_options: { is_disabled: true }, ...extra }).catch(() => null)
+  return {
+    async run<T>(job: Promise<T>): Promise<T> {
+      for (const p of FRAMES) {
+        await wait(FRAME_MS)
+        await edit(progressText(p))
+      }
+      const result = await job
+      await wait(FRAME_MS)
+      await edit(progressText(100))
+      await wait(FRAME_MS)
+      return result
+    },
+    /** превратить полоску в итоговое сообщение; false — правка не прошла */
+    async become(text: string, keyboard?: Keyboard, html = false) {
+      const ok = await edit(text, { ...(html ? { parse_mode: 'HTML' } : {}), ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}) })
+      return Boolean(ok)
+    },
+  }
 }
 
 /** Реплика кота из обвязки → сообщение бота: текст, кнопка старта, сохранённый план */

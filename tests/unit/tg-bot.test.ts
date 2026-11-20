@@ -439,14 +439,13 @@ describe('бот: сообщения одного чата по очереди (
   it('разные чаты друг друга не ждут; упавший обработчик снимает замок', async () => {
     const r = rig()
     await r.msg('/start')
-    r.deps.converse = async () => {
-      throw new Error('сеть')
-    }
-    r.deps.breakdown = async () => {
+    const send = r.deps.send
+    r.deps.send = async () => {
       throw new Error('сеть')
     }
     await expect(r.msg('привет')).rejects.toThrow()
     expect(r.store.locks.size).toBe(0)
+    r.deps.send = send
     const t0 = Date.now()
     await handleUpdate({ message: { chat: { id: 7, type: 'private' }, text: '/help' } }, r.deps)
     expect(Date.now() - t0).toBeLessThan(500)
@@ -467,5 +466,77 @@ describe('бот: сообщения одного чата по очереди (
     await r.store.unlock(CHAT, token!)
     r.setNow(T0 + 600_000)
     expect(await tick(r.deps)).toBe(1)
+  })
+})
+
+describe('бот: полоска «котик разбивает задачу» превращается в план (владелец 20.11)', () => {
+  function animated() {
+    const r = rig()
+    let next = 100
+    const send = r.deps.send
+    // настоящий Telegram возвращает сообщение с message_id; правка — true
+    r.deps.send = async (m, b) => (await send(m, b), m === 'sendMessage' ? { message_id: next++ } : true)
+    const waits: number[] = []
+    r.deps.wait = async (ms) => void waits.push(ms)
+    return { ...r, waits }
+  }
+
+  it('0% → 30 → 60 → 90 → 100 % тем же сообщением, потом это сообщение и есть план с кнопками', async () => {
+    const r = animated()
+    r.deps.breakdown = async () => ({ steps: ['Раз', 'Два', 'Три'], fallback: false, minutes: [1, 2, 3], title: 'Помыть посуду' })
+    await r.msg('/start')
+    const from = r.sent.length
+    await r.msg('разбей помыть посуду')
+    const ev = r.sent.slice(from)
+    const first = ev.find((s) => s.method === 'sendMessage')!
+    expect(first.body.text).toBe('🐈 котик разбивает задачу...\n[░░░░░░░░░░] 0%')
+    const edits = ev.filter((s) => s.method === 'editMessageText')
+    expect(edits.map((e) => String(e.body.text).split('\n')[1] ?? '')).toEqual(['[▓▓▓░░░░░░░] 30%', '[▓▓▓▓▓▓░░░░] 60%', '[▓▓▓▓▓▓▓▓▓░] 90%', '[▓▓▓▓▓▓▓▓▓▓] 100%', 'Разломал на 3 микрошага · около 6\u00a0мин'])
+    // все правки — того же сообщения; последняя — план с разметкой и кнопками
+    expect(new Set(edits.map((e) => e.body.message_id)).size).toBe(1)
+    const last = edits.at(-1)!
+    expect(last.body.parse_mode).toBe('HTML')
+    expect(String(last.body.text)).toMatch(/^🐾 <b>Помыть посуду<\/b>/)
+    expect((last.body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard[0][0].text).toBe('Сесть рядом →')
+    // плана новым сообщением нет — он вырос из полоски
+    expect(ev.filter((s) => s.method === 'sendMessage' && String(s.body.text).startsWith('🐾'))).toHaveLength(0)
+    expect(r.waits.every((w) => w >= 400)).toBe(true)
+  })
+
+  it('долгое дробление: полоска стоит на 90 % и не обгоняет результат', async () => {
+    const r = animated()
+    let release!: () => void
+    const gate = new Promise<void>((res) => (release = res))
+    r.deps.breakdown = async () => (await gate, { steps: ['Раз', 'Два', 'Три'], fallback: false })
+    await r.msg('/start')
+    const from = r.sent.length
+    const run = r.msg('разбей отчёт')
+    await new Promise((res) => setTimeout(res, 20))
+    const shown = r.sent.slice(from).filter((s) => s.method === 'editMessageText').map((e) => String(e.body.text))
+    expect(shown.at(-1)).toContain('90%')
+    expect(shown.some((t) => t.includes('100%'))).toBe(false)
+    release()
+    await run
+    expect(String(r.sent.filter((s) => s.method === 'editMessageText').at(-1)!.body.text)).toMatch(/^🐾 <b>отчёт<\/b>/)
+  })
+
+  it('дробление не вышло или упало — полоска превращается в честный ответ, а не висит', async () => {
+    const r = animated()
+    r.deps.breakdown = async () => {
+      throw new Error('сеть')
+    }
+    await r.msg('/start')
+    await r.msg('разбей отчёт')
+    expect(r.sent.filter((s) => s.method === 'editMessageText').at(-1)!.body.text).toBe(T.aiDown)
+  })
+
+  it('правка не прошла (сообщение удалили) — план приходит новым сообщением', async () => {
+    const r = animated()
+    const send = r.deps.send
+    r.deps.send = async (m, b) => (m === 'editMessageText' ? null : send(m, b))
+    r.deps.breakdown = async () => ({ steps: ['Раз', 'Два', 'Три'], fallback: false })
+    await r.msg('/start')
+    await r.msg('разбей отчёт')
+    expect(r.sent.some((s) => s.method === 'sendMessage' && String(s.body.text).startsWith('🐾 <b>отчёт</b>'))).toBe(true)
   })
 })
