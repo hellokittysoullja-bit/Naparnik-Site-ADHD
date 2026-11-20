@@ -69,13 +69,15 @@ const EXACT_ONLY = new Set([
   'потрахатся', 'потрахаца', 'переспат', 'отлить',
 ])
 
+import { ASPECT, NOUN_SAME, STUDY_HEADS, SUBJECTS, SUBJECT_TAIL, TIME_DETAILS, TIME_NUMBER, TIME_TAIL, VERB_SAME, verbCandidates } from './breakdown-understand'
+
 export type Matcher<T> = { find: (text: string) => { title: string; value: T; corrected: boolean } | null }
 
 /**
  * Указатель по готовым делам. entries — [название, значение]; название — как его покажем человеку.
  * Возвращает дело и флаг «исправили» (было не дословно), чтобы экран записал дело правильно.
  */
-export function buildMatcher<T>(entries: [string, T][]): Matcher<T> {
+export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boolean } = {}): Matcher<T> {
   type E = { title: string; value: T; ws: string[] }
   const list: E[] = entries.map(([title, value]) => ({ title, value, ws: meaningful(words(title)) }))
   const exact = new Map<string, E>()
@@ -143,13 +145,117 @@ export function buildMatcher<T>(entries: [string, T][]): Matcher<T> {
     return plans.size === 1 ? [...found][0] : null
   }
 
+  // глаголы базы — первое слово названий дел: только в них превращаются формы вроде «помыла», «покорми»
+  const verbs = new Set(list.map((e) => e.ws[0]).filter((w) => w && /(ть|ться|ти|тись|чь|чься)$/.test(w)))
+  const DETAILS = TIME_DETAILS.map((d) => d.split(' '))
+
+  /**
+   * Второй этап — «понимание» (breakdown-understand.ts). Только после того, как первый ничего не нашёл. Убирает уточнения
+   * (сначала как можно меньше), переводит формы и синонимы и ищет дело ДОСЛОВНО, без опечаток. Два разных плана — null.
+   */
+  function understand(text: string, typos = false): { e: E; details: string[] } | null {
+    const toks = [...text.matchAll(/[\p{L}\p{N}]+/gu)].map((m) => ({ w: normalize(m[0]), start: m.index!, end: m.index! + m[0].length }))
+    if (!toks.length || toks.length > 12) return null
+    const tw = toks.map((t) => t.w)
+    // уточнения: отрезки [от, до) по словам, не пересекаются
+    const spans: [number, number][] = []
+    const taken = new Set<number>()
+    const add = (a: number, b: number) => {
+      for (let k = a; k < b; k++) if (taken.has(k)) return
+      for (let k = a; k < b; k++) taken.add(k)
+      spans.push([a, b])
+    }
+    for (const d of [...DETAILS].sort((x, y) => y.length - x.length))
+      for (let i = 0; i + d.length <= tw.length; i++) if (d.every((w, k) => tw[i + k] === w)) add(i, i + d.length)
+    for (let i = 0; i < tw.length - 1; i++) {
+      if (!TIME_NUMBER.test(tw[i]) || !/^\d{1,2}$/.test(tw[i + 1])) continue
+      let j = i + 2
+      if (j < tw.length && /^\d{2}$/.test(tw[j])) j++
+      if (j < tw.length && TIME_TAIL.has(tw[j])) j++
+      add(i, j)
+    }
+    // учебное слово — как есть; во втором проходе и с опечаткой в одну букву («курсавую»), но только у слов от 5 букв
+    const studyHead = (w: string) => STUDY_HEADS.has(w) || (typos && w.length >= 5 && [...STUDY_HEADS].some((h) => h.length >= 5 && distance(w, h, 1) <= 1))
+    if (tw.some(studyHead)) {
+      const i = tw.indexOf('по')
+      if (i > 0 && !taken.has(i) && SUBJECTS.has(tw[i + 1] ?? '')) {
+        add(i, SUBJECT_TAIL.has(tw[i + 2] ?? '') ? i + 3 : i + 2)
+      }
+    }
+    if (spans.length > 4) return null
+    const variants = (w: string): string[] => {
+      const out = new Set([w])
+      for (const m of [ASPECT[w], VERB_SAME[w], NOUN_SAME[w]]) if (m) out.add(m)
+      if (!known.has(w)) for (const c of verbCandidates(w, verbs)) out.add(c)
+      return [...out]
+    }
+    // уровни: убрать 0, 1, 2… уточнений; первый уровень, где что-то нашлось, решает. Внутри уровня слово как написано
+    // сильнее замены: «готовиться к экзамену» — своё дело, хотя замена дала бы и «Подготовиться к экзамену»
+    // с опечатками — только когда уточнение отрезано (вся фраза с опечатками уже проверена третьим этапом) и без замен
+    // слов: опечатку правит тот же tryWords, что и для фразы целиком, со всеми его запретами (туалетное, два дела)
+    for (let size = typos ? 1 : 0; size <= spans.length; size++) {
+      const found = new Map<T, { e: E; details: string[] }>()
+      let fewest = Infinity
+      const subsets = (from: number, acc: number[]): number[][] =>
+        acc.length === size ? [acc] : spans.slice(from).flatMap((_, k) => subsets(from + k + 1, [...acc, from + k]))
+      for (const sub of subsets(0, [])) {
+        const cut = new Set(sub.flatMap((n) => Array.from({ length: spans[n][1] - spans[n][0] }, (_, k) => spans[n][0] + k)))
+        const rest = meaningful(tw.filter((_, k) => !cut.has(k)))
+        if (!rest.length || rest.length > 8) continue
+        const details = () => sub.map((n) => spans[n]).sort((a, b) => a[0] - b[0]).map(([a, b]) => text.slice(toks[a].start, toks[b - 1].end))
+        if (typos) {
+          const e = tryWords(rest)
+          if (e) found.set(e.value, found.get(e.value) ?? { e, details: details() })
+          continue
+        }
+        const opts = rest.map(variants)
+        if (opts.reduce((n, o) => n * o.length, 1) > 32) continue
+        const walk = (i: number, acc: string[], subs: number) => {
+          if (i === opts.length) {
+            const e = lookup(acc)
+            if (!e || subs > fewest) return
+            if (subs < fewest) {
+              fewest = subs
+              found.clear()
+            }
+            found.set(e.value, found.get(e.value) ?? { e, details: details() })
+            return
+          }
+          for (const o of opts[i]) walk(i + 1, [...acc, o], subs + (o === rest[i] ? 0 : 1))
+        }
+        walk(0, [], 0)
+      }
+      if (found.size === 1) return [...found.values()][0]
+      if (found.size > 1) return null
+    }
+    return null
+  }
+
   return {
     find(text) {
       const ws = meaningful(words(text))
-      let e = tryWords(ws)
-      if (!e) {
-        const flipped = fromLatinLayout(text)
-        if (flipped) e = tryWords(meaningful(words(flipped)))
+      const flipped = fromLatinLayout(text)
+      const fws = flipped ? meaningful(words(flipped)) : null
+      // 1) дословно (с точностью до регистра, порядка слов и слов-паразитов)
+      let e = (ws.length && ws.length <= 8 ? lookup(ws) : null) ?? (fws?.length && fws.length <= 8 ? lookup(fws) : null)
+      // 2) понимание — РАНЬШЕ исправления опечаток: настоящее слово («мыться», «кормить») не должно «исправляться» в
+      // похожее чужое («умыться»); понимание само опечаток не правит, поэтому опечатки дальше узнаются как раньше
+      if (!e && opts.understand) {
+        const u = understand(text)
+        if (u) {
+          const title = [u.e.title, ...u.details.map((d) => d.toLowerCase())].join(' ')
+          return { title, value: u.e.value, corrected: true }
+        }
+      }
+      // 3) опечатки
+      if (!e) e = tryWords(ws) ?? (fws ? tryWords(fws) : null)
+      // 4) опечатки в деле с уточнением: «пакормить собаку вечером» — последним, когда остальное не нашло ничего
+      if (!e && opts.understand) {
+        const u = understand(text, true)
+        if (u) {
+          const title = [u.e.title, ...u.details.map((d) => d.toLowerCase())].join(' ')
+          return { title, value: u.e.value, corrected: true }
+        }
       }
       if (!e) return null
       return { title: e.title, value: e.value, corrected: normalize(text) !== normalize(e.title) }
