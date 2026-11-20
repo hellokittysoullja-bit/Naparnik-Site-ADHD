@@ -146,3 +146,22 @@ describe('бот: не текст, пересланное, дело без «р�
     expect(r.sent.filter((s) => s.method === 'sendChatAction').length).toBeGreaterThanOrEqual(3)
   })
 })
+
+describe('бот: разметка не прошла — план всё равно приходит', () => {
+  it('Telegram отверг HTML (и правку полоски, и новое сообщение) — план приходит простым текстом', async () => {
+    const r = rig()
+    const send = r.deps.send
+    let n = 100
+    r.deps.send = async (m, b) => {
+      if (b.parse_mode === 'HTML') return null
+      await send(m, b)
+      return m === 'sendMessage' ? { message_id: n++ } : true
+    }
+    r.deps.wait = async () => {}
+    await r.msg({ text: '/start' })
+    await r.msg({ text: 'разбей помыть посуду' })
+    const last = r.sent.filter((s) => s.method === 'sendMessage').map((s) => String(s.body.text)).find((t) => t.startsWith('🐾 '))
+    expect(last).toMatch(/^🐾 помыть посуду\nРазломал на 3 микрошага/)
+    expect(last).not.toContain('<b>')
+  })
+})

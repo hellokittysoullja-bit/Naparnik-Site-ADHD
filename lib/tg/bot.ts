@@ -405,15 +405,20 @@ const sayMenu = (d: Deps, u: TgUser, text: string) => {
   return d.send('sendMessage', { chat_id: u.id, text, link_preview_options: { is_disabled: true }, reply_markup: MENU })
 }
 
-const say = (d: Deps, chat: number, text: string, keyboard?: Keyboard, html = false) =>
+async function say(d: Deps, chat: number, text: string, keyboard?: Keyboard, html = false) {
   // без превью; разметка только там, где текст собран кодом и экранирован (planText): шаг человека не станет карточкой
-  d.send('sendMessage', {
+  const body = (t: string, h: boolean) => ({
     chat_id: chat,
-    text,
+    text: t,
     link_preview_options: { is_disabled: true },
-    ...(html ? { parse_mode: 'HTML' } : {}),
+    ...(h ? { parse_mode: 'HTML' } : {}),
     ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
   })
+  const sent = await d.send('sendMessage', body(text, html))
+  // Telegram не разобрал разметку (400 «can't parse entities») — то же сообщение простым текстом, а не тишина
+  if (!sent && html) return d.send('sendMessage', body(plain(text), false))
+  return sent
+}
 
 // ——— состояние ———
 
