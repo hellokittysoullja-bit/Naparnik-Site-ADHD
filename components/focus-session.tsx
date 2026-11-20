@@ -74,7 +74,7 @@ import { trimLabel } from '@/lib/utils'
 import { FIRST_MINUTES } from '@/lib/onboarding'
 import { trackEvent } from '@/lib/events'
 import { withAttribution } from '@/lib/visitor'
-import { addCard, addThought, markStepDone, nextAfter, updateCard, shortDuration, upsertDeal } from '@/lib/deals'
+import { addCard, addThought, markStepDone, nextAfter, updateCard, upsertDeal } from '@/lib/deals'
 
 // 5 минут — «просто начать» (этап 1, research/24 C: слепота ко времени, порог старта); оценка шага сама выбирает длительность
 const durations = [5, 15, 25, 45]
@@ -309,7 +309,7 @@ export function FocusSession() {
   const [dropped, setDropped] = useState<{ step: BStep; index: number } | null>(null)
   const [finerError, setFinerError] = useState(false)
   // оценка выбранного шага в минутах (если модель её дала) — сама ставит длительность
-  const [estimate, setEstimate] = useState<number | null>(null)
+  const [, setEstimate] = useState<number | null>(null)
   // «Разломать на шаг» с Дома: экран сразу в состоянии дробления — раньше на миг показывался выбор шага с «Шаг уже выбран»
   // и кнопкой «Раздробить», и только потом начиналось дробление (16.11, покадровый аудит)
   const [breaking, setBreaking] = useState(false)
@@ -1276,12 +1276,15 @@ export function FocusSession() {
                 </button>
               </div>
               {/* место карточки первого шага. Высота постоянная (заголовок до двух строк) — ничего не сдвигается */}
-              <div className="relative h-[9.75rem]">
+              <div className="relative h-[11.25rem]">
                 {brokenSteps && (
               // карточка-записка (вариант 4, выбран владельцем 17.11): кремовая бумага с двойной строчкой, привязана к фону
               // петельками на углах, печать-звезда «×N» (сколько шагов вышло) держит правый верхний угол, лапки кота
-              <div data-rv-card className="note-card relative flex h-[9.75rem] flex-col px-4 pb-3 pt-3.5 [@media(max-width:380px)]:px-3">
-                <NoteDeco steps={brokenSteps.length} />
+              <div data-rv-card className="note-card relative flex h-[11.25rem] flex-col px-4 pb-3 pt-3.5 [@media(max-width:380px)]:px-3">
+                {/* лапки и звёздочки слева — та же группа, опущена под шаг целиком (владелец 20.11, как в знакомстве) */}
+                <NoteDeco steps={brokenSteps.length} follow room={40} />
+                {/* подпись над шагом — как в знакомстве (владелец 20.11): чёрным жирным */}
+                <p className="shrink-0 text-[18px] font-extrabold leading-6 text-[#1d140d]">Твой первый шаг:</p>
                 {editing ? (
                   <input
                     autoFocus
@@ -1304,18 +1307,16 @@ export function FocusSession() {
                       exit={reducedMotion ? { opacity: 0, transition: { duration: 0.1 } } : { opacity: 0, y: -6, transition: { duration: 0.14 } }}
                       transition={{ duration: reducedMotion ? 0.1 : 0.22, ease: [0.05, 0.7, 0.1, 1] }}
                       data-rv-step={busy ? undefined : ''}
-                      className="max-h-[3.6rem] shrink-0 overflow-hidden text-pretty text-[1.15rem] font-bold leading-[1.8rem]"
+                      className="mt-1.5 max-h-[3.6rem] shrink-0 overflow-hidden text-pretty text-[1.15rem] font-bold leading-[1.8rem]"
                     >
                       {busy ? 'Разламываю…' : <WoodWords text={task} />}
                     </motion.p>
                   </AnimatePresence>
                 )}
-                {/* строка оценки — место есть всегда, даже пустое: карточка одной высоты */}
-                <p className="mt-1 h-4 truncate font-mono text-[10.5px] font-semibold uppercase tracking-widest text-[#8a5a2b]">
-                  {!editing && brokenSteps[sel]?.wait && <span className="text-reward">пока ждёшь · </span>}
-                  {/* длительность может быть спрятана (шаги не влезли) — тогда говорим, сколько поставили, а не «ниже» */}
-                  {!editing && estimate ? `≈ ${shortDuration(estimate)} · ${compact ? `сессия ${minutes} мин` : 'уже поставил ниже'}` : ''}
-                </p>
+                {/* оценка времени сама не показывается (владелец 20.11) — только «пока ждёшь», если шаг такой */}
+                {!editing && brokenSteps[sel]?.wait && (
+                  <p className="mt-1 h-4 truncate font-mono text-[10.5px] font-semibold uppercase tracking-widest text-reward">пока ждёшь</p>
+                )}
                 {/* кнопки карточки — всегда в один ряд, прижаты к низу без верхнего отступа: при шаге в две строки отступ выталкивал
                     их за строчку записки (iPhone владельца, 17.11) */}
                 <div className="mt-auto flex flex-nowrap gap-1.5 [@media(max-width:380px)]:gap-1">
