@@ -43,21 +43,29 @@ export function WoodWords({ text }: { text: string }) {
 
 /** Убранство карточки-записки: петельки на трёх углах (четвёртый держит печать), печать-звезда «×N», лапки кота,
  *  мерцающие звёздочки. Только украшение — для диктора его нет */
-export function NoteDeco({ steps, drop = 0, noLeft = false }: { steps: number; /** на сколько px ниже левые лапки и звёздочки */ drop?: number; /** без левых лапок и звёздочек (знакомство ставит их строкой под шагом) */ noLeft?: boolean }) {
+export function NoteDeco({ steps, follow = false }: { steps: number; /** левые лапки и звёздочки идут за шагом: та же группа и те же расстояния, только ниже на столько, на сколько шаг ниже, чем в Фокусе (знакомство: над шагом подпись) */ follow?: boolean }) {
   // заголовок в две строки (узкий телефон, длинный шаг) занимает место левых лапок — тогда они и звёздочки под строкой
   // прячутся, иначе их кусочки торчат из-под табличек. На большом телефоне заголовок в одну строку — всё на месте
   const ref = useRef<HTMLSpanElement>(null)
   const [wrap, setWrap] = useState(false)
+  const [drop, setDrop] = useState(0)
   useLayoutEffect(() => {
-    const title = ref.current?.parentElement?.querySelector<HTMLElement>('[data-rv-step]')
-    if (!title) return
-    const check = () => setWrap(title.getBoundingClientRect().height > 40)
+    const card = ref.current?.parentElement
+    const title = card?.querySelector<HTMLElement>('[data-rv-step]')
+    if (!title || !card) return
+    // низ шага в Фокусе — 43 px от верха записки (одна строка); группа лапок стоит от него на тех же расстояниях
+    const check = () => {
+      if (follow) {
+        const t = title.getBoundingClientRect()
+        setDrop(Math.max(0, Math.round(t.bottom - card.getBoundingClientRect().top - 43)))
+      } else setWrap(title.getBoundingClientRect().height > 40)
+    }
     check()
     const ro = new ResizeObserver(check)
     ro.observe(title)
     return () => ro.disconnect()
   })
-  const under = wrap || noLeft ? ' hidden' : ''
+  const under = wrap ? ' hidden' : ''
   const loop = (
     <svg viewBox="0 0 26 26" className="size-full overflow-visible">
       <path d="M5 5 C12 7 20 13 20 18 C20 22.5 15 23.5 12.5 20.5 C10 17.5 9.5 11 5 5 Z" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinejoin="round" />

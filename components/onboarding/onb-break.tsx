@@ -108,19 +108,14 @@ export function OnbBreak({ task, steps, done = false, onDone }: { task: string; 
       {split && steps && (
         <>
           {/* поля вокруг записки: печать «×N» и петельки выходят за её край и не должны обрезаться краем экрана */}
-          <div data-rv-card className="note-card relative mx-2.5 mt-2 flex flex-col pb-3 pl-4 pr-16 pt-3.5 [@media(max-width:380px)]:pl-3">
-            <NoteDeco steps={steps.length} noLeft />
+          <div data-rv-card className="note-card relative mx-2.5 mt-2 flex flex-col pb-[3.25rem] pl-4 pr-16 pt-3.5 [@media(max-width:380px)]:pl-3">
+            {/* лапки и звёздочки — та же группа, что в Фокусе, опущена под шаг (владелец 20.11) */}
+            <NoteDeco steps={steps.length} follow />
             {/* подпись над шагом (владелец 20.11): чёрным жирным */}
-            <p className="text-[15px] font-extrabold leading-5 text-[#1d140d]">Твой 1 шаг:</p>
+            <p className="text-[18px] font-extrabold leading-6 text-[#1d140d]">Твой первый шаг:</p>
             <p data-rv-step className="mt-1.5 text-pretty text-[1.15rem] font-bold leading-[1.8rem]">
               <WoodWords text={steps[0]} />
             </p>
-            {/* три красные лапки строкой под шагом: при шаге в две строки они не прячутся и не лезут на таблички */}
-            <span aria-hidden="true" className="relative mt-1 block h-6">
-              <span className="note-paw left-[2px] top-[2px] rotate-[80deg] scale-[.7] opacity-90" />
-              <span className="note-paw left-[32px] top-[8px] rotate-[80deg] scale-[.7] opacity-90" />
-              <span className="note-paw left-[62px] top-[2px] rotate-[80deg] scale-[.7] opacity-90" />
-            </span>
           </div>
           {rows.length > 0 && (
             <div data-rv-list className="flex flex-col gap-1 px-1">
