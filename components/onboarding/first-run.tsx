@@ -660,6 +660,7 @@ export function FirstRun() {
           step={building ? step + 0.5 : step}
           commit={step === LAST_STEP}
           hideBubble={!ready}
+          awake={breakMode && step === STEP_FIRST && !!brk && !brk.done}
         />
       )}
       {/* до чтения адреса вариантов нет вовсе — иначе на ссылке на середину на кадр мелькал первый вопрос */}
@@ -1036,8 +1037,11 @@ export function CatAsks({
   step,
   commit,
   hideBubble = false,
+  awake = false,
 }: {
   hideBubble?: boolean
+  /** на удар по полену кот смотрит, не моргая (как в Фокусе) */
+  awake?: boolean
   line: string
   face: MascotExpression
   nudge: boolean
@@ -1062,6 +1066,7 @@ export function CatAsks({
           expression={face}
           action={think ? 'think' : action ?? (hop ? 'wave' : 'idle')}
           size={148}
+          awake={awake}
           className={commit ? 'size-[148px]' : 'size-[104px]'}
           label={commit ? 'Напарник готов' : 'Напарник'}
         />

@@ -1,6 +1,6 @@
 'use client'
 
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useReducedMotion } from 'motion/react'
 import { celebrateCat, nextBreakCount, playLogReveal, preloadReveal, wordCount } from '@/components/break-reveal/log-reveal'
@@ -27,7 +27,7 @@ export function OnbBreak({ task, steps, done = false, onDone }: { task: string; 
   useLayoutEffect(() => {
     doneRef.current = onDone
   })
-  useLayoutEffect(() => preloadReveal(), [])
+  useEffect(() => preloadReveal(), [])
 
   useLayoutEffect(() => {
     if (!steps?.length || played.current) return
@@ -42,12 +42,13 @@ export function OnbBreak({ task, steps, done = false, onDone }: { task: string; 
       doneRef.current()
       return
     }
+    // как в Фокусе: «сцена идёт» с момента, когда пришли шаги (ещё до шрифтов), — записка и строки скрыты, пока их не покажет сцена
+    setPlaying(true)
     let alive = true
     let scene: ReturnType<typeof playLogReveal> | null = null
     const onDown = () => scene?.skip()
     const play = () => {
       if (!alive) return
-      setPlaying(true)
       scene = playLogReveal({ cat, catBody: cat, bubble, slot, source, fromWait: true }, nextBreakCount(), {
         pieces: wordCount(steps.slice(0, MAX_ROWS + 1)),
         onImpact: hapticReaction,
@@ -79,13 +80,15 @@ export function OnbBreak({ task, steps, done = false, onDone }: { task: string; 
     }
     // шрифт табличек — до раскола: иначе слова меряются в запасном шрифте и куски садятся мимо (как в Фокусе)
     const fam = getComputedStyle(source).fontFamily
+    const text = steps.slice(0, MAX_ROWS + 1).join(' ')
     const fonts = document.fonts?.load
-      ? Promise.race([
-          Promise.all([document.fonts.load(`700 18px ${fam}`, steps[0]), document.fonts.load(`600 14px ${fam}`, steps.join(' '))]),
-          new Promise((r) => setTimeout(r, 1500)),
+      ? Promise.all([
+          document.fonts.load(getComputedStyle(source).font, text),
+          document.fonts.load(`700 18px ${fam}`, text),
+          document.fonts.load(`600 13.5px ${fam}`, text),
         ])
       : Promise.resolve()
-    void fonts.then(play, play)
+    void Promise.race([fonts, new Promise((res) => window.setTimeout(res, 1500))]).then(play, play)
     return () => {
       alive = false
       document.removeEventListener('pointerdown', onDown, true)
