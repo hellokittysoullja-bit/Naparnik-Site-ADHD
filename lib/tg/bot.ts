@@ -48,7 +48,7 @@ export function breakCommand(text: string): string | null {
 
 /** Весь план списком, с минутами, если они есть: «1. Открыть письмо · 2 мин» */
 export function planText(title: string, steps: string[], minutes?: (number | undefined)[]) {
-  const lines = steps.map((s, i) => `${i + 1}. ${s}${minutes?.[i] ? ` · ${shortDuration(minutes[i]!)}` : ''}`)
+  const lines = steps.map((s, i) => `${i + 1}. ${s}${minutes?.[i] ? ` · ${shortDuration(minutes[i]!).replace(/ /g, '\u00a0')}` : ''}`)
   return `Разломал «${title}» на ${steps.length} ${plural(steps.length, 'шаг', 'шага', 'шагов')}:\n\n${lines.join('\n')}\n\nНачнём с первого: «${steps[0]}». Я рядом.`
 }
 
@@ -83,6 +83,12 @@ export type Deps = {
 
 type Button = { text: string; callback_data?: string; url?: string }
 type Keyboard = Button[][]
+
+/** Нижняя кнопка (владелец 20.11): постоянная клавиатура под полем ввода, а не кнопка под сообщением */
+export const MENU_BREAK = '🐾 Разбить задачу'
+const MENU = { keyboard: [[{ text: MENU_BREAK }]], resize_keyboard: true, is_persistent: true, input_field_placeholder: 'Напиши задачу…' }
+/** нажатие нижней кнопки приходит её текстом; эмодзи на некоторых клиентах теряется */
+const isMenuBreak = (text: string) => text.replace(/^\p{Extended_Pictographic}\s*/u, '').toLowerCase() === 'разбить задачу'
 
 export type TgUpdate = {
   update_id?: number
@@ -152,7 +158,8 @@ export const T = {
   step: (step: string) => `Самый маленький шаг: «${step}».\nДве минуты. Я рядом.`,
   stepFromTask: (task: string, step: string) => `Разломал «${task}». Первый кусочек: «${step}».\nДве минуты. Я рядом.`,
   thinking: 'Секунду, ломаю на кусочки…',
-  breakAsk: 'Что разломать? Напиши дело своими словами, например: «Разбей помыть посуду».',
+  breakAsk: 'Напиши задачу, и я разобью её на микрошаги 🐾\nНапример: помыть посуду, курсовая, разобрать почту.',
+  menuHint: 'Внизу кнопка «🐾 Разбить задачу»: нажми, когда что-то висит, и я разобью дело на микрошаги.',
   askRemind:
     'Хочешь, буду звать тебя раз в день? Одно сообщение, в то время, которое выберешь. Выключить можно в любой момент.',
   remindSet: (h: number, tz: number) =>
@@ -350,6 +357,12 @@ function reminderKeyboard(d: Deps, u: TgUser): Keyboard {
   ]
 }
 
+/** сообщение с нижней клавиатурой: она прикрепляется к чату и остаётся, у самого сообщения кнопок под ним нет */
+const sayMenu = (d: Deps, u: TgUser, text: string) => {
+  u.menu = true
+  return d.send('sendMessage', { chat_id: u.id, text, link_preview_options: { is_disabled: true }, reply_markup: MENU })
+}
+
 const say = (d: Deps, chat: number, text: string, keyboard?: Keyboard) =>
   // без превью и без разметки: текст шага приходит от человека, бот не должен превращать его в карточку чужого сайта
   d.send('sendMessage', { chat_id: chat, text, link_preview_options: { is_disabled: true }, ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}) })
@@ -389,7 +402,13 @@ export async function handleUpdate(update: TgUpdate, d: Deps): Promise<void> {
   else await onMessage(update.message, d)
   // человек откликнулся — следующее напоминание снова через сутки (а не через 3–7 дней «редкого» режима)
   const u = chat ? await d.store.getUser(chat) : null
-  if (u) await reschedule(d, u)
+  if (!u) return
+  // чат, начатый до нижней кнопки «🐾 Разбить задачу»: показываем её один раз, после ответа на сообщение
+  if (!u.menu && update.message) {
+    await sayMenu(d, u, T.menuHint)
+    await d.store.saveUser(u)
+  }
+  await reschedule(d, u)
 }
 
 async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
@@ -442,6 +461,8 @@ async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
     } else {
       await say(d, chat, T.helloBack, sphereKeyboard())
     }
+    await sayMenu(d, u, T.menuHint)
+    await d.store.saveUser(u)
     return
   }
 
@@ -450,13 +471,20 @@ async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
 
   // «Разбей …» — сразу в дробление (база готовых планов, потом модель), раньше разговора и вопросов про время:
   // «разбей дз к 7 утра» — это дело, а не час напоминания
-  const breakTask = breakCommand(text)
+  // нижняя кнопка «🐾 Разбить задачу», /break без дела, «разбей» без дела: просим задачу, следующее сообщение — она
+  const breakTask = isMenuBreak(text) ? '' : breakCommand(text)
+  if (breakTask === '' && !d.known?.(text)) {
+    u.awaiting = 'task'
+    await sayMenu(d, u, T.breakAsk)
+    return void (await d.store.saveUser(u))
+  }
+  if (u.awaiting === 'task' && breakTask === null && !text.startsWith('/') && text.length >= 2) {
+    u.awaiting = null
+    return void (await breakAndOffer(d, u, text.slice(0, 120), true))
+  }
+  if (u.awaiting === 'task') u.awaiting = null
   if (breakTask !== null) {
     u.awaiting = null
-    if (!breakTask && !d.known?.(text)) {
-      await d.store.saveUser(u)
-      return void (await say(d, chat, T.breakAsk))
-    }
     // фраза целиком — дело базы, а остаток нет («Разбить большой проект на части»): ломаем само дело
     const task = d.known && !(breakTask && d.known(breakTask)) && d.known(text) ? text.slice(0, 120) : breakTask
     return void (await breakAndOffer(d, u, task, true))

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createHash, createHmac } from 'node:crypto'
-import { handleUpdate, intervalDays, nextAt, onGo, parseLocalTime, reminderText, tick, type Deps } from '@/lib/tg/bot'
+import { handleUpdate, intervalDays, T, nextAt, onGo, parseLocalTime, reminderText, tick, type Deps } from '@/lib/tg/bot'
 import { MemoryStore, type TgUser } from '@/lib/tg/store'
 import { verifyQStash } from '@/lib/tg/qstash'
 
@@ -28,7 +28,8 @@ function rig(start = T0) {
   const msg = (text: string) => handleUpdate({ message: { chat: { id: CHAT, type: 'private' }, text } }, deps)
   const tap = (data: string) =>
     handleUpdate({ callback_query: { id: 'q', data, message: { chat: { id: CHAT }, message_id: 1 } } }, deps)
-  const texts = () => sent.filter((s) => s.method === 'sendMessage').map((s) => String(s.body.text))
+  // подсказка про нижнюю кнопку приходит один раз в каждом новом чате; её проверяет свой тест
+  const texts = () => sent.filter((s) => s.method === 'sendMessage' && s.body.text !== T.menuHint).map((s) => String(s.body.text))
   const setNow = (t: number) => (now = t)
   return { store, sent, deps, msg, tap, texts, setNow }
 }
@@ -269,7 +270,7 @@ describe('бот: «Разбей …» — база готовых планов 
     expect(asked).toEqual(['памыть пасуду'])
     expect(talked).toBe(0)
     const plan = r.texts().find((t) => t.startsWith('Разломал'))!
-    expect(plan).toBe('Разломал «Помыть посуду» на 3 шага:\n\n1. Собрать посуду в раковину · 2 мин\n2. Помыть тарелки · 10 мин\n3. Вытереть стол · 1 ч 30 мин\n\nНачнём с первого: «Собрать посуду в раковину». Я рядом.')
+    expect(plan).toBe('Разломал «Помыть посуду» на 3 шага:\n\n1. Собрать посуду в раковину · 2\u00a0мин\n2. Помыть тарелки · 10\u00a0мин\n3. Вытереть стол · 1\u00a0ч\u00a030\u00a0мин\n\nНачнём с первого: «Собрать посуду в раковину». Я рядом.')
     const u = await r.store.getUser(CHAT)
     expect(u?.task).toBe('Помыть посуду')
     expect(u?.steps).toHaveLength(3)
@@ -284,7 +285,7 @@ describe('бот: «Разбей …» — база готовых планов 
     await r.msg('/start')
     await r.msg('разбей')
     expect(calls).toBe(0)
-    expect(r.texts().at(-1)).toMatch(/^Что разломать\?/)
+    expect(r.texts().at(-1)).toBe(T.breakAsk)
   })
 
   it('фраза целиком — дело базы, а остаток нет: ломается само дело («Разбить большой проект на части»)', async () => {
@@ -322,6 +323,66 @@ describe('бот: «Разбей …» — база готовых планов 
     const plan = r.texts().find((t) => t.startsWith('Разломал'))!
     expect(plan).toContain(`«${want.steps[0]}»`)
     expect(plan.split('\n').filter((l) => /^\d+\. /.test(l))).toHaveLength(want.steps.length)
-    expect(plan).toMatch(/ · \d+ (мин|ч)/)
+    expect(plan).toMatch(/ · \d+\u00a0(мин|ч)/)
+  })
+})
+
+describe('бот: нижняя кнопка «🐾 Разбить задачу» (владелец 20.11)', () => {
+  const menuOf = (s: { body: Record<string, unknown> }) => s.body.reply_markup as { keyboard?: { text: string }[][]; is_persistent?: boolean } | undefined
+
+  it('после /start в чате постоянная нижняя клавиатура с одной кнопкой; второй раз подсказка не повторяется', async () => {
+    const r = rig()
+    await r.msg('/start')
+    const withMenu = r.sent.filter((s) => menuOf(s)?.keyboard)
+    expect(withMenu).toHaveLength(1)
+    expect(menuOf(withMenu[0])).toMatchObject({ keyboard: [[{ text: '🐾 Разбить задачу' }]], is_persistent: true, resize_keyboard: true })
+    await r.msg('/help')
+    expect(r.sent.filter((s) => s.body.text === T.menuHint)).toHaveLength(1)
+  })
+
+  it('чат, начатый до кнопки: она появляется один раз после следующего сообщения', async () => {
+    const r = rig()
+    await r.msg('/start')
+    const u = (await r.store.getUser(CHAT))!
+    u.menu = undefined
+    await r.store.saveUser(u)
+    await r.msg('/help')
+    await r.msg('/help')
+    expect(r.sent.filter((s) => s.body.text === T.menuHint)).toHaveLength(2)
+    expect(menuOf(r.sent.filter((s) => s.body.text === T.menuHint).at(-1)!)?.keyboard).toBeTruthy()
+  })
+
+  it('кнопка → «напиши задачу» → следующее сообщение разбивается как на сайте, весь план', async () => {
+    const r = rig()
+    const asked: string[] = []
+    r.deps.breakdown = async (task) => (asked.push(task), { steps: ['Раз', 'Два', 'Три'], fallback: false })
+    let talked = 0
+    r.deps.converse = async () => (talked++, null)
+    await r.msg('/start')
+    await r.msg('🐾 Разбить задачу')
+    expect(r.texts().at(-1)).toBe(T.breakAsk)
+    expect((await r.store.getUser(CHAT))?.awaiting).toBe('task')
+    await r.msg('помыть посуду')
+    expect(asked).toEqual(['помыть посуду'])
+    expect(talked).toBe(0)
+    expect(r.texts().some((t) => t.startsWith('Разломал «помыть посуду» на 3 шага'))).toBe(true)
+    // ожидание снято: следующее сообщение снова разговор с котом
+    expect((await r.store.getUser(CHAT))?.awaiting).toBeNull()
+    await r.msg('спасибо')
+    expect(talked).toBe(1)
+  })
+
+  it('/break без дела и кнопка без эмодзи работают так же; команда после кнопки снимает ожидание', async () => {
+    const r = rig()
+    const asked: string[] = []
+    r.deps.breakdown = async (task) => (asked.push(task), { steps: ['Раз', 'Два', 'Три'], fallback: false })
+    await r.msg('/start')
+    await r.msg('/break')
+    expect(r.texts().at(-1)).toBe(T.breakAsk)
+    await r.msg('/help')
+    expect((await r.store.getUser(CHAT))?.awaiting).toBeNull()
+    await r.msg('Разбить задачу')
+    await r.msg('курсовая')
+    expect(asked).toEqual(['курсовая'])
   })
 })
