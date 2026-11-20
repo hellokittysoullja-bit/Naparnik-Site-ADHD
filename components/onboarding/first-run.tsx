@@ -35,6 +35,9 @@ import { MascotDoll as MascotSvg } from '@/components/mascot-doll';
 import { type MascotAction, type MascotExpression } from '@/components/mascot-doll'
 import { EmphasisText } from '@/components/emphasis-text'
 import { HoldToStart } from '@/components/onboarding/hold-to-start'
+import { OnbBreak } from '@/components/onboarding/onb-break'
+import { upsertDeal } from '@/lib/deals'
+import { breakable } from '@/lib/break-task'
 import { NightScene } from '@/components/landing/night-scene'
 import { navigateWithTransition } from '@/lib/view-transition'
 import { withAttribution } from '@/lib/visitor'
@@ -164,6 +167,11 @@ export function FirstRun() {
   const [nudge, setNudge] = useState(false)
   const [custom, setCustom] = useState('')
   const [customOpen, setCustomOpen] = useState(false)
+  // «Работа / проекты» + «Не знаю, с чего начать» (владелец 20.11): своё дело вписывается первой строкой и разламывается
+  // «Поленом» прямо здесь; первый шаг разбивки становится шагом на 2 минуты
+  const [dealText, setDealText] = useState('')
+  const [brk, setBrk] = useState<{ task: string; steps: string[] | null; done: boolean } | null>(null)
+  const [brkNote, setBrkNote] = useState<string | null>(null)
   // человек сам нажал на шаг (а не оставил предвыбранный) — кот откликается
   // «Сколько висит?»: после ответа с пояснением список свёрнут до выбранного; «Другой ответ» — снова весь список
   const [hangOpen, setHangOpen] = useState(false)
@@ -358,6 +366,28 @@ export function FirstRun() {
     if (step === LAST_STEP) router.prefetch('/app/session')
   }, [step, router])
   const steps = stepsFor(state.sphere, state.blocker)
+  const breakMode = state.sphere === 'work' && state.blocker === 'where'
+  const wantsBreak = breakMode && step === STEP_FIRST && !brk && dealText.trim() !== ''
+  async function startBreak() {
+    const t = dealText.trim()
+    if (!breakable(t)) return setBrkNote('Напиши дело чуть подробнее, хотя бы пару слов.')
+    setBrkNote(null)
+    setNudge(false)
+    setBrk({ task: t, steps: null, done: false })
+    try {
+      const r = await fetch('/api/breakdown', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ task: t }) })
+      const data = (r.ok ? await r.json() : null) as { steps?: string[] | null; minutes?: (number | null)[]; source?: string; title?: string; unclear?: boolean } | null
+      const list = data && !data.unclear && data.source !== 'fallback' ? (data.steps ?? []).filter(Boolean) : []
+      if (!list.length) throw new Error('no steps')
+      // дело из базы, написанное с опечаткой, — правильным названием (как в Фокусе)
+      const title = data?.title ?? t
+      setBrk({ task: title, steps: list, done: false })
+      upsertDeal(title, list.map((text, i) => ({ text, minutes: data?.minutes?.[i] ?? undefined })))
+    } catch {
+      setBrk(null)
+      setBrkNote('Не понял дело. Напиши чуть подробнее или выбери шаг ниже.')
+    }
+  }
   const chosenStep = customOpen ? custom.trim() : state.firstStep
   const sphere = SPHERES.find((x) => x.key === state.sphere)
   const hanging = HANGING.find((h) => h.key === state.hanging)
@@ -506,6 +536,11 @@ export function FirstRun() {
   } else if (step === STEP_FIRST && building) {
     line = 'Секунду, собираю…'
     face = 'calm'
+  } else if (step === STEP_FIRST && breakMode && brk) {
+    const n = brk.steps?.length ?? 0
+    const word = n % 10 === 1 && n % 100 !== 11 ? 'шаг' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'шага' : 'шагов'
+    line = brk.done ? `Разломал на ${n} ${word}. Начнём *с первого шага*!` : 'Секунду, *разламываю*…'
+    face = brk.done ? 'happy' : 'calm'
   } else if (step === STEP_FIRST) {
     line = nudge
       ? 'Напиши хоть одно слово — *этого хватит*.'
@@ -808,7 +843,71 @@ export function FirstRun() {
                       }}
                     />
                   ))}
-                {step === STEP_FIRST && (
+                {step === STEP_FIRST && breakMode && brk && (
+                  <OnbBreak
+                    task={brk.task}
+                    steps={brk.steps}
+                    done={brk.done}
+                    onDone={() => {
+                      const first = brk.steps?.[0]
+                      setBrk((b) => (b ? { ...b, done: true } : b))
+                      if (first) {
+                        setCustomOpen(true)
+                        setCustom(first)
+                      }
+                    }}
+                  />
+                )}
+                {step === STEP_FIRST && breakMode && !brk && (
+                  <>
+                    {/* своё дело первой строкой: впиши — кот разломает (поле как на Доме) */}
+                    <input
+                      value={dealText}
+                      onChange={(e) => {
+                        setDealText(e.target.value)
+                        setBrkNote(null)
+                        setNudge(false)
+                        if (e.target.value.trim()) {
+                          setPickedStep(false)
+                          setCustomOpen(false)
+                          update({ firstStep: null })
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.nativeEvent.isComposing && dealText.trim()) void startBreak()
+                      }}
+                      enterKeyHint="go"
+                      maxLength={120}
+                      aria-label="Своё дело"
+                      placeholder="Вписать своё дело"
+                      className="field"
+                    />
+                    {brkNote && <p role="status" className="px-1 text-[15px] leading-snug text-foreground/90">{brkNote}</p>}
+                    {steps.map((s, i) => (
+                      <Option
+                        key={s}
+                        firstTab={i === 0 && !state.firstStep}
+                        icon={Sparkles}
+                        hue={OPTION_HUES[i % OPTION_HUES.length]}
+                        label={s}
+                        selected={!dealText.trim() && state.firstStep === s}
+                        onSelect={() => {
+                          if (state.firstStep !== s || dealText.trim()) {
+                            hapticThreshold()
+                            catReact('happy', 'wave', 700)
+                          }
+                          setNudge(false)
+                          setDealText('')
+                          setBrkNote(null)
+                          setCustomOpen(false)
+                          setPickedStep(true)
+                          update({ firstStep: s })
+                        }}
+                      />
+                    ))}
+                  </>
+                )}
+                {step === STEP_FIRST && !breakMode && (
                   <>
                     {steps.map((s, i) => (
                       <Option
@@ -903,13 +1002,17 @@ export function FirstRun() {
         ) : (
           <button
             type="button"
-            onClick={next}
+            onClick={() => {
+              if (wantsBreak) void startBreak()
+              else if (breakMode && step === STEP_FIRST && brk && !brk.done) return
+              else next()
+            }}
             onTouchStart={() => {}}
-            data-idle={canContinue && !building ? undefined : ''}
+            data-idle={(canContinue || wantsBreak) && !building && !(breakMode && step === STEP_FIRST && brk && !brk.done) ? undefined : ''}
             className="btn-chunky btn-wake block w-full select-none rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <span className="btn-face flex h-[52px] items-center justify-center rounded-[16px] bg-primary px-6 text-[17px] font-bold tracking-[-0.01em] text-primary-foreground">
-              {step === STEP_PLAN ? `Начать первые ${FIRST_MINUTES} минуты` : 'Продолжить'}
+              {step === STEP_PLAN ? `Начать первые ${FIRST_MINUTES} минуты` : wantsBreak || (breakMode && step === STEP_FIRST && brk && !brk.done) ? 'Разбить задачу' : 'Продолжить'}
             </span>
           </button>
         )}
@@ -950,6 +1053,7 @@ export function CatAsks({
     <div className={commit ? 'flex flex-col items-center pb-4' : 'flex items-end gap-3 pt-2 [@media(max-height:700px)]:pt-0'}>
       <motion.div
         layout
+        data-onb-cat
         className="vt-cat relative z-10 shrink-0"
         animate={nudge ? { rotate: [0, -6, 5, -3, 0] } : { rotate: 0 }}
         transition={{ duration: 0.5, ...move }}
@@ -978,6 +1082,7 @@ export function CatAsks({
           exit={{ opacity: 0, transition: { duration: 0.12 } }}
           transition={reduce ? { duration: 0.15 } : { type: 'spring', stiffness: 520, damping: 30, delay: 0.12 }}
           style={{ transformOrigin: '0% 100%' }}
+          data-onb-bubble
           className="glass-hearthside min-h-[3.5rem] rounded-2xl rounded-bl-sm px-4 py-3 [@media(max-height:700px)]:py-2"
         >
         <AnimatePresence mode="wait" initial={false}>
