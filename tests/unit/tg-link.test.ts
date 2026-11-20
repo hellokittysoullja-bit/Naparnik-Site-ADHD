@@ -32,7 +32,8 @@ function rig(start = T0, converse?: Deps['converse']) {
   }
   const msg = (text: string, id = CHAT) => handleUpdate({ message: { chat: { id, type: 'private' }, text } }, deps)
   const tap = (data: string, id = CHAT) => handleUpdate({ callback_query: { id: 'q', data, message: { chat: { id }, message_id: 1 } } }, deps)
-  const texts = () => sent.filter((s) => s.method === 'sendMessage').map((s) => String(s.body.text))
+  // подсказка про нижнюю кнопку приходит один раз в каждом новом чате; её проверяет свой тест
+  const texts = () => sent.filter((s) => s.method === 'sendMessage' && s.body.text !== T.menuHint).map((s) => String(s.body.text))
   return { store, sent, deps, msg, tap, texts, now: () => now, setNow: (t: number) => (now = t), user: () => store.getUser(CHAT) as Promise<TgUser> }
 }
 
@@ -187,7 +188,7 @@ describe('разговор с котом в боте', () => {
   it('кот дал шаг: кнопка «Сесть рядом» ведёт на сессию с этим шагом', async () => {
     const r = rig(T0, cat({ text: 'Открывай, я рядом.', startFocus: { firstStep: 'Открыть черновик курсовой', minutes: 15 } }))
     await r.msg('готов начать')
-    const kb = (r.sent.at(-1)!.body.reply_markup as { inline_keyboard: { text: string; url?: string }[][] }).inline_keyboard
+    const kb = (r.sent.filter((s) => s.body.text !== T.menuHint).at(-1)!.body.reply_markup as { inline_keyboard: { text: string; url?: string }[][] }).inline_keyboard
     expect(kb[0][0].text).toBe('Сесть рядом →')
     expect(new URL(kb[0][0].url!).searchParams.get('s')).toBe('Открыть черновик курсовой')
   })
@@ -423,19 +424,23 @@ describe('проверка 13.11: чужие и кривые входы', () => 
     expect(r.sent.length).toBe(n)
   })
 
-  it('ответ кота, пришедший после /forget, запись не воскрешает', async () => {
+  it('/forget, присланный, пока кот думает: стирает после ответа, запись не воскресает', async () => {
+    // с замком чата (20.11) /forget ждёт конца хода кота и стирает уже сохранённый ответ
+    let pending: Promise<void> | undefined
     const r: ReturnType<typeof rig> = rig(T0, async () => {
-      await r.msg('/forget')
+      pending = r.msg('/forget')
       return { text: 'Мур.' }
     })
     await r.msg('/start')
     await r.msg('расскажи что-нибудь')
+    await pending
     expect(await r.store.getUser(CHAT)).toBeNull()
+    expect(r.texts().at(-1)).toBe(T.forgotten)
   })
 
   it('«Другой шаг» при плане снимает план: кнопка и напоминание говорят об одном шаге', async () => {
     const r = await linked()
-    expect(JSON.stringify(r.sent.at(-1)?.body.reply_markup ?? '')).not.toContain('Другой шаг')
+    expect(JSON.stringify(r.sent.filter((s) => s.body.text !== T.menuHint).at(-1)?.body.reply_markup ?? '')).not.toContain('Другой шаг')
     await r.tap('nx')
     const u = await r.user()
     expect(u.plan).toBeUndefined()

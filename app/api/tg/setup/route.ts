@@ -7,6 +7,7 @@ import { fixedSite } from '@/lib/tg/deps'
 export const dynamic = 'force-dynamic'
 
 const COMMANDS = [
+  { command: 'break', description: '🐾 Разбить задачу на микрошаги' },
   { command: 'step', description: 'Новый шаг на 2 минуты' },
   { command: 'remind', description: 'Когда звать' },
   { command: 'tone', description: 'Как мне говорить' },

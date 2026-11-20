@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { stripInvisible } from '@/lib/ai/guards/normalize'
 import { checkOutput } from '@/lib/ai/guards/output'
 import { factRejection } from '@/lib/ai/memory/write-guard'
-import { applyPlan, recentHistory } from './bot'
+import { applyPlan, recentHistory, withChatLock } from './bot'
 import { deviceOf, isToken, LINK_PREFIX, startLink } from './link'
 import type { Store, TgUser } from './store'
 
@@ -80,6 +80,12 @@ export type PushResult =
  * редкий режим (раз в 3–7 дней) и прощание сбрасываются.
  */
 export async function pushPlan(store: Store, token: unknown, plan: SitePlan, reschedule: (u: TgUser) => Promise<void>, now = Date.now()): Promise<PushResult> {
+  const chat = isToken(token) ? await store.chatOfDevice(deviceOf(token)) : null
+  // план с сайта и сообщение в боте в один момент: по очереди, иначе одно затрёт другое
+  return chat ? withChatLock({ store }, chat, () => pushPlanNow(store, token, plan, reschedule, now)) : pushPlanNow(store, token, plan, reschedule, now)
+}
+
+async function pushPlanNow(store: Store, token: unknown, plan: SitePlan, reschedule: (u: TgUser) => Promise<void>, now: number): Promise<PushResult> {
   const u = await userOf(store, token)
   if (!u) return { ok: false, linked: false, hour: null, active: false }
   const p = cleanPlan(plan)

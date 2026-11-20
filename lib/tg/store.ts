@@ -19,8 +19,10 @@ export type TgUser = {
   /** Смещение от UTC в минутах; по умолчанию Москва */
   tz: number
   tone?: Tone
-  /** Чего бот ждёт текстом: время («сколько у тебя сейчас») или час напоминания */
-  awaiting?: 'time' | 'hour' | null
+  /** Чего бот ждёт текстом: время («сколько у тебя сейчас»), час напоминания или дело после «🐾 Разбить задачу» */
+  awaiting?: 'time' | 'hour' | 'task' | null
+  /** нижняя кнопка «🐾 Разбить задачу» уже показана (клавиатура остаётся в чате, пока её не уберут) */
+  menu?: boolean
   /** Напоминаний подряд без ответа — по нему бот пишет реже */
   ignored: number
   lastActive: number
@@ -70,6 +72,13 @@ export interface Store {
   chatOfDevice(device: string): Promise<number | null>
   /** апдейт Telegram с этим номером уже приходил (повторная доставка): true — второй раз не обрабатывать */
   seen(updateId: number): Promise<boolean>
+  /**
+   * Замок на чат: сообщения одного человека обрабатываются по очереди, а не наперегонки (два быстрых сообщения
+   * читали одну запись и второе затирало первое). Токен — чтобы снять только свой замок; срок — чтобы упавший
+   * обработчик не запер чат навсегда. null — замок занят.
+   */
+  lock(id: number, ttlMs: number): Promise<string | null>
+  unlock(id: number, token: string): Promise<void>
 }
 
 const KEY = (id: number) => `tg:u:${id}`
@@ -157,6 +166,14 @@ export class RedisStore implements Store {
     // SET NX: null — ключ уже был, значит апдейт приходил
     return (await this.cmd<string>('SET', `tg:upd:${updateId}`, '1', 'NX', 'EX', 3600)) === null
   }
+  async lock(id: number, ttlMs: number) {
+    const token = crypto.randomUUID()
+    return (await this.cmd<string>('SET', `tg:lock:${id}`, token, 'NX', 'PX', ttlMs)) === 'OK' ? token : null
+  }
+  async unlock(id: number, token: string) {
+    // снять, только если замок всё ещё наш (свой истёк и его взял другой — не трогаем)
+    await this.cmd('EVAL', "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end", 1, `tg:lock:${id}`, token)
+  }
 }
 
 /** Память без базы: для локальной проверки и тестов. На проде без Upstash бот отвечает, но напоминаний нет. */
@@ -205,6 +222,17 @@ export class MemoryStore implements Store {
   }
   async chatOfDevice(device: string) {
     return this.devices.get(device) ?? null
+  }
+  locks = new Map<number, { token: string; until: number }>()
+  async lock(id: number, ttlMs: number) {
+    const held = this.locks.get(id)
+    if (held && held.until > Date.now()) return null
+    const token = crypto.randomUUID()
+    this.locks.set(id, { token, until: Date.now() + ttlMs })
+    return token
+  }
+  async unlock(id: number, token: string) {
+    if (this.locks.get(id)?.token === token) this.locks.delete(id)
   }
   updates = new Set<number>()
   async seen(updateId: number) {

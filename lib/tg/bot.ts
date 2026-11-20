@@ -1,4 +1,5 @@
 import { SPHERES, STEPS, FIRST_MINUTES, type Sphere } from '@/lib/onboarding'
+import { shortDuration } from '@/lib/deals'
 import { linkCode } from './link'
 import { HISTORY_MAX, HISTORY_TTL_MS, LINK_TTL_S, type LinkPayload, type Store, type TgUser, type Tone } from './store'
 
@@ -17,7 +18,64 @@ import { HISTORY_MAX, HISTORY_TTL_MS, LINK_TTL_S, type LinkPayload, type Store, 
 
 export type Send = (method: string, body: Record<string, unknown>) => Promise<unknown>
 /** care — в поле дела кризисный текст: вместо шагов проверенный бережный ответ обвязки */
-export type Breakdown = (task: string) => Promise<{ steps: string[]; fallback: boolean; care?: string }>
+export type Breakdown = (task: string) => Promise<{
+  steps: string[]
+  fallback: boolean
+  care?: string
+  /** минуты шагов (у планов из базы есть всегда) */
+  minutes?: (number | undefined)[]
+  /** название дела из базы: человек написал с опечаткой или с уточнением («покормить пса вечером») */
+  title?: string
+}>
+
+/**
+ * Просьба разбить дело (владелец 20.11): «Разбей помыть посуду», «разбить: курсовая», «помоги раздробить уборку»,
+ * «разломай на шаги отчёт», /break посуда. Возвращает дело ('' — просьба без дела), null — это не просьба.
+ * «Разложить …» сюда не входит: в базе это настоящие дела («Разложить вещи по местам»).
+ */
+const BREAK_VERB = /^(?:\/(?:break|razbit|razbej)(?:@\w+)?|(?:пожалуйста\s+|плиз\s+)?(?:помоги(?:те)?\s+(?:мне\s+)?|можешь\s+|можно\s+)?(?:раз(?:бей|бейте|бить|били|лом(?:ай|айте|ать|и))|раздроб(?:и|ите|ить)|раздели(?:ть)?\s+на\s+шаги|распиши(?:те)?\s+(?:на|по)\s+шаг(?:и|ам)))(?=$|[\s:,.!—-])/iu
+const BREAK_TAIL = /^(?:\s*(?:мне|пожалуйста|плиз|дело|задачу|на\s+(?:шаги|шажки|шажочки|кусочки|кусоч?ки|части|этапы|микрошаги)|по\s+шагам))+/iu
+export function breakCommand(text: string): string | null {
+  const m = BREAK_VERB.exec(text.trim())
+  if (!m) return null
+  let rest = text.trim().slice(m[0].length).replace(/^[\s:,.!—-]+/u, '')
+  rest = rest.replace(BREAK_TAIL, '').replace(/^[\s:,.!—-]+/u, '')
+  // хвост «… на шаги» после дела и кавычки вокруг дела
+  rest = rest.replace(/\s+(?:на\s+(?:шаги|шажки|шажочки|кусочки|части|этапы|микрошаги)|по\s+шагам)\s*[.!?]*$/iu, '')
+  rest = rest.replace(/^[«"'„“]+|[»"'“”]+$/gu, '').replace(/[.!?]+$/u, '').trim()
+  return rest.slice(0, 120)
+}
+
+/** Текст человека или модели в сообщении с разметкой HTML: <, > и & — как текст, а не теги */
+const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const KEYCAP = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟']
+const dur = (m: number) => shortDuration(m).replace(/ /g, '\u00a0')
+
+/**
+ * Весь план (вариант Б, владелец 20.11), разметка HTML:
+ * 🐾 <b>Помыть посуду</b>
+ * Разломал на 7 микрошагов · около 33 мин
+ *
+ * 1️⃣ Собрать всю грязную посуду · <i>3 мин</i>
+ * …
+ * 👉 Начнём с первого. Я рядом.
+ */
+export function planText(title: string, steps: string[], minutes?: (number | undefined)[]) {
+  const n = steps.length
+  const known = steps.every((_, i) => (minutes?.[i] ?? 0) > 0)
+  const total = known ? minutes!.reduce((a: number, m) => a + (m ?? 0), 0) : 0
+  const head = `🐾 <b>${esc(title)}</b>\nРазломал на ${n} ${plural(n, 'микрошаг', 'микрошага', 'микрошагов')}${total ? ` · около ${dur(total)}` : ''}`
+  const lines = steps.map((s, i) => `${KEYCAP[i] ?? `${i + 1}.`} ${esc(s)}${minutes?.[i] ? `\u00a0·\u00a0<i>${dur(minutes[i]!)}</i>` : ''}`)
+  return `${head}\n\n${lines.join('\n')}\n\n👉 Начнём с первого. Я рядом.`
+}
+
+/** то же без разметки — в переписку, которую видит кот */
+const plain = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+
+function plural(n: number, one: string, few: string, many: string) {
+  const a = n % 10, b = n % 100
+  return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many
+}
 
 /** Реплика кота на свободный текст (обвязка lib/ai): текст, кнопка старта, согласованный план */
 export type CatReply = {
@@ -35,6 +93,10 @@ export type Deps = {
   /** https://adhd-naparnik.vercel.app — для ссылок «Сесть рядом» */
   site: string
   breakdown: Breakdown
+  /** пауза между кадрами полоски (в тестах — без ожидания) */
+  wait?: (ms: number) => Promise<void>
+  /** дело есть в базе готовых планов (readyPlan): «Разбить большой проект на части» — само дело, а не просьба */
+  known?: (task: string) => boolean
   /** разговор с котом через обвязку; без него бот работает по правилам */
   converse?: Converse
   /** Подпись ссылки «Сесть рядом» (lib/tg/telegram.ts) */
@@ -43,6 +105,12 @@ export type Deps = {
 
 type Button = { text: string; callback_data?: string; url?: string }
 type Keyboard = Button[][]
+
+/** Нижняя кнопка (владелец 20.11): постоянная клавиатура под полем ввода, а не кнопка под сообщением */
+export const MENU_BREAK = '🐾 Разбить задачу'
+const MENU = { keyboard: [[{ text: MENU_BREAK }]], resize_keyboard: true, is_persistent: true, input_field_placeholder: 'Напиши задачу…' }
+/** нажатие нижней кнопки приходит её текстом; эмодзи на некоторых клиентах теряется */
+const isMenuBreak = (text: string) => text.replace(/^\p{Extended_Pictographic}\s*/u, '').toLowerCase() === 'разбить задачу'
 
 export type TgUpdate = {
   update_id?: number
@@ -110,8 +178,12 @@ export const T = {
     'Приветик. Я Напарник, кот, который сидит рядом, пока ты делаешь что-то маленькое. Без стыда и без серий, которые сгорают.\n\nЧто сейчас висит? Нажми или напиши своими словами.',
   helloBack: 'О, привет-привет! Что сейчас висит? Нажми или напиши своими словами.',
   step: (step: string) => `Самый маленький шаг: «${step}».\nДве минуты. Я рядом.`,
+  planStep: (k: number, n: number, step: string) => `Шаг ${k} из ${n}: «${step}».\nЯ рядом.`,
+  planDone: (n: number) => `Это был последний из ${n}. Если всё позади, ты молодец. Новое дело: кнопка «🐾 Разбить задачу» внизу.`,
   stepFromTask: (task: string, step: string) => `Разломал «${task}». Первый кусочек: «${step}».\nДве минуты. Я рядом.`,
   thinking: 'Секунду, ломаю на кусочки…',
+  breakAsk: 'Напиши задачу, и я разобью её на микрошаги 🐾\nНапример: помыть посуду, курсовая, разобрать почту.',
+  menuHint: 'Внизу кнопка «🐾 Разбить задачу»: нажми, когда что-то висит, и я разобью дело на микрошаги.',
   askRemind:
     'Хочешь, буду звать тебя раз в день? Одно сообщение, в то время, которое выберешь. Выключить можно в любой момент.',
   remindSet: (h: number, tz: number) =>
@@ -128,7 +200,7 @@ export const T = {
   stop: 'Больше не пишу. Захочешь вернуть, жми /remind.',
   farewell: 'Я замолчу, чтобы не мешать. Напиши «привет», когда захочешь. Остров ждёт.',
   help:
-    'Я помогаю начать дело за 2 минуты.\n\nНапиши, что висит, и разломаю на маленький шаг.\n/step новый шаг\n/remind когда звать\n/tone как говорить\n/time твой часовой пояс\n/pause пауза на неделю\n/stop без напоминаний\n/unlink отвязать сайт\n/forget стереть всё, что я о тебе знаю',
+    'Я помогаю начать дело за 2 минуты.\n\nНапиши, что висит, и разломаю на маленький шаг.\nВесь план сразу: «Разбей …» и дело, например «Разбей помыть посуду».\n/step новый шаг\n/remind когда звать\n/tone как говорить\n/time твой часовой пояс\n/pause пауза на неделю\n/stop без напоминаний\n/unlink отвязать сайт\n/forget стереть всё, что я о тебе знаю',
   timeAsk: 'Сколько у тебя сейчас времени? Напиши, например, 14:30.',
   // привязка сайта (lib/tg/link.ts)
   linked: 'Готово, мы на связи: сайт и этот чат теперь вместе.',
@@ -275,7 +347,10 @@ function goUrl(d: Deps, u: TgUser) {
 
 function stepKeyboard(d: Deps, u: TgUser): Keyboard {
   // у шага из плана «другого» нет: о нём человек договорился сам
-  return u.plan ? [[{ text: 'Сесть рядом →', url: goUrl(d, u) }]] : [[{ text: 'Сесть рядом →', url: goUrl(d, u) }], [{ text: 'Другой шаг', callback_data: 'nx' }]]
+  if (u.plan) return [[{ text: 'Сесть рядом →', url: goUrl(d, u) }]]
+  // план из разбивки — шаги по порядку, кнопки в один ряд (вариант Б); шаг по сфере — «другой» из заготовок
+  if (u.task) return [[{ text: 'Сесть рядом →', url: goUrl(d, u) }, { text: 'Следующий шаг', callback_data: 'nx' }]]
+  return [[{ text: 'Сесть рядом →', url: goUrl(d, u) }], [{ text: 'Другой шаг', callback_data: 'nx' }]]
 }
 
 function remindKeyboard(): Keyboard {
@@ -309,9 +384,21 @@ function reminderKeyboard(d: Deps, u: TgUser): Keyboard {
   ]
 }
 
-const say = (d: Deps, chat: number, text: string, keyboard?: Keyboard) =>
-  // без превью и без разметки: текст шага приходит от человека, бот не должен превращать его в карточку чужого сайта
-  d.send('sendMessage', { chat_id: chat, text, link_preview_options: { is_disabled: true }, ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}) })
+/** сообщение с нижней клавиатурой: она прикрепляется к чату и остаётся, у самого сообщения кнопок под ним нет */
+const sayMenu = (d: Deps, u: TgUser, text: string) => {
+  u.menu = true
+  return d.send('sendMessage', { chat_id: u.id, text, link_preview_options: { is_disabled: true }, reply_markup: MENU })
+}
+
+const say = (d: Deps, chat: number, text: string, keyboard?: Keyboard, html = false) =>
+  // без превью; разметка только там, где текст собран кодом и экранирован (planText): шаг человека не станет карточкой
+  d.send('sendMessage', {
+    chat_id: chat,
+    text,
+    link_preview_options: { is_disabled: true },
+    ...(html ? { parse_mode: 'HTML' } : {}),
+    ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
+  })
 
 // ——— состояние ———
 
@@ -331,8 +418,8 @@ export async function reschedule(d: Pick<Deps, 'store' | 'now'>, u: TgUser) {
   return d.store.schedule(u.id, nextAt(u.hour, u.tz, from, intervalDays(u.ignored)))
 }
 
-async function offerStep(d: Deps, u: TgUser, text: string) {
-  await say(d, u.id, text, stepKeyboard(d, u))
+async function offerStep(d: Deps, u: TgUser, text: string, html = false) {
+  await say(d, u.id, text, stepKeyboard(d, u), html)
   if (u.hour === undefined) await say(d, u.id, T.askRemind, remindKeyboard())
 }
 
@@ -344,11 +431,48 @@ export async function handleUpdate(update: TgUpdate, d: Deps): Promise<void> {
   const chat = update.callback_query?.message?.chat.id ?? update.message?.chat.id
   // Telegram повторяет апдейт, если не дождался ответа: второй раз тот же разговор не ведём
   if (typeof update.update_id === 'number' && (await d.store.seen(update.update_id))) return
-  if (update.callback_query) await onCallback(update.callback_query, d)
-  else await onMessage(update.message, d)
+  // по очереди внутри чата: следующее сообщение ждёт, пока бот ответит на предыдущее (разные люди не ждут друг друга)
+  const token = chat ? await waitLock(d, chat) : null
+  try {
+    if (update.callback_query) await onCallback(update.callback_query, d)
+    else await onMessage(update.message, d)
+    await afterUpdate(d, update, chat)
+  } finally {
+    if (chat && token) await d.store.unlock(chat, token).catch(() => {})
+  }
+}
+
+/** Замок чата: ждём до 30 с (ход кота до 25 с; 30 + 25 укладывается в maxDuration 60 с); не дождались — отвечаем всё равно, а не молчим */
+export const LOCK_TTL_MS = 60_000
+export async function waitLock(d: Pick<Deps, 'store'>, chat: number, waitMs = 30_000): Promise<string | null> {
+  const until = Date.now() + waitMs
+  for (let pause = 50; ; pause = Math.min(pause * 1.5, 400)) {
+    const token = await d.store.lock(chat, LOCK_TTL_MS).catch(() => null)
+    if (token || Date.now() >= until) return token
+    await new Promise((r) => setTimeout(r, pause))
+  }
+}
+
+/** Запись человека меняется не из вебхука (клик «Сесть рядом», план с сайта): тоже по очереди, ждём недолго */
+export async function withChatLock<T>(d: Pick<Deps, 'store'>, chat: number, fn: () => Promise<T>, waitMs = 3000): Promise<T> {
+  const token = await waitLock(d, chat, waitMs)
+  try {
+    return await fn()
+  } finally {
+    if (token) await d.store.unlock(chat, token).catch(() => {})
+  }
+}
+
+async function afterUpdate(d: Deps, update: TgUpdate, chat: number | undefined) {
   // человек откликнулся — следующее напоминание снова через сутки (а не через 3–7 дней «редкого» режима)
   const u = chat ? await d.store.getUser(chat) : null
-  if (u) await reschedule(d, u)
+  if (!u) return
+  // чат, начатый до нижней кнопки «🐾 Разбить задачу»: показываем её один раз, после ответа на сообщение
+  if (!u.menu && update.message) {
+    await sayMenu(d, u, T.menuHint)
+    await d.store.saveUser(u)
+  }
+  await reschedule(d, u)
 }
 
 async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
@@ -401,11 +525,34 @@ async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
     } else {
       await say(d, chat, T.helloBack, sphereKeyboard())
     }
+    await sayMenu(d, u, T.menuHint)
+    await d.store.saveUser(u)
     return
   }
 
   touch(u, now)
   const cmd = text.split(/\s+/)[0].toLowerCase()
+
+  // «Разбей …» — сразу в дробление (база готовых планов, потом модель), раньше разговора и вопросов про время:
+  // «разбей дз к 7 утра» — это дело, а не час напоминания
+  // нижняя кнопка «🐾 Разбить задачу», /break без дела, «разбей» без дела: просим задачу, следующее сообщение — она
+  const breakTask = isMenuBreak(text) ? '' : breakCommand(text)
+  if (breakTask === '' && !d.known?.(text)) {
+    u.awaiting = 'task'
+    await sayMenu(d, u, T.breakAsk)
+    return void (await d.store.saveUser(u))
+  }
+  if (u.awaiting === 'task' && breakTask === null && !text.startsWith('/') && text.length >= 2) {
+    u.awaiting = null
+    return void (await breakAndOffer(d, u, text.slice(0, 120), true))
+  }
+  if (u.awaiting === 'task') u.awaiting = null
+  if (breakTask !== null) {
+    u.awaiting = null
+    // фраза целиком — дело базы, а остаток нет («Разбить большой проект на части»): ломаем само дело
+    const task = d.known && !(breakTask && d.known(breakTask)) && d.known(text) ? text.slice(0, 120) : breakTask
+    return void (await breakAndOffer(d, u, task, true))
+  }
 
   if (cmd === '/step') {
     u.awaiting = null
@@ -482,19 +629,83 @@ async function freeText(d: Deps, u: TgUser, text: string, isNew: boolean) {
   if (!isNew && !(await d.store.getUser(chat))) return
   if (reply) return void (await catSays(d, u, text, reply))
   // модели не ответили или разговора нет: текст считаем делом и ломаем на шаги (у дробления своя заготовка)
-  const task = text.slice(0, 120)
-  const { steps, care, fallback } = await d.breakdown(task)
+  await breakAndOffer(d, u, text.slice(0, 120), false)
+}
+
+/** Дробление дела (то же, что на сайте: база готовых планов, понимание и опечатки, потом модель) → шаг или весь план */
+async function breakAndOffer(d: Deps, u: TgUser, task: string, whole: boolean) {
+  const chat = u.id
+  // просьба разбить — с полоской «котик разбивает задачу…», которая потом сама становится планом (владелец 20.11)
+  // дробление стартует сразу, полоска рисуется параллельно
+  const job = d.breakdown(task).catch(() => ({ steps: [] as string[], fallback: true, care: undefined, minutes: undefined, title: undefined }))
+  const progress = whole ? await startProgress(d, chat) : null
+  const { steps, care, fallback, minutes, title } = progress ? await progress.run(job) : await job
   // заготовка («Открыть то, что нужно для дела») — не план: честно просим ещё раз, а не выдаём её за шаги
   if (care || steps.length === 0 || fallback) {
     await d.store.saveUser(u)
-    return void (await say(d, chat, care ?? T.aiDown))
+    const text = care ?? T.aiDown
+    if (progress && (await progress.become(text))) return
+    return void (await say(d, chat, text))
   }
-  u.task = task
+  const name = title || task
+  if (whole) remember(u, 'user', task, d.now())
+  u.task = name
   u.plan = undefined
   u.steps = steps
   u.stepIdx = 0
+  const msg = whole ? planText(name, steps, minutes) : T.stepFromTask(name, steps[0])
+  // ответ остаётся в переписке: «а второй шаг какой?» кот поймёт из истории
+  if (whole) remember(u, 'cat', plain(msg), d.now())
   await d.store.saveUser(u)
-  await offerStep(d, u, T.stepFromTask(task, steps[0]))
+  // полоска превращается в план тем же сообщением; не вышло (сообщение удалили, сеть) — план приходит новым
+  if (progress && (await progress.become(msg, stepKeyboard(d, u), true))) {
+    if (u.hour === undefined) await say(d, chat, T.askRemind, remindKeyboard())
+    return
+  }
+  await offerStep(d, u, msg, whole)
+}
+
+/** «🐈 котик разбивает задачу...» и полоска из 10 делений */
+export function progressText(pct: number) {
+  const n = Math.round(pct / 10)
+  return `🐈 котик разбивает задачу...\n[${'▓'.repeat(n)}${'░'.repeat(10 - n)}] ${pct}%`
+}
+
+/**
+ * Полоска одним сообщением, которое правится (editMessageText), а в конце само становится планом.
+ * Без гонок: все правки идут строго по очереди в одной функции, дробление считается параллельно, а полоска
+ * доходит до 90 % и ждёт его; 100 % — только когда план готов. Кадров мало и с паузой 450 мс: Telegram
+ * ограничивает частоту правок в чате, а частые правки дали бы «Too Many Requests» и рваную анимацию.
+ * Пропавший промежуточный кадр не страшен (следующий его перекроет); не прошла последняя правка — план новым сообщением.
+ */
+const FRAMES = [30, 60, 90]
+export const FRAME_MS = 450
+
+async function startProgress(d: Deps, chat: number) {
+  const sent = (await d.send('sendMessage', { chat_id: chat, text: progressText(0) }).catch(() => null)) as { message_id?: number } | null
+  const id = sent && typeof sent === 'object' ? sent.message_id : undefined
+  if (typeof id !== 'number') return null
+  const wait = d.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  const edit = (text: string, extra: Record<string, unknown> = {}) =>
+    d.send('editMessageText', { chat_id: chat, message_id: id, text, link_preview_options: { is_disabled: true }, ...extra }).catch(() => null)
+  return {
+    async run<T>(job: Promise<T>): Promise<T> {
+      for (const p of FRAMES) {
+        await wait(FRAME_MS)
+        await edit(progressText(p))
+      }
+      const result = await job
+      await wait(FRAME_MS)
+      await edit(progressText(100))
+      await wait(FRAME_MS)
+      return result
+    },
+    /** превратить полоску в итоговое сообщение; false — правка не прошла */
+    async become(text: string, keyboard?: Keyboard, html = false) {
+      const ok = await edit(text, { ...(html ? { parse_mode: 'HTML' } : {}), ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}) })
+      return Boolean(ok)
+    },
+  }
 }
 
 /** Реплика кота из обвязки → сообщение бота: текст, кнопка старта, сохранённый план */
@@ -576,13 +787,27 @@ async function onCallback(q: NonNullable<TgUpdate['callback_query']>, d: Deps) {
     await d.store.saveUser(u)
     await offerStep(d, u, T.step(u.steps[0]))
   } else if (data === 'nx') {
-    const steps = u.steps ?? STEPS[u.sphere ?? 'unsure']
-    u.steps = steps
     // «другой шаг» под шагом из плана (старая кнопка): план снят, показываем первый шаг по сфере, а не второй
-    u.stepIdx = u.plan ? 0 : ((u.stepIdx ?? 0) + 1) % steps.length
-    u.plan = undefined
+    if (u.plan) {
+      u.plan = undefined
+      u.task = undefined
+      u.steps = STEPS[u.sphere ?? 'unsure']
+      u.stepIdx = 0
+    } else if (u.task && u.steps?.length) {
+      // разбитое дело: шаги по порядку; после последнего — не по кругу, а честное «это был последний»
+      if ((u.stepIdx ?? 0) + 1 >= u.steps.length) {
+        await d.store.saveUser(u)
+        return void (await say(d, chat, T.planDone(u.steps.length)))
+      }
+      u.stepIdx = (u.stepIdx ?? 0) + 1
+    } else {
+      u.steps ??= STEPS[u.sphere ?? 'unsure']
+      u.stepIdx = ((u.stepIdx ?? 0) + 1) % u.steps.length
+    }
+    const steps = u.steps!
+    const k = u.stepIdx ?? 0
     await d.store.saveUser(u)
-    await say(d, chat, T.step(steps[u.stepIdx]), stepKeyboard(d, u))
+    await say(d, chat, u.task ? T.planStep(k + 1, steps.length, steps[k]) : T.step(steps[k]), stepKeyboard(d, u))
   } else if (data.startsWith('rm:')) {
     const v = data.slice(3)
     if (v === 'none') {
@@ -629,13 +854,14 @@ async function onCallback(q: NonNullable<TgUpdate['callback_query']>, d: Deps) {
 
 /** Клик «Сесть рядом»: человек откликнулся — считаем его активным. Вернёт адрес сессии. */
 export async function onGo(d: Deps, chatId: number, step: string): Promise<string> {
-  const u = await d.store.getUser(chatId)
-  if (u) {
+  await withChatLock(d, chatId, async () => {
+    const u = await d.store.getUser(chatId)
+    if (!u) return
     touch(u, d.now())
     u.clicks = (u.clicks ?? 0) + 1
     await d.store.saveUser(u)
     await reschedule(d, u)
-  }
+  })
   const q = new URLSearchParams({ step: step.slice(0, 120), d: String(FIRST_MINUTES), src: 'tg' })
   return `${d.site}/app/session?${q.toString()}`
 }
@@ -661,6 +887,20 @@ export async function tick(d: Deps, limit = 100): Promise<number> {
 }
 
 async function remindOne(d: Deps, id: number, now: number): Promise<number> {
+  // человек прямо сейчас пишет боту (чат занят): напоминание не нужно и не должно затереть его запись — через 10 минут
+  const token = await d.store.lock(id, LOCK_TTL_MS)
+  if (!token) {
+    await d.store.schedule(id, now + 600_000)
+    return 0
+  }
+  try {
+    return await remindLocked(d, id, now)
+  } finally {
+    await d.store.unlock(id, token).catch(() => {})
+  }
+}
+
+async function remindLocked(d: Deps, id: number, now: number): Promise<number> {
   const u = await d.store.getUser(id)
   if (!u || u.stopped || u.quiet || u.hour == null) {
     await d.store.schedule(id, null)
