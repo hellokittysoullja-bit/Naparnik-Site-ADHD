@@ -36,7 +36,8 @@ import { type MascotAction, type MascotExpression } from '@/components/mascot-do
 import { EmphasisText } from '@/components/emphasis-text'
 import { HoldToStart } from '@/components/onboarding/hold-to-start'
 import { OnbBreak } from '@/components/onboarding/onb-break'
-import { upsertDeal } from '@/lib/deals'
+import { getDeals, upsertDeal } from '@/lib/deals'
+
 import { breakable } from '@/lib/break-task'
 import { NightScene } from '@/components/landing/night-scene'
 import { navigateWithTransition } from '@/lib/view-transition'
@@ -46,6 +47,7 @@ import { useClientMount } from '@/hooks/use-client-mount'
 import { hapticThreshold } from '@/lib/haptics'
 import { firstStepFor } from '@/lib/ai-client'
 import {
+
   BLOCKERS,
   COSTS,
   COST_CAPTION,
@@ -81,6 +83,9 @@ import {
   type OnboardingState,
   type Sphere,
 } from '@/lib/onboarding'
+
+/** своё дело, разломанное в знакомстве (на время вкладки): после перезагрузки показываем итог, а не пустое поле */
+const ONB_BREAK_KEY = 'naparnik:onb-break'
 
 /**
  * Первый вход в стиле Duolingo (v2, документ владельца 10.11): пять вопросов чипами
@@ -367,6 +372,23 @@ export function FirstRun() {
   }, [step, router])
   const steps = stepsFor(state.sphere, state.blocker)
   const breakMode = state.sphere === 'work' && state.blocker === 'where'
+  // вернулись на шаг (перезагрузка, «Назад» браузера): своё дело уже разломано и лежит в «Делах» — показываем итог, а не
+  // пустое поле с горящей «Продолжить» (баг 20.11)
+  useEffect(() => {
+    if (!breakMode || step !== STEP_FIRST || brk) return
+    let title: string | null = null
+    try {
+      title = sessionStorage.getItem(ONB_BREAK_KEY)
+    } catch {
+      /* нет хранилища — ищем по шагу */
+    }
+    const own = state.firstStep && !steps.includes(state.firstStep) ? state.firstStep : null
+    const deal = getDeals().find((d) => (title ? d.title === title : !!own && d.steps[0]?.text === own))
+    if (!deal?.steps.length) return
+    setBrk({ task: deal.title, steps: deal.steps.map((x) => x.text), done: true })
+    setCustomOpen(true)
+    setCustom(own ?? deal.steps[0].text)
+  }, [breakMode, step, brk, state.firstStep, steps])
   const wantsBreak = breakMode && step === STEP_FIRST && !brk && dealText.trim() !== ''
   async function startBreak() {
     const t = dealText.trim()
@@ -383,6 +405,11 @@ export function FirstRun() {
       const title = data?.title ?? t
       setBrk({ task: title, steps: list, done: false })
       upsertDeal(title, list.map((text, i) => ({ text, minutes: data?.minutes?.[i] ?? undefined })))
+      try {
+        sessionStorage.setItem(ONB_BREAK_KEY, title)
+      } catch {
+        /* приватный режим — после перезагрузки дело придётся вписать снова */
+      }
     } catch {
       setBrk(null)
       setBrkNote('Не понял дело. Напиши чуть подробнее или выбери шаг ниже.')
