@@ -35,7 +35,7 @@ const READY = buildMatcher<Ready>([
     const plan = BY_TITLE.get(title)
     return plan ? aliases.map((a): [string, Ready] => [a, plan]) : []
   }),
-])
+], { understand: true })
 /** готовая разбивка дела, если оно есть в базе (с исправлением написания) */
 export const readyPlan = (task: string) => READY.find(task)
 
