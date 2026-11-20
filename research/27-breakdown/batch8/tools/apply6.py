@@ -20,6 +20,11 @@ h = json.load(open(f'{D}/have.json'))
 EX = {n.lower() for n in h['names']} | {a[0].lower() for a in h['aliases']}
 seen = set()
 out, problems = {}, []
+# защита (20.11): ручное дело, которого нет в списке гоблина, раньше молча выпадало (так потерялись 20 дел batch8);
+# дело с названием, которое уже есть в базе, — дубль
+for t, c in E.items():
+    if c['steps'] and t not in tasks and t not in MERGE: problems.append(f'ручное дело не в tasks.txt: {t}')
+    if t.lower() in {n.lower() for n in h['names']}: problems.append(f'дело уже есть в базе: {t}')
 for t in tasks:
     if t in MERGE: continue
     if t not in E: problems.append(f'не куриpовано: {t}'); continue
@@ -51,3 +56,4 @@ skip = {k: v for k, v in skip.items() if k.lower() not in EX and v is not None a
 json.dump(dict(plans=out, skip=skip), open(f'{D}/curated-batch8.json', 'w'), ensure_ascii=False, indent=1)
 print('plans', len(out), 'skip', len(skip), 'edited', sum(v['edited'] for v in out.values()))
 print('\n'.join(problems[:80]))
+if problems: sys.exit(1)
