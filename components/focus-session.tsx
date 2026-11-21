@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { MascotDoll as MascotSvg } from '@/components/mascot-doll'
 import { EmphasisText } from '@/components/emphasis-text'
 import { RevealIsland, type RevealNewItem } from '@/components/reveal-island'
-import { ChevronLeft, Eye, EyeOff, LayoutList, NotebookPen, Pause, Play, Sparkles } from 'lucide-react'
+import { ChevronLeft, Eye, EyeOff, LayoutList, NotebookPen, Pause, Play, Sparkles, Timer } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { SoundChip, type SoundChoice } from '@/components/sound-chip'
 import type { Fineness } from '@/components/breakdown-prefs'
@@ -21,6 +21,7 @@ import type { Template } from '@/lib/templates'
 // Иначе первый пакет кода Фокуса вырастал на 16 КБ и выходил за предел (e2e/bundle-budget.spec.ts)
 const TemplatesSheet = dynamic(() => import('@/components/templates-sheet').then((m) => m.TemplatesSheet), { ssr: false })
 const WinCards = dynamic(() => import('@/components/win-cards').then((m) => m.WinCards), { ssr: false })
+const TimeDialSheet = dynamic(() => import('@/components/time-dial-sheet').then((m) => m.TimeDialSheet), { ssr: false })
 const TgRemind = dynamic(() => import('@/components/tg-remind').then((m) => m.TgRemind), { ssr: false })
 const FINENESS_KEY = 'naparnik:fineness'
 function readFineness(): Fineness {
@@ -331,6 +332,13 @@ export function FocusSession() {
   const [fineness] = useState<Fineness>(() => (typeof window === 'undefined' ? 'normal' : readFineness()))
   const [templatesOpen, setTemplatesOpenRaw] = useState(false)
   const [sheetsUsed, setSheetsUsed] = useState({ templates: false })
+  // круг времени для первого шага (лист) — грузится при первом открытии
+  const [dialOpen, setDialOpenRaw] = useState(false)
+  const [dialUsed, setDialUsed] = useState(false)
+  const setDialOpen = (v: boolean) => {
+    if (v) setDialUsed(true)
+    setDialOpenRaw(v)
+  }
   const setTemplatesOpen = (v: boolean) => {
     if (v) setSheetsUsed((u) => ({ ...u, templates: true }))
     setTemplatesOpenRaw(v)
@@ -343,8 +351,9 @@ export function FocusSession() {
   const [careReply, setCareReply] = useState<string | null>(null)
   function applyEstimate(m?: number) {
     setEstimate(m ?? null)
+    // в разбивке время — любое от 1 до 60 (круг, владелец 21.11): берём оценку шага как есть, без округления до 5/15/25/45
     if (m) {
-      setMinutes(pickDuration(m))
+      setMinutes(Math.max(1, Math.min(60, Math.round(m))))
       setDurationTouched(true)
     }
   }
@@ -493,6 +502,8 @@ export function FocusSession() {
   /** назад на первый экран Фокуса: дело остаётся в поле — можно поправить и разбить заново */
   function backToStart() {
     setTask(dealTitle ?? task)
+    // на первом экране Фокуса выбор из 5/15/25/45 — время с круга (любое) сводим к ближайшему из них
+    setMinutes((m) => pickDuration(m))
     setBrokenSteps(null)
     setDealTitle(null)
     setReceipt(null)
@@ -657,7 +668,7 @@ export function FocusSession() {
       if (compact) setCompact(false)
       return
     }
-    if (durRef.current) durSpace.current = durRef.current.offsetHeight + 16
+    durSpace.current = durRef.current ? durRef.current.offsetHeight + 16 : 0
     // строки разной высоты (длинный шаг — в две-три строки табличек): высоту каждой запоминаем по тексту — строки,
     // спрятанные из-за нехватки места, тоже учитываются
     for (const el of list.querySelectorAll<HTMLElement>(':scope > button')) rowHeights.current.set(el.dataset.step ?? '', el.offsetHeight)
@@ -692,7 +703,11 @@ export function FocusSession() {
     ro.observe(body)
     return () => ro.disconnect()
   }, [phase, brokenSteps, breaking, breakPending, reveal, split])
-  const [minutes, setMinutes] = useState(restored ? restored.minutes : initialMinutes)
+  // разбивка, восстановленная после обновления страницы: время — оценка выбранного шага, как сразу после разбивки
+  const restoredStepMin = savedPlan?.steps.find((st) => st.text === savedPlan.task)?.minutes
+  const [minutes, setMinutes] = useState(
+    restored ? restored.minutes : restoredStepMin ? Math.max(1, Math.min(60, Math.round(restoredStepMin))) : initialMinutes,
+  )
   // #7 · Default Effect: пока человек сам не тронул длительность, чип 25
   // мин помечен как рекомендованный, а не просто «уже выбранный системой».
   // Как только выбор стал осознанным — метка больше не нужна.
@@ -1323,6 +1338,18 @@ export function FocusSession() {
         </div>
         {/* листы появляются в разметке (и в сети) только после первого открытия */}
         {sheetsUsed.templates && <TemplatesSheet open={templatesOpen} onClose={() => setTemplatesOpen(false)} onPick={applyTemplate} />}
+        {dialUsed && (
+          <TimeDialSheet
+            open={dialOpen}
+            minutes={minutes}
+            onClose={() => setDialOpen(false)}
+            onPick={(m) => {
+              setMinutes(m)
+              setDurationTouched(true)
+              setDialOpen(false)
+            }}
+          />
+        )}
         {/* блок дела прижат к низу: кнопка старта стоит пиксель в пиксель там же, где на обычном экране Фокуса */}
         <div className={stage || !deal ? 'mt-auto flex flex-col gap-4' : 'flex min-h-0 flex-1 flex-col gap-4 pt-3'}>
           {stage ? null : deal ? (
@@ -1538,7 +1565,8 @@ export function FocusSession() {
           )}
           {/* длительность: пока полено ждёт и колется — её нет на экране, но место занято; в конце проявляется на своём месте.
               Кнопка старта ниже видна всё время — неактивная, пиксель в пиксель там же (владелец 17.11) */}
-          {!(deal && !stage && compact) && (
+          {/* в разбивке ряда длительности нет: время — кнопка рядом со стартом и круг в листе (владелец 21.11) */}
+          {!deal && (
           <div ref={durRef} inert={staging} aria-hidden={staging || undefined} className={`flex flex-col gap-2 transition-opacity duration-300 ${staging ? 'pointer-events-none opacity-0' : 'opacity-100'}`}>
             <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
               Длительность
@@ -1577,16 +1605,32 @@ export function FocusSession() {
             </p>}
           </div>
           )}
-          <motion.div whileTap={reducedMotion ? undefined : { scale: 0.96 }}>
-            <Button
-              size="lg"
-              onClick={() => void start()}
-              disabled={!task.trim() || busy || staging}
-              className="h-14 w-full text-[17px]"
-            >
-              Начали. Я рядом
-            </Button>
-          </motion.div>
+          <div className="flex gap-2">
+            <motion.div className="min-w-0 flex-1" whileTap={reducedMotion ? undefined : { scale: 0.96 }}>
+              <Button
+                size="lg"
+                onClick={() => void start()}
+                disabled={!task.trim() || busy || staging}
+                className="h-14 w-full text-[17px]"
+              >
+                Начали. Я рядом
+              </Button>
+            </motion.div>
+            {/* время первого шага: по умолчанию оценка шага из базы, тап — круг в листе (владелец 21.11). Пока полено
+                колется, кнопка на месте, но неактивна — как старт: ничего не сдвигается */}
+            {deal && (
+              <button
+                type="button"
+                onClick={() => setDialOpen(true)}
+                disabled={busy || staging}
+                aria-label={`Время на первый шаг: ${minutes} мин. Изменить`}
+                className="press flex h-14 w-[6.25rem] shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-white/15 bg-white/8 text-[17px] font-extrabold tabular-nums text-foreground shadow-[0_4px_0_rgba(0,0,0,0.35)] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Timer className="size-4" strokeWidth={2.6} aria-hidden="true" />
+                {minutes} мин
+              </button>
+            )}
+          </div>
         </div>
       </div>
     )

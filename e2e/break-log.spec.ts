@@ -94,9 +94,10 @@ for (const [w, h] of [[393, 664], [360, 640], [390, 844]] as const) {
     // ожидание: экрана выбора шага нет — вместо поля ждёт полено со словами человека
     await expect(page.locator('[data-rv-waitlog] svg')).toBeVisible()
     await expect(page.getByRole('textbox', { name: 'Первый шаг' })).toHaveCount(0)
-    const durOpacity = () => page.getByText('Длительность').evaluate((el) => getComputedStyle(el.parentElement!).opacity)
-    expect(await durOpacity()).toBe('0')
+    // ряда длительности в разбивке нет совсем (21.11): время — кнопка рядом со стартом, пока полено ждёт — неактивна
+    await expect(page.getByText('Длительность')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Начали. Я рядом' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: /Время на первый шаг/ })).toBeDisabled()
     expect(await startBox(page)).toEqual(plain)
     // раскол и итог: кнопка там же, пиксель в пиксель, на КАЖДОМ кадре (мгновенный рывок тоже ловится), и не под меню
     await page.evaluate(() => {
@@ -115,8 +116,7 @@ for (const [w, h] of [[393, 664], [360, 640], [390, 844]] as const) {
     expect(tops.length).toBeGreaterThan(10)
     expect([...new Set(tops)]).toEqual([plain.top])
     await expect(page.getByRole('button', { name: 'Начали. Я рядом' })).toBeEnabled()
-    // шагов много — длительность спрятана и отдала место шагам (владелец 17.11); если она есть — проявилась
-    if (await page.getByText('Длительность').count()) await expect.poll(durOpacity).toBe('1')
+    await expect(page.getByRole('button', { name: /Время на первый шаг/ })).toBeEnabled()
     // все остальные шаги — списком под карточкой, целиком и над кнопкой старта; «ещё N» нет
     await expect(page.getByText(/ждут в Делах/)).toHaveCount(0)
     const rows = await page.locator('[data-rv-list] > button').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().bottom)))

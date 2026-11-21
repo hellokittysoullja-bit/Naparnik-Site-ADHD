@@ -31,7 +31,8 @@ test('дробление без вопроса про силы: шаги сра�
   await page.goto('/app/session?step=' + encodeURIComponent('Отчёт за квартал') + '&break=1')
   await expect(page.getByText('Открыть файл', { exact: true })).toBeVisible()
   expect(seen[1].energy).toBe('low')
-  await expect(page.getByRole('button', { name: '5 мин', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  // в разбивке время — кнопка рядом со стартом (круг в листе, 21.11), а не ряд 5/15/25/45
+  await expect(page.getByRole('button', { name: /Время на первый шаг/ })).toHaveText(/5 мин/)
   // «Ещё мельче» дробит выбранный шаг сразу и просит шаги мельче
   await page.getByRole('button', { name: 'Ещё мельче' }).click()
   await expect.poll(() => seen.length).toBe(3)
