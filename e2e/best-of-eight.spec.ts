@@ -38,7 +38,7 @@ test('дробление без вопроса про силы: шаги сра�
   expect(seen[2]).toMatchObject({ energy: 'low', fineness: 'fine' })
 })
 
-test('готовое дело: шаги появляются без запроса к ИИ, первый шаг на минуту, есть шаг «пока ждёшь»', async ({ page }) => {
+test('готовое дело: шаги появляются без запроса к ИИ, первый шаг на минуту, метки «пока ждёшь» нет (владелец 21.11)', async ({ page }) => {
   const seen = await mockAi(page)
   await page.goto('/app/session')
   await page.getByRole('button', { name: 'Готовые шаги' }).click()
@@ -50,7 +50,7 @@ test('готовое дело: шаги появляются без запрос
   await sheet.getByRole('button', { name: /Убрать ванную/ }).click()
   await expect(sheet).toBeHidden()
   await expect(page.getByText('Достать средство и губку')).toBeVisible()
-  await expect(page.getByText('пока ждёшь').first()).toBeVisible()
+  await expect(page.getByText('пока ждёшь')).toHaveCount(0)
   // оценка времени на записке сама не показывается (владелец 20.11)
   await expect(page.getByText(/сессия \d+ мин/)).toHaveCount(0)
   expect(seen).toHaveLength(0)
@@ -59,12 +59,12 @@ test('готовое дело: шаги появляются без запрос
   expect(deals[0].steps).toHaveLength(6)
 })
 
-test('дело из поля, совпавшее с готовым: сервер отдаёт наш шаблон сразу, с «пока ждёшь»', async ({ page }) => {
+test('дело из поля, совпавшее с готовым: сервер отдаёт наш шаблон сразу, без метки «пока ждёшь»', async ({ page }) => {
   // готовые дела ищет сервер (база в телефон не качается); без модели — проверяет tests/unit/breakdown-goblin.test.ts
   await page.route('**/api/session-voice', (route) => route.fulfill({ json: { text: null } }))
   await page.goto('/app/session?step=' + encodeURIComponent('убрать ванную') + '&break=1')
   await expect(page.getByText('Достать средство и губку').first()).toBeVisible()
-  await expect(page.getByText('пока ждёшь').first()).toBeVisible()
+  await expect(page.getByText('пока ждёшь')).toHaveCount(0)
 })
 
 test('просьба к коту и размер шагов уходят в дробление', async ({ page }) => {

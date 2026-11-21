@@ -1386,10 +1386,7 @@ export function FocusSession() {
                     </motion.p>
                   </AnimatePresence>
                 )}
-                {/* оценка времени сама не показывается (владелец 20.11) — только «пока ждёшь», если шаг такой */}
-                {!editing && brokenSteps[sel]?.wait && (
-                  <p className="mt-1 h-4 truncate font-mono text-[10.5px] font-semibold uppercase tracking-widest text-reward">пока ждёшь</p>
-                )}
+                {/* ни оценки времени (20.11), ни метки «пока ждёшь» (21.11) у шагов в Фокусе нет — решения владельца */}
                 {/* кнопки карточки — всегда в один ряд, прижаты к низу без верхнего отступа: при шаге в две строки отступ выталкивал
                     их за строчку записки (iPhone владельца, 17.11) */}
                 <div className="mt-auto flex flex-nowrap gap-1.5 [@media(max-width:380px)]:gap-1">
@@ -1443,7 +1440,6 @@ export function FocusSession() {
                   <span data-rv-step className="block max-h-[66px] overflow-hidden font-semibold leading-[22px]">
                     <WoodWords text={st.text} />
                   </span>
-                  {st.wait && <span className="shrink-0 font-mono text-[9.5px] uppercase tracking-widest text-reward/90">пока ждёшь</span>}
                 </motion.button>
               ))}
               </div>
