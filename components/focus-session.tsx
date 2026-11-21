@@ -526,6 +526,21 @@ export function FocusSession() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- реагируем только на смену метки в адресе
   }, [viewParam])
+  // «назад» браузера и свайп ловим и напрямую: если нажать сразу после разбивки, метка могла ещё не дойти до
+  // useSearchParams, и смены 'plan' → нет экран бы не увидел (разбивка оставалась на месте; ловил e2e под нагрузкой)
+  const backRef = useRef<() => void>(() => {})
+  backRef.current = () => {
+    if (!planInHistory.current || new URLSearchParams(window.location.search).get('view') === 'plan') return
+    if (!brokenSteps || busy || phase !== 'setup') return
+    planInHistory.current = false
+    prevView.current = null
+    backToStart()
+  }
+  useEffect(() => {
+    const onPop = () => backRef.current()
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
   // открыли `?view=plan`, а разбивки на устройстве уже нет (прошли сутки, другой браузер) — обычный Фокус без метки
   useEffect(() => {
     if (viewParam !== 'plan' || savedPlan || brokenSteps || busy) return
@@ -1434,7 +1449,11 @@ export function FocusSession() {
                   transition={{ duration: 0.22, delay: reducedMotion ? 0 : 0.04 * Math.min(i, 5), ease: [0.05, 0.7, 0.1, 1] }}
                   className="press flex min-h-8 w-full shrink-0 items-center gap-2 rounded-xl px-3 py-[5px] text-left text-[13.5px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
-                  <span data-rv-bullet aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
+                  {/* номер шага в плане вместо точки (владелец 21.11): порядок и «сколько ещё» видны сразу, записка — шаг 1.
+                      Цвет — --step-num в globals.css, выбирает владелец */}
+                  <span data-rv-bullet aria-hidden="true" className="step-num w-[1.15rem] shrink-0 text-right text-[13px] font-bold tabular-nums leading-none">
+                    {(i < sel ? i : i + 1) + 1}
+                  </span>
                   {/* без line-clamp: Safari режет им многоточием каждую табличку внутри строки («Сдела…», скриншот владельца 17.11).
                       Длинный шаг переносится на вторую-третью строку табличек; слово видно целиком или не видно совсем */}
                   <span data-rv-step className="block max-h-[66px] overflow-hidden font-semibold leading-[22px]">

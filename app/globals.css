@@ -2496,3 +2496,8 @@ html:has(.app-scroll) body {
 .rv-wait { transform-origin: 50% 100%; animation: rv-wait 1.6s ease-in-out infinite; }
 @keyframes rv-wait { 0%, 100% { transform: none; } 50% { transform: translateY(-1px) rotate(-0.4deg); } }
 @media (prefers-reduced-motion: reduce) { .rv-wait { animation: none; } }
+
+/* Номер шага в списке разбивки (Фокус, 21.11). Цвет согласует владелец — до выбора приглушённый */
+.step-num {
+  color: var(--step-num, color-mix(in oklch, var(--muted-foreground) 75%, transparent));
+}

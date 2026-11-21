@@ -45,8 +45,10 @@ test('готовое дело: шаги появляются без запрос
   const sheet = page.getByRole('dialog', { name: 'Готовые шаги' })
   await expect(sheet).toBeVisible()
   // лист поверх нижнего меню: в точке над нижним краем экрана — лист, а не меню
-  const top = await page.evaluate(() => document.elementFromPoint(innerWidth / 2, innerHeight - 30)?.closest('[role="dialog"], nav')?.tagName)
-  expect(top).toBe('DIV')
+  // лист въезжает снизу: под нагрузкой точка ещё пустая — ждём, пока он встанет (раньше падало изредка)
+  await expect
+    .poll(() => page.evaluate(() => document.elementFromPoint(innerWidth / 2, innerHeight - 30)?.closest('[role="dialog"], nav')?.tagName))
+    .toBe('DIV')
   await sheet.getByRole('button', { name: /Убрать ванную/ }).click()
   await expect(sheet).toBeHidden()
   await expect(page.getByText('Достать средство и губку')).toBeVisible()

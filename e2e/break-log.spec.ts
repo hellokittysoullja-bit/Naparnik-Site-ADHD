@@ -38,11 +38,22 @@ test('полено: сцена сама доходит до конца без к
   expect(await page.evaluate(() => localStorage.getItem('naparnik:breaks'))).toBe('1')
   // двенадцатая разбивка — сцена вдвое быстрее первой
   await page.evaluate(() => localStorage.setItem('naparnik:breaks', '11'))
+  // длину сцены меряет сама страница: опрос expect идёт с шагом до 1 с, и его задержка попадала в замер
+  // (на GitHub выходило 1702–1796 мс при сцене ~1,2 с)
+  await page.addInitScript(() => {
+    const w = window as unknown as { __rv: { on?: number; off?: number } }
+    w.__rv = {}
+    new MutationObserver(() => {
+      const on = !!document.querySelector('[data-rv="playing"]')
+      if (on && w.__rv.on === undefined) w.__rv.on = performance.now()
+      if (!on && w.__rv.on !== undefined && w.__rv.off === undefined) w.__rv.off = performance.now()
+    }).observe(document, { childList: true, subtree: true, attributes: true })
+  })
   await page.goto(url)
   await page.waitForSelector('[data-rv="playing"]')
-  const t0 = Date.now()
   await expect(page.locator('[data-rv="playing"]')).toHaveCount(0, { timeout: 4000 })
-  expect(Date.now() - t0).toBeLessThan(1700)
+  const rv = await page.evaluate(() => (window as unknown as { __rv: { on: number; off: number } }).__rv)
+  expect(rv.off - rv.on).toBeLessThan(1700)
 })
 
 test('полено: при «уменьшить движение» сцены нет, шаги сразу', async ({ browser }) => {
