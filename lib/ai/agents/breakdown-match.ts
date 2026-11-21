@@ -168,9 +168,28 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
       for (const o of opts[i]) walk(i + 1, [...acc, o])
     }
     walk(0, [])
+    // Ничего не нашлось — пробуем и у известных слов другое окончание (20.11): слово, которое есть в названии
+    // хоть одного дела, выше не исправляется вовсе, и когда новая партия принесла «ужину», «окно», «кредиты»,
+    // «для мыла», перестали находиться «приготовить ужину», «помыть окно», «купить мыла» (243 формы старых дел).
+    if (!found.size) {
+      const opts2 = ws.map((w, i) => (opts[i].length === 1 && opts[i][0] === w && known.has(w) && !NOT_TYPO.has(w) ? [w, ...endings(w)] : opts[i]))
+      if (opts2.some((o, i) => o.length !== opts[i].length) && opts2.reduce((n, o) => n * o.length, 1) <= 64) {
+        opts.splice(0, opts.length, ...opts2)
+        walk(0, [])
+      }
+    }
     // два разных дела одинаково близко — не угадываем, пусть разбивает модель; дело и его синоним — одно дело
     const plans = new Set([...found].map((e) => e.value))
     return plans.size === 1 ? [...found][0] : null
+  }
+
+  /** формы того же слова в базе: отличаются только окончанием (одна правка в последних двух буквах) */
+  const byStem = new Map<string, string[]>()
+  for (const v of vocab) if (v.length >= 4 && !EXACT_ONLY.has(v)) byStem.set(v.slice(0, 3), [...(byStem.get(v.slice(0, 3)) ?? []), v])
+  function endings(w: string): string[] {
+    if (w.length < 4 || EXACT_ONLY.has(w)) return []
+    const head = w.length - 2
+    return (byStem.get(w.slice(0, 3)) ?? []).filter((v) => v !== w && v.slice(0, head - 1) === w.slice(0, head - 1) && Math.abs(v.length - w.length) <= 1 && distance(w, v, 1) === 1)
   }
 
   // глаголы базы — первое слово названий дел: только в них превращаются формы вроде «помыла», «покорми»

@@ -10,7 +10,7 @@ describe('готовые разбивки goblin.tools (дословно, вла
     expect(goblinPlan('постирать белье')).toEqual(GOBLIN_PLANS['Постирать бельё'])
   })
   it('другое дело или дело с добавкой — не готовое (его пишет модель)', () => {
-    expect(goblinPlan('помыть посуду после гостей')).toBeNull()
+    expect(goblinPlan('помыть посуду после ремонта')).toBeNull()
     expect(goblinPlan('посуда')).toBeNull()
     expect(goblinPlan('помыть посду')).toBeNull()
   })
