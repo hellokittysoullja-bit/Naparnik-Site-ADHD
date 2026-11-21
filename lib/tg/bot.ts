@@ -84,7 +84,7 @@ export type CatReply = {
   plan?: { task: string; firstStep: string; startTime?: string }
 }
 /** null — модели не ответили: бот отвечает по правилам без ИИ (дробление, заготовки) */
-export type Converse = (u: TgUser, text: string) => Promise<CatReply | null>
+export type Converse = (u: TgUser, text: string, opts?: { forwarded?: boolean }) => Promise<CatReply | null>
 
 export type Deps = {
   store: Store
@@ -114,7 +114,20 @@ const isMenuBreak = (text: string) => text.replace(/^\p{Extended_Pictographic}\s
 
 export type TgUpdate = {
   update_id?: number
-  message?: { chat: { id: number; type?: string }; text?: string; from?: { first_name?: string } }
+  message?: {
+    chat: { id: number; type?: string }
+    text?: string
+    from?: { first_name?: string; is_bot?: boolean }
+    /** пересланное: текст написал не собеседник — для кота это данные, а не просьба (security-ai.md R16) */
+    forward_origin?: unknown
+    /** не текст (фото, голос, стикер…): Telegram кладёт сюда подпись или ничего */
+    caption?: string
+    photo?: unknown
+    voice?: unknown
+    sticker?: unknown
+    video?: unknown
+    document?: unknown
+  }
   callback_query?: { id: string; data?: string; message?: { chat: { id: number }; message_id: number } }
 }
 
@@ -182,6 +195,8 @@ export const T = {
   planDone: (n: number) => `Это был последний из ${n}. Если всё позади, ты молодец. Новое дело: кнопка «🐾 Разбить задачу» внизу.`,
   stepFromTask: (task: string, step: string) => `Разломал «${task}». Первый кусочек: «${step}».\nДве минуты. Я рядом.`,
   thinking: 'Секунду, ломаю на кусочки…',
+  noText: 'Я пока понимаю только текст. Напиши словами, что висит, и разберёмся вместе.',
+  noVoice: 'Голосовые я пока не слушаю, прости. Напиши словами, что висит, и разберёмся вместе.',
   breakAsk: 'Напиши задачу, и я разобью её на микрошаги 🐾\nНапример: помыть посуду, курсовая, разобрать почту.',
   menuHint: 'Внизу кнопка «🐾 Разбить задачу»: нажми, когда что-то висит, и я разобью дело на микрошаги.',
   askRemind:
@@ -390,15 +405,20 @@ const sayMenu = (d: Deps, u: TgUser, text: string) => {
   return d.send('sendMessage', { chat_id: u.id, text, link_preview_options: { is_disabled: true }, reply_markup: MENU })
 }
 
-const say = (d: Deps, chat: number, text: string, keyboard?: Keyboard, html = false) =>
+async function say(d: Deps, chat: number, text: string, keyboard?: Keyboard, html = false) {
   // без превью; разметка только там, где текст собран кодом и экранирован (planText): шаг человека не станет карточкой
-  d.send('sendMessage', {
+  const body = (t: string, h: boolean) => ({
     chat_id: chat,
-    text,
+    text: t,
     link_preview_options: { is_disabled: true },
-    ...(html ? { parse_mode: 'HTML' } : {}),
+    ...(h ? { parse_mode: 'HTML' } : {}),
     ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
   })
+  const sent = await d.send('sendMessage', body(text, html))
+  // Telegram не разобрал разметку (400 «can't parse entities») — то же сообщение простым текстом, а не тишина
+  if (!sent && html) return d.send('sendMessage', body(plain(text), false))
+  return sent
+}
 
 // ——— состояние ———
 
@@ -479,7 +499,8 @@ async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
   if (!msg || (msg.chat.type && msg.chat.type !== 'private')) return
   const chat = msg.chat.id
   const now = d.now()
-  const text = (msg.text ?? '').trim()
+  // фото с подписью — подпись и есть сообщение
+  const text = (msg.text ?? msg.caption ?? '').trim()
   let u = await d.store.getUser(chat)
   const isNew = !u
   u ??= newUser(chat, now)
@@ -532,6 +553,17 @@ async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
 
   touch(u, now)
   const cmd = text.split(/\s+/)[0].toLowerCase()
+
+  // не текст: голос, стикер, фото без подписи — честно и коротко, без «справки» на весь экран
+  if (!text) {
+    await d.store.saveUser(u)
+    return void (await say(d, chat, msg.voice ? T.noVoice : T.noText))
+  }
+  // пересланное сообщение — не просьба человека: в разговор с котом с пометкой, без команд и дробления
+  if (msg.forward_origin !== undefined) {
+    u.awaiting = null
+    return void (await freeText(d, u, text, isNew, true))
+  }
 
   // «Разбей …» — сразу в дробление (база готовых планов, потом модель), раньше разговора и вопросов про время:
   // «разбей дз к 7 утра» — это дело, а не час напоминания
@@ -613,6 +645,9 @@ async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
   } else if (text.length >= 2 && !text.startsWith('/')) {
     // бот ждал время, а человек написал словами о другом: вопрос снят, разговор идёт дальше (а не «мне нужен час» по кругу)
     u.awaiting = null
+    // человек просто назвал дело из базы («помыть посуду», «покормить пса вечером») — сразу весь план, быстро и без
+    // модели; чувства и разговор («мне скучно», «лень») идут коту
+    if (looksLikeTask(text) && d.known?.(text)) return void (await breakAndOffer(d, u, text.slice(0, 120), true))
     await freeText(d, u, text, isNew)
   } else {
     await d.store.saveUser(u)
@@ -621,10 +656,11 @@ async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
 }
 
 /** Свободный текст — разговор с котом через обвязку (тот же кот, что на сайте: проверки, страховка моделей) */
-async function freeText(d: Deps, u: TgUser, text: string, isNew: boolean) {
+async function freeText(d: Deps, u: TgUser, text: string, isNew: boolean, forwarded = false) {
   const chat = u.id
-  await d.send('sendChatAction', { chat_id: chat, action: 'typing' })
-  const reply = d.converse ? await d.converse(u, text.slice(0, 2000)).catch(() => null) : null
+  // «печатает…» держится 5 с: пока кот думает (до 25 с), обновляем, чтобы человек видел, что ответ идёт
+  const typing = keepTyping(d, chat)
+  const reply = d.converse ? await d.converse(u, text.slice(0, 2000), { forwarded }).catch(() => null).finally(typing) : (typing(), null)
   // пока кот думал, человек мог стереть себя (/forget): поздний ответ не должен вернуть запись
   if (!isNew && !(await d.store.getUser(chat))) return
   if (reply) return void (await catSays(d, u, text, reply))
@@ -663,6 +699,19 @@ async function breakAndOffer(d: Deps, u: TgUser, task: string, whole: boolean) {
     return
   }
   await offerStep(d, u, msg, whole)
+}
+
+/** Фраза похожа на дело, а не на чувство: первое слово — глагол в неопределённой форме («помыть», «записаться») */
+export function looksLikeTask(text: string) {
+  const first = text.trim().toLowerCase().split(/\s+/)[0] ?? ''
+  return first.length >= 4 && /(ть|ться|ти|чь|тись)$/.test(first) && !/^(быть|жить|спать)$/.test(first)
+}
+
+/** «печатает…» каждые 4 с, пока не вызвана возвращённая функция остановки */
+function keepTyping(d: Deps, chat: number): () => void {
+  void d.send('sendChatAction', { chat_id: chat, action: 'typing' }).catch(() => {})
+  const timer = setInterval(() => void d.send('sendChatAction', { chat_id: chat, action: 'typing' }).catch(() => {}), 4000)
+  return () => clearInterval(timer)
 }
 
 /** «🐈 котик разбивает задачу...» и полоска из 10 делений */

@@ -10,26 +10,68 @@ export function botToken(): string | null {
   return process.env.TELEGRAM_BOT_TOKEN?.trim() || null
 }
 
+/** Итог вызова Bot API: результат или код ошибки (403 — человек заблокировал бота, 429 — слишком часто) */
+export type TgResult<T> = { ok: true; result: T } | { ok: false; code: number; description: string; retryAfter?: number }
+
+/** Сколько ждать одного ответа Telegram: зависший запрос не должен съесть время всей функции (maxDuration) */
+const CALL_TIMEOUT_MS = 10_000
+/** «Too Many Requests»: ждём, сколько сказал Telegram, но не дольше — дальше уже не ответ, а очередь */
+const MAX_RETRY_AFTER_S = 5
+
+/**
+ * Вызов Bot API, устойчивый к сбоям (как у крупных ботов): таймаут на запрос; 429 — пауза retry_after и повтор
+ * (до двух раз); 5xx и обрыв сети — один повтор через 400 мс. Ошибки 4xx, кроме 429, не повторяются: запрос
+ * неверен (сообщение удалено, бот заблокирован) и повтор ничего не изменит.
+ */
+export async function tgCall<T = unknown>(method: string, body: Record<string, unknown>, fetchImpl: typeof fetch = fetch): Promise<TgResult<T>> {
+  const token = botToken()
+  if (!token) return { ok: false, code: 0, description: 'no token' }
+  let last: TgResult<T> = { ok: false, code: 0, description: 'not sent' }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetchImpl(`${API}/bot${token}/${method}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+      })
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: T; description?: string; error_code?: number; parameters?: { retry_after?: number } }
+      if (json.ok) return { ok: true, result: json.result as T }
+      const code = json.error_code ?? res.status
+      const retryAfter = json.parameters?.retry_after
+      last = { ok: false, code, description: json.description ?? String(res.status), retryAfter }
+      if (code === 429 && attempt < 2 && (retryAfter ?? 1) <= MAX_RETRY_AFTER_S) {
+        await new Promise((r) => setTimeout(r, (retryAfter ?? 1) * 1000))
+        continue
+      }
+      if (code >= 500 && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 400))
+        continue
+      }
+      break
+    } catch (e) {
+      last = { ok: false, code: 0, description: String(e) }
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 400))
+        continue
+      }
+      break
+    }
+  }
+  // «message is not modified» — правка тем же текстом, не ошибка; остальное пишем в лог без тела запроса
+  if (!/not modified/i.test(last.ok ? '' : last.description)) console.error(`[tg] ${method}: ${last.ok ? '' : `${last.code} ${last.description}`}`)
+  return last
+}
+
+/** Человек заблокировал бота или удалил аккаунт: писать ему бессмысленно, напоминания надо снять */
+export function isGone(r: TgResult<unknown>): boolean {
+  return !r.ok && r.code === 403 && /blocked|deactivated|kicked|not found/i.test(r.description)
+}
+
 /** Ответ Telegram или null (нет токена, сеть, ошибка API — пишем в лог и не роняем обработку) */
 export async function tg<T = unknown>(method: string, body: Record<string, unknown>): Promise<T | null> {
-  const token = botToken()
-  if (!token) return null
-  try {
-    const res = await fetch(`${API}/bot${token}/${method}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const json = (await res.json()) as { ok: boolean; result?: T; description?: string }
-    if (!json.ok) {
-      console.error(`[tg] ${method}: ${json.description ?? res.status}`)
-      return null
-    }
-    return json.result ?? null
-  } catch (e) {
-    console.error(`[tg] ${method}:`, e)
-    return null
-  }
+  const r = await tgCall<T>(method, body)
+  return r.ok ? (r.result ?? (true as T)) : null
 }
 
 /**

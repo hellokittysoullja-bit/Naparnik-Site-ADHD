@@ -50,12 +50,17 @@ function timeOfDay(hour: number): string {
 }
 
 /** Время суток у человека; без часа (бот не знает часового пояса) — блока нет, а не выдуманный полдень */
-export function situation(hour: number | undefined, reminders?: 'on' | 'off'): string | undefined {
-  if (typeof hour !== 'number' && !reminders) return undefined
+export function situation(hour: number | undefined, reminders?: 'on' | 'off', channel?: 'telegram'): string | undefined {
+  if (typeof hour !== 'number' && !reminders && !channel) return undefined
   return dataBlock('situation', {
     'время суток': typeof hour === 'number' ? timeOfDay(hour) : undefined,
     час: hour,
     // от этого зависит, вправе ли кот обещать «напишу первым» (бота у человека может не быть)
     'напоминания в Telegram': reminders === 'on' ? 'подключены' : reminders === 'off' ? 'не подключены' : undefined,
+    // в боте весь план дела даёт кнопка внизу: кот может на неё сослаться, а не пересказывать шаги сам
+    канал:
+      channel === 'telegram'
+        ? 'бот в Telegram; весь план дела по шагам даёт кнопка «🐾 Разбить задачу» внизу или сообщение «Разбей …»'
+        : undefined,
   })
 }
