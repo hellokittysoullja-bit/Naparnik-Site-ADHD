@@ -456,7 +456,7 @@ export async function handleUpdate(update: TgUpdate, d: Deps): Promise<void> {
   try {
     if (update.callback_query) await onCallback(update.callback_query, d)
     else await onMessage(update.message, d)
-    await afterUpdate(d, update, chat)
+    await afterUpdate(d, chat)
   } finally {
     if (chat && token) await d.store.unlock(chat, token).catch(() => {})
   }
@@ -483,15 +483,10 @@ export async function withChatLock<T>(d: Pick<Deps, 'store'>, chat: number, fn: 
   }
 }
 
-async function afterUpdate(d: Deps, update: TgUpdate, chat: number | undefined) {
+async function afterUpdate(d: Deps, chat: number | undefined) {
   // человек откликнулся — следующее напоминание снова через сутки (а не через 3–7 дней «редкого» режима)
   const u = chat ? await d.store.getUser(chat) : null
   if (!u) return
-  // чат, начатый до нижней кнопки «🐾 Разбить задачу»: показываем её один раз, после ответа на сообщение
-  if (!u.menu && update.message) {
-    await sayMenu(d, u, T.menuHint)
-    await d.store.saveUser(u)
-  }
   await reschedule(d, u)
 }
 
@@ -543,11 +538,13 @@ async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
         reply_markup: { inline_keyboard: sphereKeyboard() },
       })
       if (!sent) await say(d, chat, T.hello, sphereKeyboard())
+      // подсказка про нижнюю кнопку — один раз за всю жизнь чата, только при знакомстве (владелец 21.11: повторы — спам);
+      // сама кнопка прикрепляется к чату и остаётся, повторять сообщение ради неё не нужно
+      await sayMenu(d, u, T.menuHint)
+      await d.store.saveUser(u)
     } else {
       await say(d, chat, T.helloBack, sphereKeyboard())
     }
-    await sayMenu(d, u, T.menuHint)
-    await d.store.saveUser(u)
     return
   }
 

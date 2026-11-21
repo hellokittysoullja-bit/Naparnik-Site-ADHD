@@ -338,17 +338,20 @@ describe('бот: «Разбей …» — база готовых планов 
 describe('бот: нижняя кнопка «🐾 Разбить задачу» (владелец 20.11)', () => {
   const menuOf = (s: { body: Record<string, unknown> }) => s.body.reply_markup as { keyboard?: { text: string }[][]; is_persistent?: boolean } | undefined
 
-  it('после /start в чате постоянная нижняя клавиатура с одной кнопкой; второй раз подсказка не повторяется', async () => {
+  it('после /start в чате постоянная нижняя клавиатура с одной кнопкой; подсказка про неё — один раз за всю жизнь чата', async () => {
     const r = rig()
     await r.msg('/start')
     const withMenu = r.sent.filter((s) => menuOf(s)?.keyboard)
     expect(withMenu).toHaveLength(1)
     expect(menuOf(withMenu[0])).toMatchObject({ keyboard: [[{ text: '🐾 Разбить задачу' }]], is_persistent: true, resize_keyboard: true })
     await r.msg('/help')
+    await r.msg('помыть посуду')
+    await r.msg('/start')
+    await r.msg('/start')
     expect(r.sent.filter((s) => s.body.text === T.menuHint)).toHaveLength(1)
   })
 
-  it('чат, начатый до кнопки: она появляется один раз после следующего сообщения', async () => {
+  it('подсказка не возвращается, даже если запись чата перезаписали без отметки (владелец 21.11: это был спам)', async () => {
     const r = rig()
     await r.msg('/start')
     const u = (await r.store.getUser(CHAT))!
@@ -356,8 +359,8 @@ describe('бот: нижняя кнопка «🐾 Разбить задачу»
     await r.store.saveUser(u)
     await r.msg('/help')
     await r.msg('/help')
-    expect(r.sent.filter((s) => s.body.text === T.menuHint)).toHaveLength(2)
-    expect(menuOf(r.sent.filter((s) => s.body.text === T.menuHint).at(-1)!)?.keyboard).toBeTruthy()
+    await r.msg('/start')
+    expect(r.sent.filter((s) => s.body.text === T.menuHint)).toHaveLength(1)
   })
 
   it('кнопка → «напиши задачу» → следующее сообщение разбивается как на сайте, весь план', async () => {
