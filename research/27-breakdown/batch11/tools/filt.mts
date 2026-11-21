@@ -5,7 +5,6 @@ const G = [['Найти', 'Вызвать', 'Выбрать', 'Подобрат�
 const h = JSON.parse(readFileSync(`${D}/have.json`, 'utf8'))
 const all: string[] = [...h.names, ...h.aliases.map((a: string[]) => a[0])]
 const stem = (s: string) => s.toLowerCase().replace(/ё/g, 'е').split(/[^а-яa-z0-9]+/).filter((w) => w.length >= 3 && !['для', 'над', 'под', 'при'].includes(w)).map((w) => w.slice(0, Math.max(3, Math.min(5, w.length - 2)))).sort().join(' ')
-const exactAll = 0
 const byStem = new Map<string, string>(); for (const a of all) byStem.set(stem(a), a)
 const tasks = readFileSync(process.argv[3], 'utf8').split('\n').filter(Boolean)
 const fresh: string[] = [], dup: string[] = []
