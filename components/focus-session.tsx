@@ -1333,16 +1333,16 @@ export function FocusSession() {
               {/* подписи «первый шаг · дело» нет (владелец 17.11), значка настройки тоже (владелец 21.11: настройка в «Делах»);
                   в строке только карта штампов. Высота прежняя (28 px, как была со значком) — карточка и шаги не сдвигаются */}
               <div data-rv-labelrow className="flex min-h-7 items-center justify-between gap-2">
-                {/* назад на первый экран Фокуса (владелец 21.11): разбивка — шаг вглубь вкладки, стрелка слева сверху, как в
-                    Telegram и App Store. Пока дело дробится, стрелки нет — уходить некуда, первый экран и так под ним */}
+                {/* назад на первый экран Фокуса (владелец 21.11): разбивка — шаг вглубь вкладки, круглая кнопка со стрелкой слева сверху (вариант Б
+                    владельца, как в Airbnb и Instagram): заметна на тёмном небе, ровная цель касания. Пока дело дробится, стрелки нет — уходить некуда, первый экран и так под ним */}
                 {brokenSteps && !busy ? (
                   <button
                     type="button"
                     onClick={goBackFromPlan}
                     aria-label="Назад к выбору шага"
-                    className="press -my-2 -ml-2.5 grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="press -my-1.5 grid size-10 shrink-0 place-items-center rounded-full border border-white/15 bg-white/10 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <ChevronLeft className="size-6" aria-hidden="true" />
+                    <ChevronLeft className="size-[22px]" strokeWidth={2.4} aria-hidden="true" />
                   </button>
                 ) : (
                   <span aria-hidden="true" />
