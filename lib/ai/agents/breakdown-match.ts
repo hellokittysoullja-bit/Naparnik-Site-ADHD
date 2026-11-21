@@ -97,7 +97,7 @@ const NOT_TYPO = new Set([
   'попроститься', 'поклониться', 'краю', 'электричек', 'собранные', 'собранное', 'введенные', 'сдача', 'заходить',
 ])
 
-import { ASPECT, NOUN_SAME, STUDY_HEADS, SUBJECTS, SUBJECT_TAIL, TIME_DETAILS, TIME_NUMBER, TIME_TAIL, VERB_SAME, verbCandidates } from './breakdown-understand'
+import { ASPECT, NOUN_SAME, STUDY_HEADS, SUBJECTS, SUBJECT_TAIL, TIME_DETAILS, TIME_NUMBER, TIME_TAIL, VERB_SAME, studyRewrite, verbCandidates } from './breakdown-understand'
 
 export type Matcher<T> = { find: (text: string) => { title: string; value: T; corrected: boolean } | null }
 
@@ -200,9 +200,27 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
    * Второй этап — «понимание» (breakdown-understand.ts). Только после того, как первый ничего не нашёл. Убирает уточнения
    * (сначала как можно меньше), переводит формы и синонимы и ищет дело ДОСЛОВНО, без опечаток. Два разных плана — null.
    */
+  type Tok = { w: string; start: number; end: number }
   function understand(text: string, typos = false): { e: E; details: string[] } | null {
-    const toks = [...text.matchAll(/[\p{L}\p{N}]+/gu)].map((m) => ({ w: normalize(m[0]), start: m.index!, end: m.index! + m[0].length }))
+    const toks: Tok[] = [...text.matchAll(/[\p{L}\p{N}]+/gu)].map((m) => ({ w: normalize(m[0]), start: m.index!, end: m.index! + m[0].length }))
     if (!toks.length || toks.length > 12) return null
+    // учёба своими словами (21.11): «сделать дз к истории», «домашнее задание по англу», «решить дз» → как названы дела.
+    // Порядок: фраза как написана без срезания уточнений → переписанная без срезания (так «дз по англу» находит своё дело
+    // «Сделать домашку по английскому», а не общее «Сделать домашку») → как написана со срезанием → переписанная со срезанием
+    const st = studyRewrite(toks.map((t) => t.w))
+    const st2 = st && st.map((t) => ({ w: t.w, start: toks[t.from].start, end: toks[t.to - 1].end }))
+    const lo = typos ? 1 : 0
+    // два разных плана на любом шаге — стоп (null), не ищем дальше; undefined — на этом шаге ничего
+    const passes: [Tok[] | null, number, number][] = [[toks, lo, lo], [st2, lo, lo], [toks, lo + 1, Infinity], [st2, lo + 1, Infinity]]
+    for (const [t, a, b] of passes) {
+      if (!t) continue
+      const r = understandToks(text, t, typos, a, b)
+      if (r !== undefined) return r
+    }
+    return null
+  }
+
+  function understandToks(text: string, toks: Tok[], typos: boolean, from: number, upTo: number): { e: E; details: string[] } | null | undefined {
     const tw = toks.map((t) => t.w)
     // уточнения: отрезки [от, до) по словам, не пересекаются
     const spans: [number, number][] = []
@@ -225,11 +243,11 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
     const studyHead = (w: string) => STUDY_HEADS.has(w) || (typos && w.length >= 5 && [...STUDY_HEADS].some((h) => h.length >= 5 && distance(w, h, 1) <= 1))
     if (tw.some(studyHead)) {
       const i = tw.indexOf('по')
-      if (i > 0 && !taken.has(i) && SUBJECTS.has(tw[i + 1] ?? '')) {
+      if (i >= 0 && !taken.has(i) && SUBJECTS.has(tw[i + 1] ?? '')) {
         add(i, SUBJECT_TAIL.has(tw[i + 2] ?? '') ? i + 3 : i + 2)
       }
     }
-    if (spans.length > 4) return null
+    if (spans.length > 4) return undefined
     const variants = (w: string): string[] => {
       const out = new Set([w])
       for (const m of [ASPECT[w], VERB_SAME[w], NOUN_SAME[w]]) if (m) out.add(m)
@@ -240,7 +258,7 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
     // сильнее замены: «готовиться к экзамену» — своё дело, хотя замена дала бы и «Подготовиться к экзамену»
     // с опечатками — только когда уточнение отрезано (вся фраза с опечатками уже проверена третьим этапом) и без замен
     // слов: опечатку правит тот же tryWords, что и для фразы целиком, со всеми его запретами (туалетное, два дела)
-    for (let size = typos ? 1 : 0; size <= spans.length; size++) {
+    for (let size = from; size <= Math.min(upTo, spans.length); size++) {
       const found = new Map<T, { e: E; details: string[] }>()
       let fewest = Infinity
       const subsets = (from: number, acc: number[]): number[][] =>
@@ -275,7 +293,7 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
       if (found.size === 1) return [...found.values()][0]
       if (found.size > 1) return null
     }
-    return null
+    return undefined
   }
 
   return {
