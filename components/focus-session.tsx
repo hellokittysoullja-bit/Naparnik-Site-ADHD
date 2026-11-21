@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { MascotDoll as MascotSvg } from '@/components/mascot-doll'
 import { EmphasisText } from '@/components/emphasis-text'
 import { RevealIsland, type RevealNewItem } from '@/components/reveal-island'
-import { Eye, EyeOff, LayoutList, NotebookPen, Pause, Play, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { Eye, EyeOff, LayoutList, NotebookPen, Pause, Play, Sparkles } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { SoundChip, type SoundChoice } from '@/components/sound-chip'
 import type { Fineness } from '@/components/breakdown-prefs'
@@ -19,7 +19,6 @@ import type { Template } from '@/lib/templates'
 // Листы, карточки итога и напоминание нужны не всем и не сразу: грузятся отдельно, когда до них дошло дело.
 // Иначе первый пакет кода Фокуса вырастал на 16 КБ и выходил за предел (e2e/bundle-budget.spec.ts)
 const TemplatesSheet = dynamic(() => import('@/components/templates-sheet').then((m) => m.TemplatesSheet), { ssr: false })
-const BreakdownPrefs = dynamic(() => import('@/components/breakdown-prefs').then((m) => m.BreakdownPrefs), { ssr: false })
 const WinCards = dynamic(() => import('@/components/win-cards').then((m) => m.WinCards), { ssr: false })
 const TgRemind = dynamic(() => import('@/components/tg-remind').then((m) => m.TgRemind), { ssr: false })
 const FINENESS_KEY = 'naparnik:fineness'
@@ -322,17 +321,13 @@ export function FocusSession() {
   const [breakNote, setBreakNote] = useState<string | null>(() => (breakAsked && !breakable(prefilledStep) ? BREAK_TOO_SHORT : null))
   // размер шагов читаем до первого кадра: дробление с Дома стартует сразу при открытии и должно уже знать настройку
   // (раньше её читал эффект после открытия, и первое дробление шло без неё — ловил e2e «размер шагов уходят в дробление»)
-  const [fineness, setFineness] = useState<Fineness>(() => (typeof window === 'undefined' ? 'normal' : readFineness()))
+  // настройку меняют в «Делах» (значок «Как дробить» в Фокусе снят владельцем 21.11) — здесь только читаем
+  const [fineness] = useState<Fineness>(() => (typeof window === 'undefined' ? 'normal' : readFineness()))
   const [templatesOpen, setTemplatesOpenRaw] = useState(false)
-  const [prefsOpen, setPrefsOpenRaw] = useState(false)
-  const [sheetsUsed, setSheetsUsed] = useState({ templates: false, prefs: false })
+  const [sheetsUsed, setSheetsUsed] = useState({ templates: false })
   const setTemplatesOpen = (v: boolean) => {
     if (v) setSheetsUsed((u) => ({ ...u, templates: true }))
     setTemplatesOpenRaw(v)
-  }
-  const setPrefsOpen = (v: boolean) => {
-    if (v) setSheetsUsed((u) => ({ ...u, prefs: true }))
-    setPrefsOpenRaw(v)
   }
   // Раньше сетевая ошибка просто отпускала кнопку без следа — человек не
   // понимал, сработало дробление или нет, и был вынужден жать вслепую ещё
@@ -1240,7 +1235,6 @@ export function FocusSession() {
         </div>
         {/* листы появляются в разметке (и в сети) только после первого открытия */}
         {sheetsUsed.templates && <TemplatesSheet open={templatesOpen} onClose={() => setTemplatesOpen(false)} onPick={applyTemplate} />}
-        {sheetsUsed.prefs && <BreakdownPrefs open={prefsOpen} onClose={() => setPrefsOpen(false)} fineness={fineness} onFineness={setFineness} />}
         {/* блок дела прижат к низу: кнопка старта стоит пиксель в пиксель там же, где на обычном экране Фокуса */}
         <div className={stage || !deal ? 'mt-auto flex flex-col gap-4' : 'flex min-h-0 flex-1 flex-col gap-4 pt-3'}>
           {stage ? null : deal ? (
@@ -1248,8 +1242,9 @@ export function FocusSession() {
             // с суммой минут делает дело «длиннее» (Kruger & Evans 2004); близкая подцель сильнее далёкой (Bandura & Schunk).
             // Пока шагов нет, на месте карточки ждёт полено, а места шагов заняты пустыми — ничего не сдвинется (17.11)
             <div className="flex min-h-0 flex-1 flex-col gap-2">
-              {/* подписи «первый шаг · дело» нет (владелец 17.11): в строке только карта штампов и настройка */}
-              <div data-rv-labelrow className="flex items-center justify-end gap-2">
+              {/* подписи «первый шаг · дело» нет (владелец 17.11), значка настройки тоже (владелец 21.11: настройка в «Делах»);
+                  в строке только карта штампов. Высота прежняя (28 px, как была со значком) — карточка и шаги не сдвигаются */}
+              <div data-rv-labelrow className="flex min-h-7 items-center justify-end gap-2">
                 {/* карта штампов (подаренный прогресс, Nunes & Drèze): первый штамп — отпечаток лапы за разломанное дело (это
                     правда), второй — первый шаг, закрашен наполовину. Ширина постоянная — подпись слева не прыгает */}
                 <span
@@ -1265,15 +1260,6 @@ export function FocusSession() {
                       </span>
                     ))}
                 </span>
-                {/* размер шагов и просьбы — настройка, а не действие: значок в строке подписи, а не четвёртая кнопка-слово */}
-                <button
-                  type="button"
-                  onClick={() => setPrefsOpen(true)}
-                  aria-label="Как дробить: размер шагов и просьбы"
-                  className="press -my-2 grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <SlidersHorizontal className="size-[18px]" aria-hidden="true" />
-                </button>
               </div>
               {/* место карточки первого шага. Высота постоянная (заголовок до двух строк) — ничего не сдвигается */}
               <div className="relative h-[11.25rem]">

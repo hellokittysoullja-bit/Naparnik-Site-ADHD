@@ -71,6 +71,9 @@ test('просьба к коту и размер шагов уходят в др
   const seen = await mockAi(page)
   await page.goto('/app/session?step=' + encodeURIComponent('Курсовая по логистике') + '&break=1')
   await expect(page.getByText('Открыть файл курсовой')).toBeVisible()
+  // значка «Как дробить» на экране разбитого дела нет (владелец 21.11), настройка — в «Делах»
+  await expect(page.getByRole('button', { name: /Как дробить/ })).toHaveCount(0)
+  await page.goto('/app/deals')
   await page.getByRole('button', { name: /Как дробить/ }).click()
   const sheet = page.getByRole('dialog', { name: 'Как дробить' })
   await sheet.getByRole('switch', { name: /Отвечай короче/ }).click()
