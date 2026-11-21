@@ -52,7 +52,7 @@ export function CookieNotice() {
     <div
       role="region"
       aria-label="Cookie"
-      className="cookie-notice fixed inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-50 mx-auto flex max-w-md flex-col items-center gap-2.5 rounded-2xl border border-white/10 bg-[oklch(0.2_0.02_150/0.94)] px-4 py-3 text-center text-[13px] leading-snug text-foreground/85 shadow-[0_12px_32px_-12px_oklch(0_0_0/0.6)] lg:inset-x-auto lg:bottom-6 lg:left-6 lg:top-auto"
+      className="cookie-notice fixed inset-x-3 top-[max(0.75rem,var(--sat))] z-50 mx-auto flex max-w-md flex-col items-center gap-2.5 rounded-2xl border border-white/10 bg-[oklch(0.2_0.02_150/0.94)] px-4 py-3 text-center text-[13px] leading-snug text-foreground/85 shadow-[0_12px_32px_-12px_oklch(0_0_0/0.6)] lg:inset-x-auto lg:bottom-6 lg:left-6 lg:top-auto"
     >
       {/* Текст как у образца владельца (16.11), но без «продолжая использование, вы соглашаетесь»: у нас метка ставится
           только после нажатия, и чек-лист РКН такую фразу согласием не считает */}

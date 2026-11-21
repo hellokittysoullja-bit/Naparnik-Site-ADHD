@@ -616,7 +616,7 @@ export function FirstRun() {
     <div className="pointer-events-none fixed inset-0">
       <NightScene />
     </div>
-    <main data-vt-arrived="onb" className="vt-onb night-glass relative mx-auto flex h-dvh w-full max-w-md flex-col overflow-hidden px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
+    <main data-vt-arrived="onb" className="vt-onb night-glass relative mx-auto flex h-dvh w-full max-w-md flex-col overflow-hidden px-4 pt-[max(0.75rem,var(--sat))]">
       <h1 className="sr-only">Знакомство с Напарником</h1>
       {/* Где я: назад + прогресс. На приветствии шкалы нет — вопросов ещё не было */}
       <div className="flex h-12 shrink-0 items-center gap-2">
@@ -671,7 +671,7 @@ export function FirstRun() {
       {/* Ничего не прокручивается: на iPhone в Safari (видимая высота ≈ 650 px) раньше список вариантов прокручивался под
           пузырём и резался жёсткой линией. Размеры кота, пузыря и вариантов те же — на низких экранах (≤ 700 px) сжаты
           только отступы, и всё помещается. Запасной случай (экраны ниже 600 px) — весь блок целиком, не вложенный список */}
-      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pb-[calc(6rem+env(safe-area-inset-bottom))] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [@media(max-height:700px)]:pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pb-[calc(6rem+var(--sab))] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [@media(max-height:700px)]:pb-[calc(4.75rem+var(--sab))]">
       {/* Кот — один на всё знакомство (одна кукла, не пересоздаётся): на вопросах слева от пузыря, на договоре
           переезжает в центр и растёт. Уходящие ответы закреплены внутри этого же блока — не прыгают, когда
           меняется шапка */}
@@ -1024,7 +1024,7 @@ export function FirstRun() {
       </section>
 
       {/* Главное действие — всегда в одной точке у большого пальца */}
-      <div className="thumb-cta vt-cta fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-[max(1.125rem,env(safe-area-inset-bottom))]">
+      <div className="thumb-cta vt-cta fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-[max(1.125rem,var(--sab))]">
         {step === LAST_STEP ? (
           <HoldToStart onComplete={begin} busy={leaving} />
         ) : (

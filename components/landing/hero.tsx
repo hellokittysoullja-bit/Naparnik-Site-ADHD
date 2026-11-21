@@ -281,7 +281,7 @@ export function Hero({ headline = DEFAULT_HEADLINE }: { headline?: EntryHeadline
     <section
       id="hero"
       // Шапки нет: hero занимает весь вьюпорт, первый экран начинается с сцены
-      className="grain grain-hero night-glass relative flex h-dvh min-h-0 flex-col items-center justify-center overflow-hidden px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] [@media(max-height:700px)]:pt-[max(0.5rem,env(safe-area-inset-top))] [@media(max-height:520px)]:h-auto [@media(max-height:520px)]:min-h-dvh lg:pb-20 lg:pt-6"
+      className="grain grain-hero night-glass relative flex h-dvh min-h-0 flex-col items-center justify-center overflow-hidden px-4 pb-[calc(5.5rem+var(--sab))] pt-[max(0.75rem,var(--sat))] [@media(max-height:700px)]:pt-[max(0.5rem,var(--sat))] [@media(max-height:520px)]:h-auto [@media(max-height:520px)]:min-h-dvh lg:pb-20 lg:pt-6"
     >
       {/* Атмосфера: ночная сцена с луной и звёздами — иммерсивный фон.
           ВАЖНО: высота сцены зафиксирована 100svh, а не inset-0. На мобильном
@@ -417,7 +417,7 @@ export function Hero({ headline = DEFAULT_HEADLINE }: { headline?: EntryHeadline
             колонке под оффером, как раньше */}
           <div
             id="hero-cta"
-            className="thumb-cta vt-cta order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:px-4 max-lg:pb-[max(1.125rem,env(safe-area-inset-bottom))] lg:order-none lg:mt-8 lg:items-start"
+            className="thumb-cta vt-cta order-5 flex w-full flex-col items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:px-4 max-lg:pb-[max(1.125rem,var(--sab))] lg:order-none lg:mt-8 lg:items-start"
           >
             <motion.div
               animate={ctaBoost ? { scale: [1, 1.02, 1] } : {}}

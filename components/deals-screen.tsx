@@ -407,7 +407,7 @@ export function DealsScreen() {
   const empty = deals && deals.length === 0 && thoughts.length === 0;
 
   return (
-    <main className="app-page-enter relative z-10 mx-auto flex w-full max-w-md flex-col gap-4 px-4 pb-28 pt-[max(1.25rem,env(safe-area-inset-top))]">
+    <main className="app-page-enter relative z-10 mx-auto flex w-full max-w-md flex-col gap-4 px-4 pb-28 pt-[max(1.25rem,var(--sat))]">
       <header className="flex items-end justify-between">
         <div>
           <h1 className="text-[30px] font-bold leading-none tracking-[-0.02em]">{today.toLocaleDateString("ru-RU", { weekday: "long" }).replace(/^./, (c) => c.toUpperCase())}</h1>

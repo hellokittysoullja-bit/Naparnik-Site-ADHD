@@ -2,7 +2,8 @@ import { z } from 'zod'
 import { stripInvisible } from '@/lib/ai/guards/normalize'
 import { checkOutput } from '@/lib/ai/guards/output'
 import { factRejection } from '@/lib/ai/memory/write-guard'
-import { applyPlan, recentHistory, withChatLock } from './bot'
+import { randomBytes } from 'node:crypto'
+import { applyPlan, link, newUser, recentHistory, withChatLock, type Deps } from './bot'
 import { deviceOf, isToken, LINK_PREFIX, startLink } from './link'
 import type { Store, TgUser } from './store'
 
@@ -108,4 +109,19 @@ export async function unlink(store: Store, token: unknown): Promise<boolean> {
   u.device = undefined
   await store.saveUser(u)
   return true
+}
+
+/**
+ * Привязка из мини-аппа в Telegram (21.11): человек уже в Telegram и подписанными данными запуска сказал, кто он
+ * (lib/tg/webapp.ts). Ссылка на бота с кодом и «Да, связать» не нужны — подменить чужой чат так нельзя: номер чата
+ * берётся из подписи Telegram, а не из запроса. Бот пишет в чат то же, что после привязки по ссылке.
+ */
+export async function linkWebApp(d: Deps, chatId: number, plan: SitePlan, token?: string): Promise<{ token: string } & LinkStatus> {
+  const own = isToken(token) ? token : randomBytes(32).toString('base64url')
+  const device = deviceOf(own)
+  await withChatLock(d, chatId, async () => {
+    const u = (await d.store.getUser(chatId)) ?? newUser(chatId, d.now())
+    await link(d, u, { ...cleanPlan(plan), device })
+  })
+  return { token: own, ...(await linkStatus(d.store, own, d.now())) }
 }

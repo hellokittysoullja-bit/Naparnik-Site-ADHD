@@ -256,7 +256,7 @@ export function SdvgTest({ article }: { article?: ReactNode } = {}) {
               <li key={p}>· {p}</li>
             ))}
           </ul>
-          <div className="mt-auto flex w-full flex-col gap-1 pb-[max(1rem,env(safe-area-inset-bottom))] pt-6">
+          <div className="mt-auto flex w-full flex-col gap-1 pb-[max(1rem,var(--sab))] pt-6">
             {resume && (
               <button
                 type="button"
@@ -752,7 +752,7 @@ function Page({ children, foot }: { children: ReactNode; foot: ReactNode }) {
   return (
     <div className="flex flex-col" style={{ minHeight: `calc(100dvh - 1.5rem - ${TOP_H}px)` }}>
       <div className="mt-6 flex flex-col gap-4">{children}</div>
-      <div className="mt-auto flex flex-col gap-1 pb-[max(1rem,env(safe-area-inset-bottom))] pt-6">{foot}</div>
+      <div className="mt-auto flex flex-col gap-1 pb-[max(1rem,var(--sab))] pt-6">{foot}</div>
     </div>
   )
 }

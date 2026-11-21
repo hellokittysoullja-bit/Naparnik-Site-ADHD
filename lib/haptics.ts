@@ -28,7 +28,22 @@ function iosTick() {
   iosSwitch.click()
 }
 
-function vibrate(pattern: number | number[]) {
+/**
+ * Внутри Telegram (мини-апп, lib/tg-webapp-boot.ts) — его собственная хаптика: на iPhone она есть (navigator.vibrate в
+ * окне Telegram нет), на Android — та же системная, но с правильной силой. Каждому событию — свой вид отдачи.
+ */
+type TgHaptic = { type: 'impact'; impact_style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft' } | { type: 'notification'; notification_type: 'success' | 'warning' | 'error' } | { type: 'selection_change' }
+
+function tgHaptic(h: TgHaptic): boolean {
+  if (typeof window === 'undefined') return false
+  const tg = (window as unknown as { __tg?: { post: (t: string, d?: unknown) => void; ok: (v: string) => boolean } }).__tg
+  if (!tg || !tg.ok('6.1')) return false
+  tg.post('web_app_trigger_haptic_feedback', h)
+  return true
+}
+
+function vibrate(pattern: number | number[], tg?: TgHaptic) {
+  if (tg && tgHaptic(tg)) return
   if (typeof navigator === 'undefined') return
   if (typeof navigator.vibrate !== 'function') {
     // Только у iOS-подобных устройств с тачем — на десктопе свитч бесполезен
@@ -51,17 +66,17 @@ function vibrate(pattern: number | number[]) {
 
 /** Лёгкий тик: нажатие главной кнопки (старт сессии) */
 export function hapticStart() {
-  vibrate(15)
+  vibrate(15, { type: 'impact', impact_style: 'medium' })
 }
 
 /** Двойной мягкий: находка появилась */
 export function hapticReward() {
-  vibrate([20, 80, 30])
+  vibrate([20, 80, 30], { type: 'notification', notification_type: 'success' })
 }
 
 /** Едва заметный: завершение сессии */
 export function hapticDone() {
-  vibrate(10)
+  vibrate(10, { type: 'impact', impact_style: 'light' })
 }
 
 /*
@@ -75,20 +90,20 @@ export function hapticDone() {
 
 /** Ориентир вырос на острове: короткий «толчок земли» — два нарастающих. */
 export function hapticLandmark() {
-  vibrate([12, 60, 28])
+  vibrate([12, 60, 28], { type: 'impact', impact_style: 'heavy' })
 }
 
 /** Редкая находка (сияние): узнаваемый тройной перелив — только для rare. */
 export function hapticRare() {
-  vibrate([10, 50, 18, 50, 34])
+  vibrate([10, 50, 18, 50, 34], { type: 'notification', notification_type: 'success' })
 }
 
 /** Реакция поставлена на реплику: одиночный мягкий тик, тише старта. */
 export function hapticReaction() {
-  vibrate(8)
+  vibrate(8, { type: 'impact', impact_style: 'soft' })
 }
 
 /** Порог pull-to-refresh пройден: подтверждение до отпускания пальца. */
 export function hapticThreshold() {
-  vibrate(12)
+  vibrate(12, { type: 'selection_change' })
 }

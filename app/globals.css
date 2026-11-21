@@ -62,6 +62,11 @@
 /* Dark-first brand theme: charcoal + off-white + lime accent */
 :root {
   color-scheme: dark;
+  /* Безопасные поля экрана — одна переменная на весь сайт (21.11, мини-апп в Telegram). В браузере это ровно
+     env(safe-area-inset-*), как было; внутри Telegram к ним добавляются поля, которые сообщает сам Telegram (вырез,
+     полоска «домой», его кнопки поверх полноэкранного режима): env() в его окне их не знает. Ставит lib/tg-webapp-boot.ts. */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
   --background: oklch(0.17 0.008 130);
   --foreground: oklch(0.96 0.008 110);
   --card: oklch(0.21 0.01 130);
@@ -1649,7 +1654,7 @@ html.vt-run .app-page-enter { animation: none; }
     content: "";
     position: absolute;
     inset: 0;
-    bottom: calc(-1 * max(0px, min(16px, 18px - env(safe-area-inset-bottom, 0px))));
+    bottom: calc(-1 * max(0px, min(16px, 18px - var(--sab))));
   }
 }
 
@@ -2389,7 +2394,7 @@ html:has(.app-scroll) body {
 .ptr-cat {
   position: fixed;
   left: 50%;
-  top: max(10px, env(safe-area-inset-top));
+  top: max(10px, var(--sat));
   z-index: 60;
   display: grid;
   place-items: center;
@@ -2500,4 +2505,10 @@ html:has(.app-scroll) body {
 /* Номер шага в списке разбивки (Фокус, 21.11): кремовый, как записка — выбор владельца (вариант 2 из 5) */
 .step-num {
   color: var(--step-num, oklch(0.93 0.03 85));
+}
+
+/* Мини-апп в Telegram (lib/tg-webapp-boot.ts ставит html[data-tg] и поля Telegram до первой отрисовки) */
+html[data-tg] {
+  --sat: max(env(safe-area-inset-top, 0px), var(--tg-sat, 0px));
+  --sab: max(env(safe-area-inset-bottom, 0px), var(--tg-sab, 0px));
 }

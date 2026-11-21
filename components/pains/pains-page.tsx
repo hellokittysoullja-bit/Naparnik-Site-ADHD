@@ -9,7 +9,7 @@ import { LegalLinks } from '@/components/legal-links'
 /** Общая страница каталога (все боли вкладками) и страница одной боли (под ролик или поиск) — один каркас */
 export function PainsPage({ only }: { only?: Pain }) {
   return (
-    <main className="relative mx-auto w-full max-w-5xl px-4 pb-20 pt-[max(1rem,env(safe-area-inset-top))] md:px-8">
+    <main className="relative mx-auto w-full max-w-5xl px-4 pb-20 pt-[max(1rem,var(--sat))] md:px-8">
       {/* небо — обычным слоем первым в разметке, без отрицательного z-index: он прячет fixed-слой под фон страницы (CLAUDE.md §3) */}
       <div aria-hidden="true" className="pains-sky pointer-events-none fixed inset-0" />
       <div className="relative">

@@ -27,7 +27,9 @@ const csp = [
   "base-uri 'self'",
   "form-action 'self'",
   `frame-src ${isPreview ? 'https://vercel.live' : "'none'"}`,
-  "frame-ancestors 'none'",
+  // встраивать сайт может только Telegram в браузере (web.telegram.org показывает мини-апп во фрейме, 21.11);
+  // в приложениях Telegram фрейма нет. Чужой сайт по-прежнему встроить не может: кликджекинг закрыт так же
+  "frame-ancestors https://web.telegram.org",
 ].join('; ')
 
 // Свой домен (план «школа 1», фаза 0). Пока CANONICAL_HOST не задан в Vercel — ничего не происходит. Когда задан
@@ -118,9 +120,8 @@ const nextConfig: NextConfig = {
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Content-Security-Policy', value: csp },
-          // встраивание в чужой фрейм запрещено (и для старых браузеров без frame-ancestors): кликджекинг
-          // разрешений микрофона и уведомлений
-          { key: 'X-Frame-Options', value: 'DENY' },
+          // X-Frame-Options не ставим (21.11): он умеет только «никому» или «себе», а мини-апп в Telegram в браузере —
+          // фрейм web.telegram.org. Встраивание решает frame-ancestors в CSP выше (браузеры без него — IE).
           { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           {

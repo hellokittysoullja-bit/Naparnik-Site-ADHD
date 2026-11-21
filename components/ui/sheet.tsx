@@ -87,7 +87,7 @@ export function Sheet({
                 <X className="size-5" />
               </button>
             </header>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(1.25rem,var(--sab))] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {children}
             </div>
           </motion.div>
