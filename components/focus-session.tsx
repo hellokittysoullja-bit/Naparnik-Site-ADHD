@@ -1450,7 +1450,7 @@ export function FocusSession() {
                   className="press flex min-h-8 w-full shrink-0 items-center gap-2 rounded-xl px-3 py-[5px] text-left text-[13.5px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   {/* номер шага в плане вместо точки (владелец 21.11): порядок и «сколько ещё» видны сразу, записка — шаг 1.
-                      Цвет — --step-num в globals.css, выбирает владелец */}
+                      Цвет — кремовый, как записка (.step-num в globals.css, выбор владельца) */}
                   <span data-rv-bullet aria-hidden="true" className="step-num w-[1.15rem] shrink-0 text-right text-[13px] font-bold tabular-nums leading-none">
                     {(i < sel ? i : i + 1) + 1}
                   </span>
