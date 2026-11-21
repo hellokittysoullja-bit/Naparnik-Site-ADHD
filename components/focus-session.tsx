@@ -526,6 +526,21 @@ export function FocusSession() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- реагируем только на смену метки в адресе
   }, [viewParam])
+  // «назад» браузера и свайп ловим и напрямую: если нажать сразу после разбивки, метка могла ещё не дойти до
+  // useSearchParams, и смены 'plan' → нет экран бы не увидел (разбивка оставалась на месте; ловил e2e под нагрузкой)
+  const backRef = useRef<() => void>(() => {})
+  backRef.current = () => {
+    if (!planInHistory.current || new URLSearchParams(window.location.search).get('view') === 'plan') return
+    if (!brokenSteps || busy || phase !== 'setup') return
+    planInHistory.current = false
+    prevView.current = null
+    backToStart()
+  }
+  useEffect(() => {
+    const onPop = () => backRef.current()
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
   // открыли `?view=plan`, а разбивки на устройстве уже нет (прошли сутки, другой браузер) — обычный Фокус без метки
   useEffect(() => {
     if (viewParam !== 'plan' || savedPlan || brokenSteps || busy) return
@@ -1318,16 +1333,16 @@ export function FocusSession() {
               {/* подписи «первый шаг · дело» нет (владелец 17.11), значка настройки тоже (владелец 21.11: настройка в «Делах»);
                   в строке только карта штампов. Высота прежняя (28 px, как была со значком) — карточка и шаги не сдвигаются */}
               <div data-rv-labelrow className="flex min-h-7 items-center justify-between gap-2">
-                {/* назад на первый экран Фокуса (владелец 21.11): разбивка — шаг вглубь вкладки, стрелка слева сверху, как в
-                    Telegram и App Store. Пока дело дробится, стрелки нет — уходить некуда, первый экран и так под ним */}
+                {/* назад на первый экран Фокуса (владелец 21.11): разбивка — шаг вглубь вкладки, круглая кнопка со стрелкой слева сверху (вариант Б
+                    владельца, как в Airbnb и Instagram): заметна на тёмном небе, ровная цель касания. Пока дело дробится, стрелки нет — уходить некуда, первый экран и так под ним */}
                 {brokenSteps && !busy ? (
                   <button
                     type="button"
                     onClick={goBackFromPlan}
                     aria-label="Назад к выбору шага"
-                    className="press -my-2 -ml-2.5 grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="press -my-1.5 grid size-10 shrink-0 place-items-center rounded-full border border-white/15 bg-white/10 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <ChevronLeft className="size-6" aria-hidden="true" />
+                    <ChevronLeft className="size-[22px]" strokeWidth={2.4} aria-hidden="true" />
                   </button>
                 ) : (
                   <span aria-hidden="true" />
@@ -1386,10 +1401,7 @@ export function FocusSession() {
                     </motion.p>
                   </AnimatePresence>
                 )}
-                {/* оценка времени сама не показывается (владелец 20.11) — только «пока ждёшь», если шаг такой */}
-                {!editing && brokenSteps[sel]?.wait && (
-                  <p className="mt-1 h-4 truncate font-mono text-[10.5px] font-semibold uppercase tracking-widest text-reward">пока ждёшь</p>
-                )}
+                {/* ни оценки времени (20.11), ни метки «пока ждёшь» (21.11) у шагов в Фокусе нет — решения владельца */}
                 {/* кнопки карточки — всегда в один ряд, прижаты к низу без верхнего отступа: при шаге в две строки отступ выталкивал
                     их за строчку записки (iPhone владельца, 17.11) */}
                 <div className="mt-auto flex flex-nowrap gap-1.5 [@media(max-width:380px)]:gap-1">
@@ -1437,13 +1449,16 @@ export function FocusSession() {
                   transition={{ duration: 0.22, delay: reducedMotion ? 0 : 0.04 * Math.min(i, 5), ease: [0.05, 0.7, 0.1, 1] }}
                   className="press flex min-h-8 w-full shrink-0 items-center gap-2 rounded-xl px-3 py-[5px] text-left text-[13.5px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
-                  <span data-rv-bullet aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
+                  {/* номер шага в плане вместо точки (владелец 21.11): порядок и «сколько ещё» видны сразу, записка — шаг 1.
+                      Цвет — кремовый, как записка (.step-num в globals.css, выбор владельца) */}
+                  <span data-rv-bullet aria-hidden="true" className="step-num w-[1.15rem] shrink-0 text-right text-[13px] font-bold tabular-nums leading-none">
+                    {(i < sel ? i : i + 1) + 1}
+                  </span>
                   {/* без line-clamp: Safari режет им многоточием каждую табличку внутри строки («Сдела…», скриншот владельца 17.11).
                       Длинный шаг переносится на вторую-третью строку табличек; слово видно целиком или не видно совсем */}
                   <span data-rv-step className="block max-h-[66px] overflow-hidden font-semibold leading-[22px]">
                     <WoodWords text={st.text} />
                   </span>
-                  {st.wait && <span className="shrink-0 font-mono text-[9.5px] uppercase tracking-widest text-reward/90">пока ждёшь</span>}
                 </motion.button>
               ))}
               </div>
