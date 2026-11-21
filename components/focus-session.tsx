@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
 import { useFirstFrameReady } from '@/lib/first-frame'
+import { clearFocusPlan, readFocusPlan, saveFocusPlan } from '@/lib/focus-plan'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
@@ -10,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { MascotDoll as MascotSvg } from '@/components/mascot-doll'
 import { EmphasisText } from '@/components/emphasis-text'
 import { RevealIsland, type RevealNewItem } from '@/components/reveal-island'
-import { Eye, EyeOff, LayoutList, NotebookPen, Pause, Play, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { ChevronLeft, Eye, EyeOff, LayoutList, NotebookPen, Pause, Play, Sparkles } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { SoundChip, type SoundChoice } from '@/components/sound-chip'
 import type { Fineness } from '@/components/breakdown-prefs'
@@ -19,7 +20,6 @@ import type { Template } from '@/lib/templates'
 // Листы, карточки итога и напоминание нужны не всем и не сразу: грузятся отдельно, когда до них дошло дело.
 // Иначе первый пакет кода Фокуса вырастал на 16 КБ и выходил за предел (e2e/bundle-budget.spec.ts)
 const TemplatesSheet = dynamic(() => import('@/components/templates-sheet').then((m) => m.TemplatesSheet), { ssr: false })
-const BreakdownPrefs = dynamic(() => import('@/components/breakdown-prefs').then((m) => m.BreakdownPrefs), { ssr: false })
 const WinCards = dynamic(() => import('@/components/win-cards').then((m) => m.WinCards), { ssr: false })
 const TgRemind = dynamic(() => import('@/components/tg-remind').then((m) => m.TgRemind), { ssr: false })
 const FINENESS_KEY = 'naparnik:fineness'
@@ -255,7 +255,12 @@ export function FocusSession() {
   // хореографии старта (16.11, покадровый аудит: после обновления таймер 0,6 с проявлялся из прозрачного)
   const [openedRunning, setOpenedRunning] = useState(restored !== null)
   const [phase, setPhase] = useState<Phase>(restored ? 'running' : autoStart ? 'starting' : 'setup')
-  const [task, setTask] = useState(restored ? restored.task : prefilledStep)
+  // открытая разбивка после обновления страницы (`?view=plan`): тот же экран, без полена и конфетти (владелец 21.11).
+  // Читаем до первого кадра, как идущую сессию: иначе на миг был бы виден выбор шага
+  const [savedPlan] = useState(() =>
+    typeof window === 'undefined' || restored || autoStart || breakOnOpen || searchParams.get('view') !== 'plan' ? null : readFocusPlan(),
+  )
+  const [task, setTask] = useState(restored ? restored.task : savedPlan ? savedPlan.task : prefilledStep)
 
   // Имя и число прошлых сессий — тот же экран не должен объяснять
   // механику вечно: на 20-й сессии человек уже знает, что «первый шаг —
@@ -271,7 +276,7 @@ export function FocusSession() {
   // «Раздроби мне задачу»: человек пишет большое пугающее дело —
   // AI возвращает 3 крошечных шага. Task initiation — главный
   // bottleneck СДВГ; выбор готового микрошага снимает стену.
-  const [brokenSteps, setBrokenSteps] = useState<BStep[] | null>(null)
+  const [brokenSteps, setBrokenSteps] = useState<BStep[] | null>(savedPlan?.steps ?? null)
   // «Полено» (владелец 16.11): дело, которое только что разломано, раскалывается на шаги поверх экрана; null — сцены нет.
   // nth — которая по счёту разбивка: первые три 1,3 с, до десятой 0,9 с, дальше 0,6 с (components/break-reveal/log-reveal.ts)
   // fromWait — полено уже ждало удара в разметке (дробление шло с сервера): сцена встаёт на его место
@@ -283,7 +288,7 @@ export function FocusSession() {
   // высокий экран: под первым шагом видно ещё два, низкий — один (кнопка старта всегда над меню, владелец 17.11)
   const tall = useMinHeight(760)
   // квитанция после разбивки — только правда: сколько шагов вышло
-  const [receipt, setReceipt] = useState<string | null>(null)
+  const [receipt, setReceipt] = useState<string | null>(savedPlan?.receipt ?? null)
   const [cheer, setCheer] = useState(false)
   const setupRef = useRef<HTMLDivElement>(null)
   const catRef = useRef<HTMLDivElement>(null)
@@ -303,7 +308,7 @@ export function FocusSession() {
   // тело кота: в «деле» всегда рисуется крупным и уменьшается масштабом — переезд с крупного места на маленькое без мыла
   const catBodyRef = useRef<HTMLDivElement>(null)
   // дело целиком («Курсовая по логистике»): шаги дробления лежат в «Делах» под этим названием
-  const [dealTitle, setDealTitle] = useState<string | null>(null)
+  const [dealTitle, setDealTitle] = useState<string | null>(savedPlan?.title ?? null)
   const [editing, setEditing] = useState(false)
   // «Не то» без потери: убранный шаг можно вернуть одной кнопкой (research/24 C)
   const [dropped, setDropped] = useState<{ step: BStep; index: number } | null>(null)
@@ -322,17 +327,13 @@ export function FocusSession() {
   const [breakNote, setBreakNote] = useState<string | null>(() => (breakAsked && !breakable(prefilledStep) ? BREAK_TOO_SHORT : null))
   // размер шагов читаем до первого кадра: дробление с Дома стартует сразу при открытии и должно уже знать настройку
   // (раньше её читал эффект после открытия, и первое дробление шло без неё — ловил e2e «размер шагов уходят в дробление»)
-  const [fineness, setFineness] = useState<Fineness>(() => (typeof window === 'undefined' ? 'normal' : readFineness()))
+  // настройку меняют в «Делах» (значок «Как дробить» в Фокусе снят владельцем 21.11) — здесь только читаем
+  const [fineness] = useState<Fineness>(() => (typeof window === 'undefined' ? 'normal' : readFineness()))
   const [templatesOpen, setTemplatesOpenRaw] = useState(false)
-  const [prefsOpen, setPrefsOpenRaw] = useState(false)
-  const [sheetsUsed, setSheetsUsed] = useState({ templates: false, prefs: false })
+  const [sheetsUsed, setSheetsUsed] = useState({ templates: false })
   const setTemplatesOpen = (v: boolean) => {
     if (v) setSheetsUsed((u) => ({ ...u, templates: true }))
     setTemplatesOpenRaw(v)
-  }
-  const setPrefsOpen = (v: boolean) => {
-    if (v) setSheetsUsed((u) => ({ ...u, prefs: true }))
-    setPrefsOpenRaw(v)
   }
   // Раньше сетевая ошибка просто отпускала кнопку без следа — человек не
   // понимал, сработало дробление или нет, и был вынужден жать вслепую ещё
@@ -480,6 +481,71 @@ export function FocusSession() {
     setEstimate(null)
   }
   useEffect(() => preloadReveal(), [])
+
+  // ── У разбивки свой адрес (владелец 21.11) ──────────────────────────────────────────────────────────────────────────
+  // Разбивка — шаг «вглубь» внутри вкладки Фокус, как чат в Telegram или пост в Instagram: у неё своя запись в истории
+  // (`?view=plan`), поэтому «назад» браузера и свайп iPhone возвращают на первый экран Фокуса, а не уводят с вкладки.
+  // Шаги в адрес не идут — только метка; содержимое на устройстве (lib/focus-plan.ts)
+  // своя запись в истории — только если её добавил этот экран; после обновления страницы «назад» на ней увёл бы с сайта
+  const planInHistory = useRef(false)
+  const viewParam = searchParams.get('view')
+  const prevView = useRef(viewParam)
+  /** назад на первый экран Фокуса: дело остаётся в поле — можно поправить и разбить заново */
+  function backToStart() {
+    setTask(dealTitle ?? task)
+    setBrokenSteps(null)
+    setDealTitle(null)
+    setReceipt(null)
+    setReveal(null)
+    setDropped(null)
+    setEditing(false)
+    setBreakNote(null)
+    setCompact(false)
+    setFitRows(null)
+    clearFocusPlan()
+  }
+  // разбивка готова (не во время дробления) → запись в истории и сохранение; каждое изменение шагов тоже сохраняется
+  useEffect(() => {
+    if (phase !== 'setup' || busy || !brokenSteps || !dealTitle) return
+    saveFocusPlan({ title: dealTitle, steps: brokenSteps, task, receipt })
+    // запись в историю — после сцены полена: смена адреса перерисовывает страницу, посреди сцены это стоило бы кадров
+    if (reveal || new URLSearchParams(window.location.search).get('view') === 'plan') return
+    const keep = new URLSearchParams(window.location.search)
+    keep.delete('step')
+    keep.set('view', 'plan')
+    window.history.pushState(null, '', `/app/session?${keep.toString()}`)
+    planInHistory.current = true
+  }, [phase, busy, brokenSteps, dealTitle, task, receipt, reveal])
+  // метка ушла из адреса — «назад» браузера, свайп или нажатие на «Фокус» в меню: первый экран Фокуса
+  useEffect(() => {
+    const was = prevView.current
+    prevView.current = viewParam
+    if (was === 'plan' && viewParam !== 'plan' && brokenSteps && !busy && phase === 'setup') {
+      planInHistory.current = false
+      backToStart()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- реагируем только на смену метки в адресе
+  }, [viewParam])
+  // открыли `?view=plan`, а разбивки на устройстве уже нет (прошли сутки, другой браузер) — обычный Фокус без метки
+  useEffect(() => {
+    if (viewParam !== 'plan' || savedPlan || brokenSteps || busy) return
+    const keep = new URLSearchParams(window.location.search)
+    keep.delete('view')
+    const q = keep.toString()
+    window.history.replaceState(null, '', q ? `/app/session?${q}` : '/app/session')
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- только при открытии
+  }, [])
+  /** стрелка ‹: тот же путь, что «назад» браузера — запись разбивки в истории не остаётся висеть впереди */
+  function goBackFromPlan() {
+    if (planInHistory.current) window.history.back()
+    else {
+      const keep = new URLSearchParams(window.location.search)
+      keep.delete('view')
+      const q = keep.toString()
+      window.history.replaceState(null, '', q ? `/app/session?${q}` : '/app/session')
+      backToStart()
+    }
+  }
   useLayoutEffect(() => {
     const root = setupRef.current
     const cat = catRef.current
@@ -925,6 +991,8 @@ export function FocusSession() {
   const finishingRef = useRef(false)
   async function start(label: string = task) {
     if (!label.trim()) return
+    // сессия по разбивке началась — после неё Фокус ведёт к следующему шагу сам, открытая разбивка больше не нужна
+    clearFocusPlan()
     if (label !== task) setTask(label)
     const task_ = label
     hapticStart()
@@ -1202,7 +1270,7 @@ export function FocusSession() {
               stage
                 ? `${CAT_STAGE} z-10 -mb-[14px] -mt-10`
                 : deal
-                  ? `${tall ? 'size-[clamp(76px,calc(100dvh_-_684px),150px)]' : 'size-[clamp(64px,calc(100dvh_-_640px),150px)] [@media(max-height:699px)]:size-16'} -mt-3 [@media(max-height:699px)]:mt-0`
+                  ? `${tall ? 'size-[clamp(80px,calc((100dvh_-_670px)*1.05),176px)]' : 'size-[clamp(67px,calc((100dvh_-_628px)*1.05),176px)] [@media(max-height:699px)]:size-[67px]'} -mt-3 [@media(max-height:699px)]:mt-0`
                   : '-mt-5 mb-4 [@media(min-height:740px)]:-mt-12'
             }`}
           >
@@ -1240,7 +1308,6 @@ export function FocusSession() {
         </div>
         {/* листы появляются в разметке (и в сети) только после первого открытия */}
         {sheetsUsed.templates && <TemplatesSheet open={templatesOpen} onClose={() => setTemplatesOpen(false)} onPick={applyTemplate} />}
-        {sheetsUsed.prefs && <BreakdownPrefs open={prefsOpen} onClose={() => setPrefsOpen(false)} fineness={fineness} onFineness={setFineness} />}
         {/* блок дела прижат к низу: кнопка старта стоит пиксель в пиксель там же, где на обычном экране Фокуса */}
         <div className={stage || !deal ? 'mt-auto flex flex-col gap-4' : 'flex min-h-0 flex-1 flex-col gap-4 pt-3'}>
           {stage ? null : deal ? (
@@ -1248,8 +1315,23 @@ export function FocusSession() {
             // с суммой минут делает дело «длиннее» (Kruger & Evans 2004); близкая подцель сильнее далёкой (Bandura & Schunk).
             // Пока шагов нет, на месте карточки ждёт полено, а места шагов заняты пустыми — ничего не сдвинется (17.11)
             <div className="flex min-h-0 flex-1 flex-col gap-2">
-              {/* подписи «первый шаг · дело» нет (владелец 17.11): в строке только карта штампов и настройка */}
-              <div data-rv-labelrow className="flex items-center justify-end gap-2">
+              {/* подписи «первый шаг · дело» нет (владелец 17.11), значка настройки тоже (владелец 21.11: настройка в «Делах»);
+                  в строке только карта штампов. Высота прежняя (28 px, как была со значком) — карточка и шаги не сдвигаются */}
+              <div data-rv-labelrow className="flex min-h-7 items-center justify-between gap-2">
+                {/* назад на первый экран Фокуса (владелец 21.11): разбивка — шаг вглубь вкладки, стрелка слева сверху, как в
+                    Telegram и App Store. Пока дело дробится, стрелки нет — уходить некуда, первый экран и так под ним */}
+                {brokenSteps && !busy ? (
+                  <button
+                    type="button"
+                    onClick={goBackFromPlan}
+                    aria-label="Назад к выбору шага"
+                    className="press -my-2 -ml-2.5 grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <ChevronLeft className="size-6" aria-hidden="true" />
+                  </button>
+                ) : (
+                  <span aria-hidden="true" />
+                )}
                 {/* карта штампов (подаренный прогресс, Nunes & Drèze): первый штамп — отпечаток лапы за разломанное дело (это
                     правда), второй — первый шаг, закрашен наполовину. Ширина постоянная — подпись слева не прыгает */}
                 <span
@@ -1265,15 +1347,6 @@ export function FocusSession() {
                       </span>
                     ))}
                 </span>
-                {/* размер шагов и просьбы — настройка, а не действие: значок в строке подписи, а не четвёртая кнопка-слово */}
-                <button
-                  type="button"
-                  onClick={() => setPrefsOpen(true)}
-                  aria-label="Как дробить: размер шагов и просьбы"
-                  className="press -my-2 grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <SlidersHorizontal className="size-[18px]" aria-hidden="true" />
-                </button>
               </div>
               {/* место карточки первого шага. Высота постоянная (заголовок до двух строк) — ничего не сдвигается */}
               <div className="relative h-[11.25rem]">
