@@ -1270,7 +1270,7 @@ export function FocusSession() {
               stage
                 ? `${CAT_STAGE} z-10 -mb-[14px] -mt-10`
                 : deal
-                  ? `${tall ? 'size-[clamp(76px,calc(100dvh_-_670px),168px)]' : 'size-[clamp(64px,calc(100dvh_-_628px),168px)] [@media(max-height:699px)]:size-16'} -mt-3 [@media(max-height:699px)]:mt-0`
+                  ? `${tall ? 'size-[clamp(80px,calc((100dvh_-_670px)*1.05),176px)]' : 'size-[clamp(67px,calc((100dvh_-_628px)*1.05),176px)] [@media(max-height:699px)]:size-[67px]'} -mt-3 [@media(max-height:699px)]:mt-0`
                   : '-mt-5 mb-4 [@media(min-height:740px)]:-mt-12'
             }`}
           >

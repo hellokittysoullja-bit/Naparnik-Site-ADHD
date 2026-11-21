@@ -15,6 +15,10 @@ const FIRST = 'Достать средство и губку'
 async function openPlan(page: Page) {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.route('**/api/session-voice', (r) => r.fulfill({ json: { text: null } }))
+  // свой ответ разбивки: иначе тесты в параллель упираются в лимит /api/breakdown (10 в минуту с адреса)
+  await page.route('**/api/breakdown', (r) =>
+    r.fulfill({ json: { steps: [FIRST, 'Побрызгать ванну и раковину', 'Протереть и смыть'], source: 'library', title: 'Убрать ванную' } }),
+  )
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/app/session?step=' + encodeURIComponent(DEAL) + '&break=1')
   await expect(page.locator('[data-rv-step]').first()).toBeVisible()
