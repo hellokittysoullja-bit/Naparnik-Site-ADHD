@@ -52,7 +52,9 @@ for t in tasks:
     out[RENAME.get(t, t)] = dict(steps=steps, edited=bool(c.get('ed') or c['drop'] or c['rep'] or c['order']), why=c['why'], synonyms=syn, m=c['m'])
 for name in extra:
     if name not in out and name not in MERGE: problems.append(f'синонимы к несуществующему: {name}')
-skip = {k: v for k, v in skip.items() if k.lower() not in EX and v is not None and k not in out}
+# цель слияния — синоним старого дела, а не само дело (21.11: «Выгул» → «Выгулять собаку», а это синоним) — ведём к делу
+AL = {a.lower(): d for a, d in h['aliases']}
+skip = {k: AL.get(v.lower(), v) for k, v in skip.items() if k.lower() not in EX and v is not None and k not in out}
 json.dump(dict(plans=out, skip=skip), open(f'{D}/curated-batch11.json', 'w'), ensure_ascii=False, indent=1)
 print('plans', len(out), 'skip', len(skip), 'edited', sum(v['edited'] for v in out.values()))
 print('\n'.join(problems[:80]))
