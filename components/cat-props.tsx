@@ -5,8 +5,8 @@ import type { DollActivity } from "@/lib/rig/doll";
  * Предметы перед котом (владелец 22.11, «работаем вместе»): ноутбук и книга. Рисуются в координатах рисунка кота
  * (то же окно, что у куклы и постера), поэтому стоят на своём месте при любом размере кота, и с куклой, и с постером.
  *
- * Ноутбук: кот сидит ЗА крышкой — лапы спрятаны (в архиве лапы из позы сидя торчали подушечками к зрителю), свет
- * экрана падает на морду и мерцает в ритме печати, над кромкой крышки — свечение. Книга: твёрдая обложка в цветах
+ * Ноутбук: кот сидит ЗА крышкой и печатает — над кромкой видна тыльная сторона лап, они поднимаются на каждый удар;
+ * свет экрана мягко падает на грудь и подбородок. На крышке — отпечаток лапы с серыми подушечками (владелец 22.11). Книга: твёрдая обложка в цветах
  * продукта, кот держит её нашими лапами из эталона (вырезаны для «Полена»), закладка покачивается, страница
  * «перелистывается» раз в 8 с — в такт тому, как глаза кота дочитывают пятую строку (lib/rig/doll.ts).
  */
@@ -19,17 +19,13 @@ export function CatProps({ activity }: { activity: DollActivity }) {
     <svg viewBox={VIEW} aria-hidden="true" className="cat-props pointer-events-none absolute inset-0 size-full overflow-visible">
       <defs>
         <radialGradient id="cp-face" cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0" stopColor="#cfe6ff" stopOpacity="0.42" />
-          <stop offset="0.6" stopColor="#a9cdf5" stopOpacity="0.14" />
+          <stop offset="0" stopColor="#dcecff" stopOpacity="0.3" />
+          <stop offset="0.6" stopColor="#b9d6f5" stopOpacity="0.1" />
           <stop offset="1" stopColor="#a9cdf5" stopOpacity="0" />
         </radialGradient>
-        <linearGradient id="cp-rim" x1="0" y1="1" x2="0" y2="0">
-          <stop offset="0" stopColor="#d9ecff" stopOpacity="0.55" />
-          <stop offset="1" stopColor="#d9ecff" stopOpacity="0" />
-        </linearGradient>
         <linearGradient id="cp-lid" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#f6eedd" />
-          <stop offset="1" stopColor="#e2d3b6" />
+          <stop offset="0" stopColor="#f3ede3" />
+          <stop offset="1" stopColor="#d8cdbd" />
         </linearGradient>
         <linearGradient id="cp-fl" x1="0" y1="1" x2="0" y2="0">
           <stop offset="0" stopColor="#ff6a1a" />
@@ -47,24 +43,31 @@ export function CatProps({ activity }: { activity: DollActivity }) {
       </defs>
 
       {activity === "laptop" ? (
-        <g className="cat-props-breathe">
-          {/* свет экрана на морде и над кромкой крышки — мерцает, как экран при печати */}
-          <g style={{ mixBlendMode: "screen", opacity: "calc(0.8 + var(--key-hit, 0) * 0.2)" }}>
-            <ellipse cx="545" cy="575" rx="360" ry="250" fill="url(#cp-face)" />
-            <path d="M300 712 L790 712 L770 640 Q545 600 320 640 Z" fill="url(#cp-rim)" />
-          </g>
-          {/* лапы на клавиатуре — тыльной стороной к зрителю (кот печатает, подушечки внизу, на клавишах), выглядывают
-              из-за крышки и поднимаются на каждый удар: подъём считает кукла (--paw-l, --paw-r) */}
+        // ноутбук стоит на земле и не дышит вместе с котом; без смешивания слоёв (mix-blend на iPhone давал прямоугольные
+        // артефакты) и без резких полос света — только мягкий свет экрана на груди и подбородке
+        <g>
+          <ellipse cx="545" cy="700" rx="300" ry="150" fill="url(#cp-face)" style={{ opacity: "calc(0.55 + var(--key-hit, 0) * 0.25)" }} />
+          {/* лапы на клавиатуре — тыльной стороной к зрителю, выглядывают из-за крышки и поднимаются на каждый удар:
+              подъём считает кукла (--paw-l, --paw-r) */}
           <PawBack x={430} side="l" />
           <PawBack x={660} side="r" />
-          {/* крышка (вид сзади): чуть сужается кверху, толстая тёмная обводка как у кота */}
-          <path d="M318 706 Q306 706 304 720 L284 948 Q282 966 300 966 L790 966 Q808 966 806 948 L786 720 Q784 706 772 706 Z" fill="url(#cp-lid)" stroke={INK} strokeWidth="10" strokeLinejoin="round" />
-          <path d="M330 730 L760 730" stroke="#fff" strokeOpacity="0.55" strokeWidth="6" strokeLinecap="round" />
-          {/* логотип — огонёк, как на хвосте */}
-          <path d="M545 880c-26 0-34-20-25-37 6-11 5-21 2-29 12 7 16 17 16 26 4-12 11-23 10-40 16 13 24 34 20 52 5-4 7-11 7-17 8 13 8 45-30 45z" fill="url(#cp-fl)" stroke={INK} strokeWidth="7" strokeLinejoin="round" />
-          {/* основание с клавиатурой — тонкая полоса под крышкой */}
-          <rect x="246" y="958" width="598" height="30" rx="15" fill="#5d5964" stroke={INK} strokeWidth="9" />
-          <rect x="262" y="964" width="566" height="6" rx="3" fill="#8b8794" />
+          {/* тень ноутбука на земле */}
+          <ellipse cx="545" cy="992" rx="330" ry="16" fill="#000" opacity="0.35" />
+          {/* крышка (вид сзади): ровный скруглённый прямоугольник, обводка как у кота, внутренний кант */}
+          <rect x="292" y="700" width="506" height="258" rx="28" fill="url(#cp-lid)" stroke={INK} strokeWidth="10" />
+          <rect x="310" y="718" width="470" height="222" rx="18" fill="none" stroke="#fff" strokeOpacity="0.45" strokeWidth="3" />
+          {/* логотип — отпечаток лапы, подушечки серые */}
+          <g transform="translate(545 832)" fill="#8c8a92" stroke={INK} strokeWidth="6" strokeLinejoin="round">
+            <path d="M0 6c-22 0-38 14-38 30 0 13 12 19 24 16 6-2 9-4 14-4s8 2 14 4c12 3 24-3 24-16 0-16-16-30-38-30z" />
+            <ellipse cx="-33" cy="-14" rx="10" ry="13" transform="rotate(-18 -33 -14)" />
+            <ellipse cx="-12" cy="-30" rx="10" ry="13" transform="rotate(-6 -12 -30)" />
+            <ellipse cx="12" cy="-30" rx="10" ry="13" transform="rotate(6 12 -30)" />
+            <ellipse cx="33" cy="-14" rx="10" ry="13" transform="rotate(18 33 -14)" />
+          </g>
+          {/* основание: дека шире крышки, светлая кромка сверху и выемка спереди */}
+          <path d="M268 952 L822 952 Q834 952 838 962 L846 980 Q850 990 838 990 L252 990 Q240 990 244 980 L252 962 Q256 952 268 952 Z" fill="#6c6872" stroke={INK} strokeWidth="9" strokeLinejoin="round" />
+          <path d="M276 962 L814 962" stroke="#a19ea8" strokeWidth="4" strokeLinecap="round" />
+          <rect x="505" y="978" width="80" height="8" rx="4" fill="#4b4851" />
         </g>
       ) : (
         <g className="cat-props-breathe">

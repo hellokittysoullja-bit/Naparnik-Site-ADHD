@@ -140,6 +140,8 @@ export class DollAnimator {
   private keyAt: [number, number] = [-9, -9];
   private nextKey = 0;
   private lastPaw = 0;
+  private lapTyping = false;
+  private lapUntil = 1.2;
 
   constructor(rig: RigData & { eyes?: number[][] }, seed = Math.floor(Math.random() * 2 ** 31)) {
     this.rand = rng(seed);
@@ -383,10 +385,17 @@ export class DollAnimator {
     // слева направо и быстро возвращаются, через 4 строки — короткая пауза (перевернуть страницу)
     if (this.activity !== "none" && !still) {
       if (this.activity === "laptop") {
-        const think = fbm(t / 5, 91) > 0.55;
-        this.actGaze = { x: think ? 0.35 : 0.18 * fbm(t / 1.3, 93), y: think ? -0.15 : 0.6 };
-        // печатает лапами: удары по клавишам по очереди (иногда одной лапой дважды), темп живой — 5–9 ударов в
-        // секунду, между словами короткие паузы; задумался — лапы лежат на клавиатуре, голова замирает
+        // владелец 22.11: часто просто смотрит на зрителя — прямо в центр, глаза в глаза, лапы лежат на клавиатуре;
+        // иногда смотрит в ноутбук и печатает. Смена — под морганием, как живой взгляд
+        if (t >= this.lapUntil) {
+          this.lapTyping = !this.lapTyping;
+          this.lapUntil = t + (this.lapTyping ? 2 + this.rand() * 2.5 : 2.5 + this.rand() * 3);
+          this.addBlink(t + 0.02, 0.5);
+        }
+        const think = !this.lapTyping;
+        this.actGaze = think ? { x: 0, y: 0 } : { x: 0.12 * fbm(t / 1.3, 93), y: 0.6 };
+        // печатает лапами: удары по клавишам по очереди (иногда одной лапой дважды), 5–9 ударов в секунду, между
+        // словами короткие паузы; смотрит на зрителя — лапы лежат на клавиатуре
         if (!think && t >= this.nextKey) {
           const paw = this.rand() < 0.75 ? 1 - this.lastPaw : this.lastPaw;
           this.keyAt[paw] = t; this.lastPaw = paw;
@@ -395,7 +404,7 @@ export class DollAnimator {
         }
         const lift = (d: number) => (d < 0 ? 0 : d < 0.05 ? sm(d / 0.05) : d < 0.14 ? 1 - sm((d - 0.05) / 0.09) : 0);
         this.pawLift = think ? [0, 0] : [lift(t - this.keyAt[0]), lift(t - this.keyAt[1])];
-        this.keyHit = Math.max(lift(t - this.keyAt[0] - 0.05), lift(t - this.keyAt[1] - 0.05));
+        this.keyHit = think ? 0 : Math.max(lift(t - this.keyAt[0] - 0.05), lift(t - this.keyAt[1] - 0.05));
       } else {
         const line = 1.6, u = (t % line) / line, n = Math.floor(t / line) % 5;
         this.actGaze = n === 4 ? { x: 0, y: 0.3 } : { x: u < 0.88 ? -0.5 + (u / 0.88) * 1.0 : 0.5 - ((u - 0.88) / 0.12) * 1.0, y: 0.45 + n * 0.07 };
