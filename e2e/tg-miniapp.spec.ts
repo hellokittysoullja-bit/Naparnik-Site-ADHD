@@ -68,6 +68,8 @@ test('запуск: окно раскрыто, «смахнуть — закры
   const types = ev.map((e) => e[0])
   expect(types.indexOf('web_app_expand')).toBeLessThan(types.indexOf('web_app_ready'))
   expect(await last(page, 'web_app_setup_swipe_behavior')).toEqual({ allow_vertical_swipe: false })
+  // телефон — во весь экран, как зрелые мини-аппы (Bot API 8.0)
+  expect(types).toContain('web_app_request_fullscreen')
   expect(page.url()).not.toContain('tgWebApp')
   expect(page.url()).not.toContain('777')
   expect(await page.evaluate(() => document.documentElement.getAttribute('data-tg'))).toBe('android')
@@ -92,6 +94,13 @@ test('шапка Telegram в цвет верха экрана: на Мире —
   })
   await expect.poll(() => last(page, 'web_app_set_header_color')).toEqual({ color: expected })
   expect(expected).not.toBe('#060c1f')
+})
+
+test('на компьютере (Telegram Desktop) мини-апп остаётся окном, без полного экрана', async ({ page }) => {
+  await asTelegram(page)
+  await page.goto('/' + HASH('8.0', 'tdesktop'))
+  await expect.poll(async () => (await events(page)).map((e) => e[0])).toContain('web_app_ready')
+  expect((await events(page)).map((e) => e[0])).not.toContain('web_app_request_fullscreen')
 })
 
 test('экран, который ждёт памяти (Фокус): «готово» только когда экран готов, а не на пустом кадре', async ({ page }) => {

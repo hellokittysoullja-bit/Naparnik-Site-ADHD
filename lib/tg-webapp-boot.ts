@@ -156,6 +156,12 @@ export function tgBoot(w: Window, d: Document, ORIGIN: string, COLOR: string): v
     on('content_safe_area_changed', inset('c'))
 
     post('web_app_expand')
+    // на телефоне — во весь экран, как зрелые мини-аппы (Bot API 8.0): шапки Telegram нет, его «Назад», «Закрыть» и «⋯»
+    // плавают поверх, а их место сайт оставляет пустым через --tg-sat (поля content_safe_area). На компьютере окно
+    // мини-аппа остаётся окном: полный экран там занял бы весь монитор
+    const mobile = /^(ios|android|android_x)$/.test(p.tgWebAppPlatform || '')
+    if (mobile && ok('8.0') && p.tgWebAppFullscreen !== '1') post('web_app_request_fullscreen')
+    if (mobile) h.setAttribute('data-tg-fs', '')
     if (ok('7.7')) post('web_app_setup_swipe_behavior', { allow_vertical_swipe: false })
     if (ok('6.9')) post('web_app_set_header_color', { color: COLOR })
     if (ok('6.1')) post('web_app_set_background_color', { color: COLOR })
