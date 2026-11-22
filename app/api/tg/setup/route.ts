@@ -6,6 +6,9 @@ import { fixedSite } from '@/lib/tg/deps'
 
 export const dynamic = 'force-dynamic'
 
+/** надпись на кнопке мини-аппа слева от поля ввода */
+const MINI_APP_TEXT = 'Напарник'
+
 const COMMANDS = [
   { command: 'break', description: '🐾 Разбить задачу на микрошаги' },
   { command: 'step', description: 'Новый шаг на 2 минуты' },
@@ -51,7 +54,10 @@ export async function GET(req: Request) {
     allowed_updates: ['message', 'callback_query'],
   })
   await tg('setMyCommands', { commands: COMMANDS })
+  // кнопка слева от поля ввода во всех чатах бота открывает сайт целиком как мини-апп (21.11)
+  const menu = await tg('setChatMenuButton', { menu_button: { type: 'web_app', text: MINI_APP_TEXT, web_app: { url: `${site}/` } } })
   lines.push(hook ? `✅ Бот @${me.username} подключён: отвечает на сообщения.` : '❌ Не удалось подключить вебхук — смотри логи Vercel.')
+  lines.push(menu ? `✅ Кнопка «${MINI_APP_TEXT}» в боте открывает сайт как мини-апп.` : '❌ Telegram не принял кнопку мини-аппа — смотри логи Vercel.')
   const { persistent } = getStore()
   lines.push(
     persistent

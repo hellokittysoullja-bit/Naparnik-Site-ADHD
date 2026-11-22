@@ -244,7 +244,7 @@ export function StuckWizard() {
   }
 
   return (
-    <main className="app-page-enter relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))]">
+    <main className="app-page-enter relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-[calc(5.5rem+var(--sab))] pt-[max(0.75rem,var(--sat))]">
       <div className="flex items-center gap-2">
         <button type="button" onClick={back} aria-label="Назад" className="press -ml-2 grid size-11 place-items-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <ArrowLeft className="size-5" />

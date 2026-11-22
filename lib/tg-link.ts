@@ -95,6 +95,18 @@ export async function beginTgLink(plan: PlanForBot = {}): Promise<string | null>
  * сервера правит знание сайта: чат отвязали или напоминания выключены — строка «Напомню в Telegram» и обещание кота
  * исчезают сразу, а не через пять минут.
  */
+/**
+ * Мини-апп в Telegram: связать без перехода в чат — сервер узнаёт человека по подписанным данным запуска.
+ * Возвращает новое состояние; null — не вышло (бота нет, подпись устарела), тогда кнопка ведёт по ссылке, как на сайте.
+ */
+export async function linkTgInApp(initData: string, plan: PlanForBot = {}): Promise<TgState | null> {
+  const r = await post<{ token?: string; linked?: boolean; active?: boolean }>('/api/tg/webapp-link', { initData, plan: { ...plan, tz: tz() }, token: read().token })
+  if (!r?.token || r.linked !== true) return null
+  const state: TgState = { available: true, linked: true, active: r.active === true }
+  write({ token: r.token, state, at: Date.now() })
+  return state
+}
+
 export async function pushPlanToTg(plan: PlanForBot): Promise<void> {
   const s = read()
   if (!s.token || !s.state?.linked) return

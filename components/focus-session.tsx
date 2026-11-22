@@ -1259,7 +1259,7 @@ export function FocusSession() {
         ? 'Секунду, *разламываю*…'
         : buildSetupLine(prefilledStep, priorSessions, companionName)
     return (
-      <div ref={setupRef} data-rv={reveal ? 'playing' : undefined} data-stage={stage ? '' : undefined} data-vt-arrived="focus" className={`relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-5 ${deal ? 'pt-2' : 'pt-5'} ${deal && !stage ? 'max-h-[calc(100dvh-4.5rem-env(safe-area-inset-bottom))] min-h-0' : ''}`}>
+      <div ref={setupRef} data-rv={reveal ? 'playing' : undefined} data-stage={stage ? '' : undefined} data-vt-arrived="focus" className={`relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-5 ${deal ? 'pt-2' : 'pt-5'} ${deal && !stage ? 'max-h-[calc(100dvh-4.5rem-var(--sab))] min-h-0' : ''}`}>
         <h1 className="sr-only">Фокус-сессия: выбери первый шаг</h1>
         {/* Сцена: реплика сверху, кот под ней — крупный и внизу, прямо над полем (владелец 16.11). Размер от высоты экрана:
             на 360×640 кнопка старта не уходит под меню */}
@@ -1689,7 +1689,7 @@ export function FocusSession() {
         {/* key: иначе React переиспользовал корневой <div> экрана «starting» под это затемнение и давал сдвиг вёрстки */}
         <div key="running-scrim" aria-hidden="true" className="focus-dim pointer-events-none fixed inset-0 bg-[oklch(0.135_0.012_130/0.8)]" />
         <motion.div
-          className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
+          className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center px-4 pt-[max(0.75rem,var(--sat))] pb-[max(1rem,var(--sab))]"
           initial={reducedMotion || openedRunning ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6 }}
@@ -1864,7 +1864,7 @@ export function FocusSession() {
     const bs = String(breakLeft % 60).padStart(2, '0')
     return (
       // кот и время — по центру свободного места, кнопки прижаты к низу над меню: в зоне большого пальца (Hoober)
-      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center gap-5 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-8">
+      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col items-center gap-5 px-4 pb-[calc(5.5rem+var(--sab))] pt-8">
         <h1 className="sr-only">Перерыв</h1>
         <div className="flex flex-1 flex-col items-center justify-center gap-5">
         <MascotSvg expression="sleepy" label="Напарник отдыхает" size={160} />

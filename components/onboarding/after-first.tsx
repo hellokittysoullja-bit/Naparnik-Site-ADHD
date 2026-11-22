@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Clock, Coffee, Frown, Mail, Meh, Moon, Send, Smile, Utensils, Zap, type LucideIcon } from 'lucide-react'
 import { CatAsks, OPTION_HUES, Option } from '@/components/onboarding/first-run'
 import { downloadIcs } from '@/lib/calendar'
+import { inTelegram } from '@/lib/tg-webapp'
 import { savePlan as savePlanToMemory, tomorrowKey } from '@/lib/memory'
 import { readOnboarding, SPHERES } from '@/lib/onboarding'
 import { withAttribution } from '@/lib/visitor'
@@ -87,7 +88,10 @@ export function AfterFirst() {
   } else if (stage === 'save') {
     line =
       saveChoice === 'tg'
-        ? BOT
+        ? // в мини-аппе Telegram остров уже копируется в облако Telegram (lib/tg-cloud.ts) — это правда, а не «скоро»
+          inTelegram()
+          ? 'Остров уже хранится в твоём Telegram. На новом телефоне он вернётся сам.'
+          : BOT
           ? 'Откроется Telegram — сохраним остров там.'
           : 'Сохранение в Telegram скоро появится. Пока остров хранится на этом устройстве.'
         : saveChoice === 'mail'
@@ -122,7 +126,7 @@ export function AfterFirst() {
       return setStage('save')
     }
     if (stage === 'save') {
-      if (saveChoice === 'tg' && BOT) window.open(`https://t.me/${BOT}?start=island`, '_blank', 'noopener')
+      if (saveChoice === 'tg' && BOT && !inTelegram()) window.open(`https://t.me/${BOT}?start=island`, '_blank', 'noopener')
       return setStage('when')
     }
     if (stage === 'when') {
@@ -142,9 +146,9 @@ export function AfterFirst() {
     (stage === 'how' && !feel) || (stage === 'when' && (!when || !clock)) || (stage === 'predict' && !promise)
 
   return (
-    <main className="relative mx-auto flex h-dvh w-full max-w-md flex-col overflow-hidden px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
+    <main className="relative mx-auto flex h-dvh w-full max-w-md flex-col overflow-hidden px-4 pt-[max(0.75rem,var(--sat))]">
       <h1 className="sr-only">Первые две минуты позади</h1>
-      <section className="flex min-h-0 flex-1 flex-col pb-[calc(6rem+env(safe-area-inset-bottom))] pt-6">
+      <section className="flex min-h-0 flex-1 flex-col pb-[calc(6rem+var(--sab))] pt-6">
         <CatAsks
           line={line}
           face={react ? react.face : face}
@@ -271,7 +275,7 @@ export function AfterFirst() {
           )}
         </div>
       </section>
-      <div className="thumb-cta fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-[max(1.125rem,env(safe-area-inset-bottom))]">
+      <div className="thumb-cta fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-[max(1.125rem,var(--sab))]">
         <button
           type="button"
           onClick={next}

@@ -3,6 +3,8 @@ import { VisitBeacon } from "@/components/visit-beacon";
 import { CookieNotice } from "@/components/cookie-notice";
 import type { Metadata, Viewport } from "next";
 import { SITE_URL } from "@/lib/site";
+import { tgBootScript } from "@/lib/tg-webapp-boot";
+import { TgWebApp } from "@/components/tg-webapp";
 import "./globals.css";
 
 // Все шрифты — свои (public/fonts, app/fonts.css, генератор design/fonts/build.py): Manrope и Caveat — статические
@@ -67,6 +69,8 @@ export default function RootLayout({
       className="bg-background"
     >
       <head>
+        {/* мини-апп в Telegram (lib/tg-webapp-boot.ts): самым первым, до любой отрисовки; вне Telegram — ничего */}
+        <script dangerouslySetInnerHTML={{ __html: tgBootScript() }} />
         {/* Первый кадр — только целиком разобранной страницей (16.11, покадровый аудит): HTML приходит и разбирается
             порциями, и браузер рисовал кадр, когда разобрана только часть — пустой фон, фон без экрана, половина
             карточек. Эта строка просит не рисовать, пока не разобрана метка #first-frame в самом конце содержимого (до
@@ -81,6 +85,7 @@ export default function RootLayout({
         <VisitBeacon />
         {/* плашка есть в HTML с первого кадра; кому не нужна — прячет встроенный скрипт до отрисовки (cookie-notice.tsx) */}
         <CookieNotice />
+        <TgWebApp />
         {process.env.NODE_ENV === "production" && <SiteAnalytics />}
       </body>
     </html>

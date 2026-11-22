@@ -60,13 +60,14 @@ test('заголовки защиты на странице и на API: CSP б�
   const res = await request.get('/')
   const csp = res.headers()['content-security-policy']
   expect(csp).toContain("default-src 'self'")
-  expect(csp).toContain("frame-ancestors 'none'")
+  // встраивать может только Telegram в браузере (мини-апп), больше никто
+  expect(csp).toMatch(/frame-ancestors https:\/\/web\.telegram\.org(;|$)/)
   expect(csp).toContain("object-src 'none'")
   // blob: не разрешён нигде, data: — только картинкам и шрифтам (вшитый постер кота, шум фона, шрифты первого экрана)
   expect(csp).not.toContain('blob:')
   for (const d of csp.split(';').map((x) => x.trim()))
     if (d.includes('data:')) expect(d.split(' ')[0]).toMatch(/^(img-src|font-src)$/)
-  expect(res.headers()['x-frame-options']).toBe('DENY')
+  expect(res.headers()['x-frame-options']).toBeUndefined()
   expect(res.headers()['x-content-type-options']).toBe('nosniff')
   expect(res.headers()['x-powered-by']).toBeUndefined()
   const visit = await request.post('/api/visit', { data: { a: {} }, headers: { 'content-type': 'application/json' } })

@@ -113,9 +113,9 @@ export function HomeCamp() {
         <NightScene />
       </div>
 
-      <div className="relative z-10 flex h-full flex-col pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
+      <div className="relative z-10 flex h-full flex-col pb-[calc(4.75rem+var(--sab))]">
         {/* находки острова — тихая плашка, ведёт в Мир; у новичка её нет */}
-        <div className="flex min-h-14 items-start justify-end px-5 pt-[max(1rem,env(safe-area-inset-top))] [@media(max-height:620px)]:min-h-10 [@media(max-height:620px)]:pt-2">
+        <div className="flex min-h-14 items-start justify-end px-5 pt-[max(1rem,var(--sat))] [@media(max-height:620px)]:min-h-10 [@media(max-height:620px)]:pt-2">
           {/* до чтения памяти (обновление страницы) плашку и число показывает CSS по памяти из скрипта первого кадра (lib/app-prepaint.ts) */}
           {(data ? data.finds > 0 : true) && (
             <Link
@@ -275,7 +275,7 @@ export function HomeCamp() {
               expression="calm"
               size={190}
               label="Напарник"
-              className="vt-cat size-[clamp(96px,calc(100dvh-480px-env(safe-area-inset-bottom)),196px)] [@media(max-height:620px)]:size-[clamp(90px,calc(100dvh-440px-env(safe-area-inset-bottom)),196px)]"
+              className="vt-cat size-[clamp(96px,calc(100dvh-480px-var(--sab)),196px)] [@media(max-height:620px)]:size-[clamp(90px,calc(100dvh-440px-var(--sab)),196px)]"
             />
           </div>
         </div>

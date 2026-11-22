@@ -315,8 +315,8 @@ export function applyPlan(u: TgUser, plan: { task?: string; firstStep?: string; 
   return hour
 }
 
-/** «/start l_<код>»: чат связывается с устройством, план с сайта становится напоминанием */
-async function link(d: Deps, u: TgUser, payload: LinkPayload) {
+/** «/start l_<код>» и мини-апп: чат связывается с устройством, план с сайта становится напоминанием */
+export async function link(d: Deps, u: TgUser, payload: LinkPayload) {
   // прежняя связь этого чата с другим устройством и прежний чат этого устройства больше ничего не значат
   if (u.device && u.device !== payload.device && (await d.store.chatOfDevice(u.device)) === u.id) await d.store.bindDevice(u.device, null)
   const prev = await d.store.chatOfDevice(payload.device)

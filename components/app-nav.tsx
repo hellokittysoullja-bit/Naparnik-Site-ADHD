@@ -71,7 +71,7 @@ export function AppNav() {
   return (
     <nav
       aria-label="Основная навигация"
-      className="glass-nav fixed inset-x-0 bottom-0 z-50 border-t border-white/10 pb-[env(safe-area-inset-bottom)]"
+      className="glass-nav fixed inset-x-0 bottom-0 z-50 border-t border-white/10 pb-[var(--sab)]"
     >
       <div className="mx-auto flex max-w-md items-center py-2 pr-3">
         <div className="flex flex-1 items-center justify-around">

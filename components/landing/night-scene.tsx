@@ -87,6 +87,8 @@ export function NightScene({ children }: { children?: ReactNode }) {
     <div
       ref={rootRef}
       aria-hidden="true"
+      // по этой метке мини-апп в Telegram красит свою шапку в цвет неба сцены (lib/tg-webapp-runtime.ts)
+      data-night-scene=""
       // запасной цвет до прихода заставки — те же края неба и земли, что в кадре
       className="absolute inset-0 overflow-hidden bg-[linear-gradient(to_bottom,oklch(0.15_0.04_265),oklch(0.25_0.055_228)_52%,oklch(0.15_0.02_170))]"
     >

@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Send } from 'lucide-react'
-import { beginTgLink, peekTgState, refreshTgState, type PlanForBot, type TgState } from '@/lib/tg-link'
+import { beginTgLink, linkTgInApp, peekTgState, refreshTgState, type PlanForBot, type TgState } from '@/lib/tg-link'
+import { tgInitData, tgOpenLink } from '@/lib/tg-webapp'
 
 /**
  * Под карточкой плана: «Напоминать в Telegram». Кот сам написать первым не может, пока человек не связал сайт с
@@ -53,15 +54,25 @@ export function TgRemind({ plan, current }: { plan: PlanForBot; current: boolean
         className="flex min-h-11 items-center gap-1.5 self-start rounded-xl px-1 text-sm font-semibold text-primary disabled:opacity-60"
         onClick={async () => {
           setBusy(true)
+          // внутри мини-аппа Telegram — сразу, без перехода в чат (сервер узнаёт человека по подписи Telegram)
+          const init = tgInitData()
+          const inApp = init ? await linkTgInApp(init, plan) : null
+          if (inApp) {
+            setBusy(false)
+            setState(inApp)
+            return
+          }
           const url = await beginTgLink(plan)
           setBusy(false)
-          // тот же таб: на телефоне ссылка открывает приложение Telegram, вкладка сайта остаётся на месте
-          if (url) window.location.href = url
-          else setState({ available: false, linked: false, active: false })
+          // тот же таб: на телефоне ссылка открывает приложение Telegram, вкладка сайта остаётся на месте;
+          // в мини-аппе ссылку открывает сам Telegram (окно сайта не уходит на t.me)
+          if (url) {
+            if (!tgOpenLink(url)) window.location.href = url
+          } else setState({ available: false, linked: false, active: false })
         }}
       >
         <Send className="size-4 shrink-0" aria-hidden="true" />
-        {busy ? 'Открываю Telegram…' : 'Напоминать в Telegram'}
+        {busy ? (tgInitData() ? 'Подключаю…' : 'Открываю Telegram…') : 'Напоминать в Telegram'}
       </button>
       <p className="px-1 text-[12px] leading-snug text-muted-foreground">
         Нажимая, вы соглашаетесь на обработку дела и шага по{' '}
