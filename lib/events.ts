@@ -12,6 +12,11 @@ export type FunnelEvent =
   | 'session_started'
   | 'session_completed'
   | 'share_clicked'
+  // «Не могу начать» (владелец 22.11): только имя события, без текста дела
+  | 'step_shown'
+  | 'step_shrunk'
+  | 'step_started'
+  | 'step_completed'
 
 /**
  * Полевые замеры скорости (research/19 §1.2): только имя метрики, число, оценка и путь БЕЗ параметров и фрагмента —
