@@ -273,9 +273,11 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
       }
     }
     if (spans.length > 4) return undefined
-    const variants = (w: string): string[] => {
+    const variants = (w: string, words: number): string[] => {
       const out = new Set([w])
-      for (const m of [ASPECT[w], VERB_SAME[w], NOUN_SAME[w]]) if (m) out.add(m)
+      // голый глагол глаголом-синонимом не заменяем: «сделать» одно — не «Приготовить» (22.11)
+      const same = words > 1 ? VERB_SAME[w] : undefined
+      for (const m of [ASPECT[w], same, NOUN_SAME[w]]) if (m) out.add(m)
       if (!known.has(w)) for (const c of verbCandidates(w, verbs)) out.add(c)
       return [...out]
     }
@@ -298,7 +300,7 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
           if (e) found.set(e.value, found.get(e.value) ?? { e, details: details() })
           continue
         }
-        const opts = rest.map(variants)
+        const opts = rest.map((w) => variants(w, rest.length))
         if (opts.reduce((n, o) => n * o.length, 1) > 32) continue
         const walk = (i: number, acc: string[], subs: number) => {
           if (i === opts.length) {
