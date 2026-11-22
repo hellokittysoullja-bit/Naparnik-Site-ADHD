@@ -71,6 +71,10 @@ test('запуск: окно раскрыто, «смахнуть — закры
   expect(page.url()).not.toContain('tgWebApp')
   expect(page.url()).not.toContain('777')
   expect(await page.evaluate(() => document.documentElement.getAttribute('data-tg'))).toBe('android')
+  // плашки cookie в мини-аппе нет, и без согласия cookie посещения не ставятся
+  await expect(page.locator('.cookie-notice')).toBeHidden()
+  await page.waitForTimeout(1500)
+  expect((await page.context().cookies()).map((c) => c.name)).not.toContain('nid')
   // шапка Telegram в цвет неба сцены
   expect(await last(page, 'web_app_set_header_color')).toEqual({ color: '#060c1f' })
 })
