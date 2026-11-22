@@ -265,8 +265,6 @@ export class DollAnimator {
       else if (d >= 0.13 && d < 0.3) lid = Math.max(lid, 1 - sm((d - 0.13) / 0.17));
     }
     lid = Math.max(lid, sm(Math.min(1, sk * 2)));                 // в сон: веки смыкаются первыми
-    // занят делом (ноутбук, книга) — глаза чуть прикрыты и смотрят вниз: сосредоточен, а не таращится на зрителя
-    if (this.activity !== "none" && !still) lid = Math.max(lid, 0.22);
     // глаза уходят под дуги плавно: веко сомкнуто к sk 0.5, сплющенный глаз и штрих века гаснут на 0.45–0.66,
     // пока дуги проявляются (0.4–0.65) — ни на одном кадре нет ни «пустого» лица, ни скачка
     const eyeFade = 1 - sm((sk - 0.45) / 0.21);
@@ -401,7 +399,7 @@ export class DollAnimator {
       for (const n of [`eye-${s}`, `hl-${s}`]) { const p = this.parts.get(n)!; p.opacity = eyeOp; p.sy = sy; p.dx = 0; p.dy = 0; }
       const pu = this.parts.get(`pupil-${s}`)!;
       pu.opacity = eyeOp; pu.sy = sy; pu.sx = 1;
-      if (curved) { this.pupilOff[i] = [lx * R * 0.26, ly * R * (this.activity !== "none" ? 0.34 : 0.2)]; pu.dx = 0; pu.dy = 0; }
+      if (curved) { this.pupilOff[i] = [lx * R * 0.26, ly * R * (this.activity !== "none" ? 0.26 : 0.2)]; pu.dx = 0; pu.dy = 0; }
       else { pu.dx = lx * R * 0.26; pu.dy = ly * R * 0.2 * sy; }
       const ld = this.parts.get(`lid-${s}`)!;
       ld.opacity = eyeFade * sm((lid - 0.7) / 0.3);
