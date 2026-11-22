@@ -13,13 +13,31 @@
  */
 
 /** слова, которые не меняют дело: их выкидываем перед сравнением */
+import { VERB_FORMS, VERB_FORMS_LEAD } from './breakdown-verb-forms'
+
 const FILLER = new Set([
   'надо', 'нужно', 'необходимо', 'мне', 'хочу', 'хотелось', 'бы', 'пора', 'сегодня', 'завтра', 'сейчас', 'срочно', 'наконец',
   'уже', 'еще', 'просто', 'пожалуйста', 'плиз', 'давай', 'давайте', 'короче', 'ну', 'блин', 'типа', 'вот', 'как', 'нибудь',
   'быстро', 'быстренько', 'по', 'быстрому', 'щас', 'ща', 'тупо', 'хоть', 'наконецто', 'опять', 'снова', 'все', 'таки', 'же',
   // 22.11: разговорное «нада», «надь», «нужна» и «я хочу/хотел», «обязательно» — не часть дела
   'нада', 'надь', 'нуна', 'нужна', 'нужен', 'я', 'хотел', 'хотела', 'хочется', 'обязательно',
+  // 22.11 (проверка по всей базе): «я должен …», «помоги …», «… пж» не узнавались ни для одного дела
+  'должен', 'должна', 'должны', 'обязан', 'обязана', 'пж', 'пжл', 'пжлст', 'плз', 'помоги', 'помогите', 'лень', 'никак',
+  'бля', 'блять', 'капец', 'пипец', 'жесть', 'ваще', 'вообще', 'стоит', 'планирую', 'собираюсь', 'думаю',
+  'наверное', 'может', 'реально', 'прям', 'вроде', 'немножко', 'чуть',
 ])
+
+/**
+ * Начало, которое говорит о состоянии, а не о деле: «не могу …», «боюсь …», «как заставить себя …». Срезается, только
+ * если фраза целиком не нашлась: «Не могу встать с кровати» и «Боюсь звонить» — свои дела и узнаются дословно
+ */
+const STATE_LEADS: readonly string[] = [
+  'как заставить себя', 'не могу заставить себя', 'не могу себя заставить', 'заставить себя', 'никак не могу', 'не могу',
+  'не получается', 'не выходит', 'не хочу', 'не хочется', 'боюсь', 'страшно', 'не знаю как', 'как начать', 'с чего начать',
+  'помоги мне', 'помогите мне', 'хочу начать', 'надо начать', 'нужно начать', 'начать', 'хорошо бы', 'было бы хорошо',
+]
+/** то же в конце: «… уже давно», «… хоть как-то», «… немного» — если без них дело находится, а с ними нет */
+const STATE_TAILS: readonly string[] = ['уже давно', 'давно', 'хоть как то', 'хоть немного', 'немного', 'чуть чуть', 'хоть чуть чуть']
 
 /** QWERTY → ЙЦУКЕН: человек забыл переключить раскладку */
 const EN = "qwertyuiop[]asdfghjkl;'zxcvbnm,.`"
@@ -298,8 +316,46 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
     return undefined
   }
 
-  return {
-    find(text) {
+  function findState(text: string): ReturnType<Matcher<T>['find']> {
+    const n = normalize(text)
+    for (const lead of STATE_LEADS) {
+      if (!n.startsWith(lead + ' ')) continue
+      const r = findOnce(n.slice(lead.length + 1))
+      if (r) return { ...r, corrected: true }
+    }
+    for (const tail of STATE_TAILS) {
+      if (!n.endsWith(' ' + tail)) continue
+      const rest = n.slice(0, -tail.length - 1)
+      const r = findOnce(rest) ?? findState(rest)
+      if (r) return { ...r, corrected: true }
+    }
+    return null
+  }
+
+  /** «помою посуду», «позвоню маме», «давай помоем» → инфинитив, как в названиях дел (VERB_FORMS) */
+  function findVerb(text: string): ReturnType<Matcher<T>['find']> {
+    if (!opts.understand) return null
+    const ws = words(text)
+    let changed = false
+    const lead = ws.findIndex((w) => !FILLER.has(w))
+    const inf = ws.map((w, i) => {
+      // «давай» — тоже форма глагола («давать»), но в фразе это слово-паразит
+      if (FILLER.has(w)) return w
+      const v = VERB_FORMS[w] ?? (i === lead ? VERB_FORMS_LEAD[w] : undefined)
+      if (!v) return w
+      changed = true
+      return v
+    })
+    if (!changed) return null
+    const t = inf.join(' ')
+    const r = findOnce(t) ?? findState(t)
+    return r ? { ...r, corrected: true } : null
+  }
+
+  return { find: (text) => findOnce(text) ?? findState(text) ?? findVerb(text) }
+
+  function findOnce(text: string): ReturnType<Matcher<T>['find']> {
+    {
       const ws = meaningful(words(text))
       const flipped = fromLatinLayout(text)
       const fws = flipped ? meaningful(words(flipped)) : null
@@ -326,6 +382,6 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
       }
       if (!e) return null
       return { title: e.title, value: e.value, corrected: normalize(text) !== normalize(e.title) }
-    },
+    }
   }
 }
