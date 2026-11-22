@@ -129,6 +129,8 @@ const ROUTES: Record<TaskName, readonly (keyof typeof PROFILES)[]> = {
   'memory-extract': DEFAULT_ROUTE,
   recall: DEFAULT_ROUTE,
   summarize: DEFAULT_ROUTE,
+  // один шаг «Не могу начать» — тот же быстрый маршрут, что у разбивки
+  'one-step': ['primary', 'reserve', 'independent'],
 }
 
 /**
