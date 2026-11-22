@@ -157,7 +157,7 @@ test('кот не понял дело: честная просьба напис�
   await page.route('**/api/breakdown', (route) => route.fulfill({ json: { steps: null, unclear: true } }))
   await page.goto('/app/session?step=' + encodeURIComponent('ывпрол') + '&break=1')
   await expect(page.getByText(/Не понял дело/)).toBeVisible()
-  await expect(page.getByText(/сеть подвела/)).toHaveCount(0)
+  await expect(page.getByText(/не вышло раздробить|не вышло разломать/i)).toHaveCount(0)
   // исправил дело в поле — просьба уходит
   await page.getByRole('textbox').first().fill('Помыть посуду после ужина')
   await expect(page.getByText(/Не понял дело/)).toHaveCount(0)
