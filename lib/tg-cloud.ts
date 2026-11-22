@@ -23,7 +23,8 @@ export type Entry = [number, number, number, string]
 export type Manifest = { v: 1; k: Record<string, Entry> }
 
 export const MANIFEST_KEY = 'naparnik_m'
-export const CHUNK = 4000
+// 2000 символов: Telegram ограничивает значение 4096 символами, а если считает байты UTF-8, кириллица займёт 4000
+export const CHUNK = 2000
 /** кусков всего — с запасом под оглавление и под двойные поколения на время записи (лимит Telegram — 1024 ключа) */
 export const MAX_CHUNKS = 480
 const MANIFEST_MAX = 4096

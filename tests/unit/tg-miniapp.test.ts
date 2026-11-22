@@ -205,7 +205,7 @@ describe('календарь в мини-аппе: файл по адресу б
     expect(body).toContain('DTEND:20261122T090200')
     expect(body).toContain('SUMMARY:2 минуты с Напарником')
     expect(body.replace(/UID:\d+|DTSTAMP:\d+T\d+/g, '')).toBe(icsText('20261122T090000', 'завтра утром', '2 минуты с Напарником', 'https://x.test').replace(/UID:\d+|DTSTAMP:\d+T\d+/g, ''))
-    for (const bad of ['at=2026&w=x', 'at=20261322T090000', 'at=20261122T250000', 'at=20261122T090000&w=<script>'])
+    for (const bad of ['at=2026&w=x', 'at=20261322T090000', 'at=20261122T250000', 'at=20260231T090000', 'at=20261122T090000&w=<script>'])
       expect((await icsRoute(new Request(`https://x.test/api/ics?${bad}`))).status).toBe(400)
   })
   it('конец события через 2 минуты переходит через полночь', () => {

@@ -51,7 +51,8 @@ export function downloadIcs(when: string, time: string, title = ICS_TITLE) {
   const at = icsStamp(start)
   const tg = (window as unknown as { __tg?: { post: (t: string, d?: unknown) => void; ok: (v: string) => boolean } }).__tg
   if (tg) {
-    const url = `${window.location.origin}/api/ics?${new URLSearchParams({ at, w: when.slice(0, 40) })}`
+    // слова «когда» человек мог написать сам («после пары», с запятыми) — на сервер их не шлём: общее «завтра»
+    const url = `${window.location.origin}/api/ics?${new URLSearchParams({ at, w: 'завтра' })}`
     if (tg.ok('8.0')) tg.post('web_app_request_file_download', { url, file_name: 'naparnik.ics' })
     else tg.post('web_app_open_link', { url })
     return

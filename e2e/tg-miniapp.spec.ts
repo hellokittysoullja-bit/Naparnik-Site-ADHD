@@ -156,6 +156,12 @@ test('идёт сессия — закрыть окно случайно нел�
     window.dispatchEvent(new CustomEvent('naparnik:memory', { detail: { key: 'naparnik:activeSession' } }))
   })
   await expect.poll(() => last(page, 'web_app_setup_closing_behavior')).toEqual({ need_confirmation: true })
+  // сессия закончилась: память хранит "null" — подтверждение снимается
+  await page.evaluate(() => {
+    localStorage.setItem('naparnik:activeSession', 'null')
+    window.dispatchEvent(new CustomEvent('naparnik:memory', { detail: { key: 'naparnik:activeSession' } }))
+  })
+  await expect.poll(() => last(page, 'web_app_setup_closing_behavior')).toEqual({ need_confirmation: false })
 })
 
 test('память копируется в облако Telegram и «Забудь всё» стирает копию', async ({ page }) => {

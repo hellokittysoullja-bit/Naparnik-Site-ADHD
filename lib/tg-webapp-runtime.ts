@@ -143,7 +143,9 @@ function startClosing(tg: TgBridge) {
   const check = () => {
     let active = false
     try {
-      active = !!window.localStorage.getItem('naparnik:activeSession')
+      // законченная сессия хранится как "null" (lib/memory.ts clearActiveSession) — это не идущая сессия
+      const v = JSON.parse(window.localStorage.getItem('naparnik:activeSession') ?? 'null') as unknown
+      active = !!v && typeof v === 'object'
     } catch {
       active = false
     }
@@ -163,7 +165,8 @@ export const cloud: Cloud = {
   del: (keys) => tgInvoke('deleteStorageValues', { keys }).then(() => undefined),
 }
 
-function localMemory(): Record<string, string> {
+/** память устройства; null — хранилище не читается (тогда облако не трогаем: пустой ответ стёр бы копию) */
+function localMemory(): Record<string, string> | null {
   const out: Record<string, string> = {}
   try {
     const ls = window.localStorage
@@ -175,7 +178,7 @@ function localMemory(): Record<string, string> {
       }
     }
   } catch {
-    /* хранилище недоступно — копировать нечего */
+    return null
   }
   return out
 }
@@ -184,10 +187,12 @@ const RESTORED = 'naparnik:tgRestored'
 
 async function startCloud(tg: TgBridge) {
   if (!tg.ok('6.9')) return
+  let partial = false
   let man: Manifest
   try {
     const got = await loadManifest(cloud)
     const local = localMemory()
+    if (!local) return
     let once = false
     try {
       once = window.sessionStorage.getItem(RESTORED) === '1'
@@ -206,6 +211,7 @@ async function startCloud(tg: TgBridge) {
           /* место кончилось — вернём, что влезло */
         }
       }
+      if (wrote < Object.keys(back).filter((k) => !(k in local)).length) partial = true
       if (wrote > 0) {
         try {
           window.sessionStorage.setItem(RESTORED, '1')
@@ -234,7 +240,13 @@ async function startCloud(tg: TgBridge) {
     }
     busy = true
     try {
-      man = await sync(cloud, localMemory(), man)
+      const local = localMemory()
+      // хранилище не читается или возврат из облака лёг не целиком (кончилось место) — не стираем копию. «Забудь всё»
+      // сюда не попадает: там память читается, и пропавшие ключи удаляются из облака, как и должны
+      if (!local || partial) return
+      // оглавление — свежее из облака: прерванная запись или второе устройство не оставляют кусков, о которых никто не знает
+      man = (await loadManifest(cloud)) ?? man
+      man = await sync(cloud, local, man)
     } catch {
       /* сеть или лимит Telegram — следующая запись попробует снова */
     } finally {
