@@ -2522,3 +2522,17 @@ html[data-tg] {
 html[data-tg-fs] {
   --cat-vh: calc(100dvh - var(--sat) - var(--sab) - 50px);
 }
+
+/* Предметы перед котом (components/cat-props.tsx, 22.11): дышат вместе с котом, свет экрана мерцает в ритме печати,
+   закладка качается, книга раз в 8 с «перелистывает» страницу. Только transform/opacity */
+@keyframes cat-props-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+.cat-props-breathe { animation: cat-props-breathe 2.6s ease-in-out infinite; }
+@keyframes cat-props-screen { 0%, 100% { opacity: 0.85; } 20% { opacity: 1; } 35% { opacity: 0.8; } 60% { opacity: 0.95; } 80% { opacity: 0.78; } }
+.cat-props-screen { animation: cat-props-screen 1.7s steps(6, end) infinite; }
+@keyframes cat-props-ribbon { 0%, 100% { transform: rotate(-5deg); } 50% { transform: rotate(6deg); } }
+.cat-props-ribbon { transform-box: view-box; animation: cat-props-ribbon 2.2s ease-in-out infinite; }
+@keyframes cat-props-page { 0%, 90%, 100% { transform: rotate(0); } 94% { transform: rotate(-2.2deg); } 97% { transform: rotate(1deg); } }
+.cat-props-page { transform-box: view-box; animation: cat-props-page 8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .cat-props-breathe, .cat-props-screen, .cat-props-ribbon, .cat-props-page { animation: none; }
+}

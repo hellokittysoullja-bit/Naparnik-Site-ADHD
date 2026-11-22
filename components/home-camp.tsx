@@ -12,7 +12,8 @@ import { MascotDoll } from "@/components/mascot-doll";
 import { Campfire } from "@/components/campfire";
 import { useClientMount } from "@/hooks/use-client-mount";
 import { registerServiceWorker } from "@/lib/checkin";
-import { peekFinds, peekProfile } from "@/lib/memory";
+import { peekFinds, peekProfile, peekStarts } from "@/lib/memory";
+import { brightnessOf } from "@/lib/fire";
 import {
   breakHref,
   findsLabel,
@@ -35,15 +36,15 @@ import { tgBridge } from "@/lib/tg-webapp";
  * «по плану», «следующий шаг» и т. п. на Доме. От знакомства зависят только подсвеченная сфера, пример в поле и строка
  * над кнопкой (а позже — текст самой кнопки). Поэтому высота блока постоянна, и кот не сдвигается ни при каких данных.
  */
-type Data = { profile: HomeProfile; finds: number };
+type Data = { profile: HomeProfile; finds: number; fire: number };
 
 function readData(): Data {
   try {
-    return { profile: peekProfile(), finds: peekFinds().length };
+    return { profile: peekProfile(), finds: peekFinds().length, fire: peekStarts().length ? brightnessOf(peekStarts()) : 1 };
   } catch (e) {
     // память читается с гардами; если что-то всё же бросит — Дом без ответов знакомства, а не пустой экран
     console.error("[home] memory read failed", e);
-    return { profile: null, finds: 0 };
+    return { profile: null, finds: 0, fire: 1 };
   }
 }
 
@@ -282,6 +283,9 @@ export function HomeCamp() {
             <Campfire className="absolute bottom-[-2.5%] left-[-22%] z-[2] h-[46%] w-[40%]" />
             <MascotDoll
               expression="calm"
+              // огонёк на хвосте — последние дни (функция 3, 22.11): начинал недавно — горит ярко, давно не заходил —
+              // тихий уголёк, но не гаснет; новичку — обычный огонёк
+              fire={data?.fire ?? 1}
               size={190}
               label="Напарник"
               className="vt-cat size-[clamp(96px,calc(var(--cat-vh)-480px-var(--sab)),196px)] [@media(max-height:620px)]:size-[clamp(90px,calc(var(--cat-vh)-440px-var(--sab)),196px)]"

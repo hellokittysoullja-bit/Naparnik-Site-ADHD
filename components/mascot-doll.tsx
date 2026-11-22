@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "@/lib/reduced-motion";
-import { DollAnimator, drawDollFx, setDollFxColor, type DollAction, type DollExpression } from "@/lib/rig/doll";
+import { DollAnimator, drawDollFx, drawDollSparks, setDollFxColor, type DollAction, type DollActivity, type DollExpression } from "@/lib/rig/doll";
+import { CatProps } from "@/components/cat-props";
 import { loadRigImages, preloadRigImages, RigRenderer } from "@/lib/rig/renderer";
 import { DOLL_LAYERS } from "@/lib/rig/doll-layers";
 import { asset } from "@/lib/asset-versions";
@@ -30,6 +31,10 @@ type Props = {
   inlinePoster?: boolean;
   /** не моргать, пока true (короткая кульминация сцены). По умолчанию кот моргает */
   awake?: boolean;
+  /** сила огонька на хвосте 0..1 — прогресс человека (функция 3, 22.11). По умолчанию 1 — огонёк как всегда */
+  fire?: number;
+  /** чем кот занят: «laptop» — за ноутбуком, «book» — читает книгу (функция 1, «работаем вместе»). По умолчанию ничем */
+  activity?: DollActivity;
 };
 
 const BASE = "/mascot/doll/";
@@ -79,7 +84,7 @@ export function MascotDoll(props: Props) {
   return <DollCanvas {...props} />;
 }
 
-function DollCanvas({ expression = "calm", action = "idle", size = 160, label, className, interactive = true, inlinePoster, awake = false }: Props) {
+function DollCanvas({ expression = "calm", action = "idle", size = 160, label, className, interactive = true, inlinePoster, awake = false, fire = 1, activity = "none" }: Props) {
   const reduce = useReducedMotion();
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);   // кот: WebGL прямо здесь
@@ -205,7 +210,9 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
     a.setAction(action);
     a.reduced = !!reduce;
     a.awake = awake;
-  }, [expression, action, reduce, state, awake]);
+    a.fire = fire;
+    a.activity = activity;
+  }, [expression, action, reduce, state, awake, fire, activity]);
 
   // взгляд за указателем
   useEffect(() => {
@@ -244,10 +251,11 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
         sh.style.transform = k ? `scale(${1 - 0.25 * k})` : "";
         sh.style.opacity = k ? String(1 - 0.5 * k) : "";
       }
-      if (octx && (a.fx.length || fxShown)) {
+      if (octx && (a.fx.length || a.sparks.length || fxShown)) {
         octx.clearRect(0, 0, px, px);
         drawDollFx(octx, a.fx, a.t, rg.view, px, px);
-        fxShown = a.fx.length > 0;
+        drawDollSparks(octx, a.sparks, a.t, rg.view, px, px);
+        fxShown = a.fx.length > 0 || a.sparks.length > 0;
       }
       if (!reduce && inView) raf = requestAnimationFrame(frame);
     };
@@ -304,6 +312,8 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
           <canvas ref={over} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: ready ? "block" : "none", pointerEvents: "none" }} />
         </>
       ) : null}
+      {/* ноутбук или книга — в координатах рисунка, поверх кота (и куклы, и постера) */}
+      <CatProps activity={activity} />
     </div>
   );
 }
