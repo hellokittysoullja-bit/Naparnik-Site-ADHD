@@ -47,13 +47,17 @@ for (const [title, aliases] of Object.entries(TASK_ALIASES)) for (const a of ali
 export function readyTitle(task: string): string | null {
   const hit = READY.find(task)
   if (!hit) return null
+  // само дело базы — как есть («Вынести мусор», хотя «Вынести» — синоним того же дела)
+  if (BY_TITLE.has(hit.title)) return hit.title
   const whole = ALIAS_OF.get(hit.title)
   if (whole) return whole
   // понимание дописывает уточнение к синониму: «Экзамен» + «по истории» → «Подготовиться к экзамену» + «по истории»
   const ws = hit.title.split(' ')
   for (let n = ws.length - 1; n > 0; n--) {
     const head = ALIAS_OF.get(ws.slice(0, n).join(' '))
-    if (head) return [head, ...ws.slice(n)].join(' ')
+    // хвост уже есть в названии дела («Вынести» → «Вынести мусор» + «мусор») — не дописываем его второй раз
+    const tail = ws.slice(n).join(' ')
+    if (head) return head.toLowerCase().endsWith(tail.toLowerCase()) ? head : `${head} ${tail}`
   }
   return hit.title
 }
