@@ -27,6 +27,8 @@ const Body = z.object({
   // (у гоблина цепочка родителей — главное, что делает глубокое дробление осмысленным). Странное поле — без него
   parent: z.string().trim().max(120).optional().catch(undefined),
   siblings: z.array(z.string().trim().max(120)).max(12).optional().catch(undefined),
+  // «Ещё мельче»: план из базы человек уже видел — нужен другой, его пишет модель
+  more: z.boolean().optional().catch(undefined),
 })
 
 const ENERGY = { low: 'мало', mid: 'средне', high: 'много' } as const
@@ -37,7 +39,7 @@ export const POST = handle(async (req) => {
   rateLimit(req, 'breakdown', 10)
   const parsed = Body.safeParse(await readJsonBody(req, MAX_BODY))
   if (!parsed.success) return Response.json({ steps: null }, { status: 400 })
-  const { task, context, memory, energy, fineness, parent, siblings } = parsed.data
+  const { task, context, memory, energy, fineness, parent, siblings, more } = parsed.data
   const extra = {
     'Это часть дела': parent || undefined,
     'Соседние шаги': parent && siblings?.length ? siblings.filter(Boolean).join('; ') : undefined,
@@ -51,6 +53,7 @@ export const POST = handle(async (req) => {
     context: context ? { Сфера: context.sphere, 'Что мешает': context.blocker, ...extra } : hasExtra ? extra : undefined,
     ctx: newTurn({ task: context ? 'onboarding-first-step' : 'breakdown' }),
     signal: req.signal,
+    again: more === true,
   })
   if (r.kind === 'care') return Response.json({ steps: null, reply: r.reply })
   // дело не понято (набор букв): экран просит написать словами, а не показывает общие шаги

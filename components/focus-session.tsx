@@ -420,6 +420,7 @@ export function FocusSession() {
           memory: memoryForTask(),
           energy: e ?? undefined,
           fineness: finer ? 'fine' : fineness === 'normal' ? undefined : fineness,
+          ...(finer ? { more: true } : {}),
           // шаг дробится внутри своего дела: модель видит дело целиком и не повторяет соседние шаги
           ...(finer && dealTitle && dealTitle !== target
             ? { parent: dealTitle, siblings: (brokenSteps ?? []).map((b) => b.text).filter((t) => t !== target).slice(0, 12) }

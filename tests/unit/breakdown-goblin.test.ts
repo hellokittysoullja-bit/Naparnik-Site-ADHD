@@ -38,9 +38,15 @@ describe('готовые разбивки goblin.tools (дословно, вла
     const r = await breakdown({ task: 'Помыть посуду' })
     expect(r.kind === 'steps' && r.steps[0]).toBe(GOBLIN_PLANS['Помыть посуду'][0])
   })
-  it('«мельче», «мало сил» и шаг внутри дела — не готовый план, а модель', async () => {
-    for (const context of [{ 'Размер шагов': 'мельче' }, { 'Силы сейчас': 'мало' }, { 'Это часть дела': 'Убраться в комнате' }]) {
+  it('база одна везде (22.11): «мало сил» и размер шагов из настроек — тот же план из базы, что на Доме и в боте', async () => {
+    for (const context of [{ 'Размер шагов': 'мельче' }, { 'Силы сейчас': 'мало' }, { Сфера: 'Дом', 'Что мешает': 'Нет сил' }]) {
       const r = await breakdown({ task: 'Вынести мусор', context, timeoutMs: 50 })
+      expect(r, JSON.stringify(context)).toMatchObject({ kind: 'steps', source: 'library', steps: [...GOBLIN_PLANS['Вынести мусор']] })
+    }
+  })
+  it('«Ещё мельче» — для всего дела и для шага внутри дела — не готовый план, а модель', async () => {
+    for (const [context, again] of [[undefined, true], [{ 'Это часть дела': 'Убраться в комнате' }, false]] as const) {
+      const r = await breakdown({ task: 'Вынести мусор', context, again, timeoutMs: 50 })
       expect(r.kind === 'steps' && r.source, JSON.stringify(context)).not.toBe('library')
     }
   })
