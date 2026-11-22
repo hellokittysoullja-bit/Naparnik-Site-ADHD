@@ -544,3 +544,18 @@ describe('бот: полоска «котик разбивает задачу» 
     expect(r.sent.some((s) => s.method === 'sendMessage' && String(s.body.text).startsWith('🐾 <b>отчёт</b>'))).toBe(true)
   })
 })
+
+describe('одна база на сайте, в мини-аппе и в боте', () => {
+  it('разбивка и оценка времени в боте — те же функции, что у /api/breakdown и /api/estimate', async () => {
+    const { liveDeps } = await import('@/lib/tg/deps')
+    const { breakdown } = await import('@/lib/ai/agents/breakdown')
+    const { estimate } = await import('@/lib/ai/agents/estimate')
+    const d = liveDeps('https://example.com')
+    const steps = ['Собрать посуду в раковину', 'Помыть тарелки']
+    expect(d.estimate!('Помыть посуду', steps)).toEqual(estimate({ task: 'Помыть посуду', steps }))
+    const site = await breakdown({ task: 'помою посуду' })
+    const bot = await d.breakdown('помою посуду')
+    expect(site.kind === 'steps' && bot.steps).toEqual(site.kind === 'steps' && site.steps)
+    expect(site.kind === 'steps' && bot.minutes).toEqual(site.kind === 'steps' && site.minutes)
+  })
+})

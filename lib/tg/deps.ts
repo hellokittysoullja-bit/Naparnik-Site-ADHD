@@ -1,7 +1,7 @@
 import { BREAK_UNCLEAR } from '@/lib/break-task'
 import type { ModelMessage, TextStreamPart, ToolSet } from 'ai'
 import { breakdown, readyPlan } from '@/lib/ai/agents/breakdown'
-import { estimateDeal } from '@/lib/ai/agents/step-time'
+import { estimate } from '@/lib/ai/agents/estimate'
 import { chatTurn } from '@/lib/ai/agents/chat'
 import { collectReply, pseudonym } from '@/lib/ai/channels/telegram'
 import { newTurn } from '@/lib/ai/core/turn'
@@ -111,7 +111,8 @@ export function liveDeps(site: string): Deps {
     known: (task) => readyPlan(task) !== null,
     converse,
     sign,
-    estimate: estimateDeal,
+    // та же функция, что у «Оценить время» на сайте и в мини-аппе (/api/estimate)
+    estimate: (task, steps) => estimate({ task, steps }),
   }
 }
 

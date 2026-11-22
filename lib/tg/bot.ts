@@ -120,7 +120,7 @@ export type Deps = {
   converse?: Converse
   /** Подпись ссылки «Сесть рядом» (lib/tg/telegram.ts) */
   sign: (value: string) => string
-  /** минуты на каждый шаг дела (lib/ai/agents/step-time.ts estimateDeal) — кнопка «Оценить время» */
+  /** минуты на каждый шаг дела — та же estimate() (lib/ai/agents/estimate.ts), что у /api/estimate на сайте */
   estimate?: (title: string, steps: string[]) => number[]
 }
 
