@@ -7,8 +7,8 @@ import { celebrateCat, nextBreakCount, playLogReveal, preloadReveal, wordCount }
 import { NoteDeco, WaitLog, WoodWords } from '@/components/break-reveal/note-parts'
 import { hapticReaction, hapticReward } from '@/lib/haptics'
 
-/** Сколько шагов видно под запиской в знакомстве: остальные ждут в «Делах» */
-const MAX_ROWS = 5
+/** Сколько шагов кусков полена берём в сцену: строк под запиской столько, сколько влезает над «Продолжить» */
+const MAX_ROWS = 8
 
 /**
  * Знакомство, «Работа / проекты» + «Не знаю, с чего начать» (владелец 20.11): своё дело разламывается тем же «Поленом»,
@@ -22,6 +22,9 @@ export function OnbBreak({ task, steps, done = false, onDone }: { task: string; 
   const sourceRef = useRef<HTMLParagraphElement>(null)
   const [split, setSplit] = useState(done)
   const [playing, setPlaying] = useState(false)
+  // строк под запиской — сколько целиком влезает над «Продолжить» (как в Фокусе, владелец 22.11: список уходил под кнопку)
+  const [fit, setFit] = useState<number | null>(null)
+  const rowHeights = useRef(new Map<string, number>())
   const played = useRef(done)
   const doneRef = useRef(onDone)
   useLayoutEffect(() => {
@@ -96,7 +99,30 @@ export function OnbBreak({ task, steps, done = false, onDone }: { task: string; 
     }
   }, [steps, reduce])
 
-  const rows = steps ? steps.slice(1, MAX_ROWS + 1) : []
+  // после каждой отрисовки, до показа кадра (и внутри flushSync раскола — сцена меряет уже урезанный список). Высоту каждой
+  // строки помним по тексту: спрятанные строки тоже учитываются. Цикла нет — состояние меняется, только когда меняется ответ
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const list = rootRef.current?.querySelector<HTMLElement>('[data-rv-list]')
+    if (!list || !steps) return
+    for (const el of list.querySelectorAll<HTMLElement>(':scope > div')) rowHeights.current.set(el.dataset.step ?? '', el.offsetHeight)
+    const cta = document.querySelector<HTMLElement>('.thumb-cta')
+    const limit = (cta ? cta.getBoundingClientRect().top : window.innerHeight) - 8
+    let used = list.getBoundingClientRect().top
+    let n = 0
+    const all = steps.slice(1, MAX_ROWS + 1)
+    for (const st of all) {
+      const h = rowHeights.current.get(st) ?? 32
+      if (used + h > limit + 1) break
+      used += h + 4
+      n++
+    }
+    const next = n >= all.length ? null : Math.max(1, n)
+    if (next !== fit) setFit(next)
+  })
+
+  const all = steps ? steps.slice(1, MAX_ROWS + 1) : []
+  const rows = fit ? all.slice(0, fit) : all
   return (
     <div ref={rootRef} data-rv={playing ? 'playing' : undefined} className="mt-5 flex flex-col gap-3 [@media(max-height:700px)]:mt-3">
       {!split && (
@@ -122,10 +148,13 @@ export function OnbBreak({ task, steps, done = false, onDone }: { task: string; 
           </div>
           {rows.length > 0 && (
             <div data-rv-list className="flex flex-col gap-1 px-1">
-              {rows.map((st) => (
-                <div key={st} className="flex items-center gap-2 px-3 py-[5px] text-[13.5px] text-muted-foreground">
-                  <span data-rv-bullet aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
-                  <span data-rv-step className="block font-semibold leading-[22px]">
+              {rows.map((st, i) => (
+                <div key={st} data-step={st} className="flex min-h-8 items-center gap-2 px-3 py-[5px] text-[13.5px] text-muted-foreground">
+                  {/* номер шага вместо точки — как в Фокусе (владелец 21.11): записка — шаг 1, кремовым цветом записки */}
+                  <span data-rv-bullet aria-hidden="true" className="step-num w-[1.15rem] shrink-0 text-right text-[13px] font-bold tabular-nums leading-none">
+                    {i + 2}
+                  </span>
+                  <span data-rv-step className="block max-h-[66px] overflow-hidden font-semibold leading-[22px]">
                     <WoodWords text={st} />
                   </span>
                 </div>
