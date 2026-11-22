@@ -24,6 +24,7 @@ import {
   type HomeProfile,
 } from "@/lib/home-step";
 import type { Sphere } from "@/lib/onboarding";
+import { tgBridge } from "@/lib/tg-webapp";
 
 /**
  * Дом «Привал» (13.11, research/22-chat-and-home/E-home-design.md, макеты согласованы владельцем):
@@ -238,6 +239,14 @@ export function HomeCamp() {
             <Link
               href="/app/chat"
               aria-label="Поговорить с котом"
+              // в мини-аппе Telegram (22.11, владелец) разговор с котом — сам чат бота: окно мини-аппа закрывается, и под ним
+              // ровно этот чат (мини-апп открыт кнопкой бота). Своей переписки сайта в Telegram нет
+              onClick={(e) => {
+                const tg = tgBridge()
+                if (!tg) return
+                e.preventDefault()
+                tg.post("web_app_close")
+              }}
               onTouchStart={() => {}}
               className="btn-paper block w-full select-none rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >

@@ -260,3 +260,17 @@ test('после первой сессии в мини-аппе: «сохран�
   expect(res.status()).toBe(200)
   expect(await res.text()).toMatch(/DTSTART:\d{8}T190000/)
 })
+
+test('«Поговорить» на Доме в мини-аппе: закрывает окно — под ним чат бота; своей переписки сайта нет', async ({ page }) => {
+  await asTelegram(page)
+  await page.goto('/app' + HASH())
+  await page.getByRole('link', { name: 'Поговорить с котом' }).click()
+  await expect.poll(async () => (await events(page)).map((e) => e[0])).toContain('web_app_close')
+  expect(new URL(page.url()).pathname).toBe('/app')
+})
+
+test('«Поговорить» в обычном браузере — переписка сайта', async ({ page }) => {
+  await page.goto('/app')
+  await page.getByRole('link', { name: 'Поговорить с котом' }).click()
+  await expect(page).toHaveURL(/\/app\/chat/)
+})
