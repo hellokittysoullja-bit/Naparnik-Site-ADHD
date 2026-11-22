@@ -96,6 +96,22 @@ test('шапка Telegram в цвет верха экрана: на Мире —
   expect(expected).not.toBe('#060c1f')
 })
 
+test('нижняя панель Telegram под меню — цвета низа меню, а не неба (иначе светлая полоса под «домой», 22.11)', async ({ page }) => {
+  await asTelegram(page)
+  await page.goto('/app' + HASH('8.0', 'ios'))
+  const expected = await page.evaluate(() => {
+    const g = document.createElement('canvas').getContext('2d')!
+    g.fillStyle = '#070d0a'
+    g.fillRect(0, 0, 1, 1)
+    g.fillStyle = 'oklch(0.17 0.008 130 / 0.68)'
+    g.fillRect(0, 0, 1, 1)
+    const [r, gg, b] = g.getImageData(0, 0, 1, 1).data
+    return '#' + [r, gg, b].map((x) => x.toString(16).padStart(2, '0')).join('')
+  })
+  await expect.poll(() => last(page, 'web_app_set_bottom_bar_color')).toEqual({ color: expected })
+  expect(expected).not.toBe('#070d0a')
+})
+
 test('на компьютере (Telegram Desktop) мини-апп остаётся окном, без полного экрана', async ({ page }) => {
   await asTelegram(page)
   await page.goto('/' + HASH('8.0', 'tdesktop'))
