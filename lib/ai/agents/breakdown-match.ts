@@ -119,7 +119,12 @@ const NOT_TYPO = new Set([
 
 import { ASPECT, NOUN_SAME, STUDY_HEADS, SUBJECTS, SUBJECT_TAIL, TIME_DETAILS, TIME_NUMBER, TIME_TAIL, VERB_SAME, studyRewrite, verbCandidates } from './breakdown-understand'
 
-export type Matcher<T> = { find: (text: string) => { title: string; value: T; corrected: boolean } | null }
+/**
+ * typo — дело узнано через исправление опечатки (или раскладки): только тогда экран показывает название из базы. Узнанное
+ * дословно, синонимом, другой формой или формулировкой («Пойти к психиатру» → план «Сходить к психиатру») остаётся словами
+ * человека (владелец 22.11: «менять запрещено, если опечатки нет и просто по-другому написано»)
+ */
+export type Matcher<T> = { find: (text: string) => { title: string; value: T; corrected: boolean; typo: boolean } | null }
 
 /**
  * Указатель по готовым делам. entries — [название, значение]; название — как его покажем человеку.
@@ -360,28 +365,37 @@ export function buildMatcher<T>(entries: [string, T][], opts: { understand?: boo
       const flipped = fromLatinLayout(text)
       const fws = flipped ? meaningful(words(flipped)) : null
       // 1) дословно (с точностью до регистра, порядка слов и слов-паразитов)
-      let e = (ws.length && ws.length <= 8 ? lookup(ws) : null) ?? (fws?.length && fws.length <= 8 ? lookup(fws) : null)
+      let e = ws.length && ws.length <= 8 ? lookup(ws) : null
+      // набрано в английской раскладке («gjcnbhfnm») — это та же опечатка: показываем название из базы
+      let typo = false
+      if (!e && fws?.length && fws.length <= 8) {
+        e = lookup(fws)
+        if (e) typo = true
+      }
       // 2) понимание — РАНЬШЕ исправления опечаток: настоящее слово («мыться», «кормить») не должно «исправляться» в
       // похожее чужое («умыться»); понимание само опечаток не правит, поэтому опечатки дальше узнаются как раньше
       if (!e && opts.understand) {
         const u = understand(text)
         if (u) {
           const title = [u.e.title, ...u.details.map((d) => d.toLowerCase())].join(' ')
-          return { title, value: u.e.value, corrected: true }
+          return { title, value: u.e.value, corrected: true, typo: false }
         }
       }
       // 3) опечатки
-      if (!e) e = tryWords(ws) ?? (fws ? tryWords(fws) : null)
+      if (!e) {
+        e = tryWords(ws) ?? (fws ? tryWords(fws) : null)
+        if (e) typo = true
+      }
       // 4) опечатки в деле с уточнением: «пакормить собаку вечером» — последним, когда остальное не нашло ничего
       if (!e && opts.understand) {
         const u = understand(text, true)
         if (u) {
           const title = [u.e.title, ...u.details.map((d) => d.toLowerCase())].join(' ')
-          return { title, value: u.e.value, corrected: true }
+          return { title, value: u.e.value, corrected: true, typo: true }
         }
       }
       if (!e) return null
-      return { title: e.title, value: e.value, corrected: normalize(text) !== normalize(e.title) }
+      return { title: e.title, value: e.value, corrected: normalize(text) !== normalize(e.title), typo }
     }
   }
 }

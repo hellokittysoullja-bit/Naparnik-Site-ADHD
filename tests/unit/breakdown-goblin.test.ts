@@ -29,6 +29,16 @@ describe('готовые разбивки goblin.tools (дословно, вла
     const r = await breakdown({ task: 'Вынести мусор' })
     expect(r).toEqual({ kind: 'steps', steps: [...GOBLIN_PLANS['Вынести мусор']], minutes: [...GOBLIN_MINUTES['Вынести мусор']], source: 'library', title: 'Вынести мусор' })
   })
+  it('написано по-другому — дело остаётся словами человека, план из базы; опечатка — название из базы (владелец 22.11)', async () => {
+    const own = await breakdown({ task: 'Пойти к психиатру' })
+    const base = await breakdown({ task: 'Сходить к психиатру' })
+    expect(own).toMatchObject({ kind: 'steps', source: 'library', title: 'Пойти к психиатру' })
+    expect(own.kind === 'steps' && base.kind === 'steps' && own.steps).toEqual(base.kind === 'steps' && base.steps)
+    expect(await breakdown({ task: 'помою посуду' })).toMatchObject({ source: 'library', title: 'Помою посуду' })
+    expect(await breakdown({ task: 'Покушать' })).toMatchObject({ source: 'library', title: 'Покушать' })
+    expect(await breakdown({ task: 'Сходить к психиатрк' })).toMatchObject({ source: 'library', title: 'Сходить к психиатру' })
+    expect(await breakdown({ task: 'gjvsnm gjcele' })).toMatchObject({ source: 'library', title: 'Помыть посуду' })
+  })
   it('наш шаблон из «Дел» (у гоблина такого дела нет) — тоже сразу, с минутами и «пока ждёшь»', async () => {
     const r = await breakdown({ task: 'убрать ванную' })
     expect(r).toMatchObject({ kind: 'steps', source: 'library', steps: expect.arrayContaining(['Достать средство и губку']) })
