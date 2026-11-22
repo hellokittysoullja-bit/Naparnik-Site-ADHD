@@ -343,7 +343,7 @@ describe('бот: нижняя кнопка «🐾 Разбить задачу»
     await r.msg('/start')
     const withMenu = r.sent.filter((s) => menuOf(s)?.keyboard)
     expect(withMenu).toHaveLength(1)
-    expect(menuOf(withMenu[0])).toMatchObject({ keyboard: [[{ text: '🐾 Разбить задачу' }]], is_persistent: true, resize_keyboard: true })
+    expect(menuOf(withMenu[0])).toMatchObject({ keyboard: [[{ text: '🐾 Разбить задачу', style: 'success' }]], is_persistent: true, resize_keyboard: true })
     await r.msg('/help')
     await r.msg('помыть посуду')
     await r.msg('/start')
@@ -361,6 +361,20 @@ describe('бот: нижняя кнопка «🐾 Разбить задачу»
     await r.msg('/help')
     await r.msg('/start')
     expect(r.sent.filter((s) => s.body.text === T.menuHint)).toHaveLength(1)
+  })
+
+  it('без постоянной памяти (нет Redis) каждый /start похож на знакомство — подсказку тогда не шлём вовсе (владелец 22.11)', async () => {
+    const r = rig()
+    r.deps.persistent = false
+    for (let i = 0; i < 3; i++) {
+      // холодный запуск функции: память процесса пуста, чат «новый»
+      const u = await r.store.getUser(CHAT)
+      if (u) await r.store.deleteUser(u)
+      await r.msg('/start')
+    }
+    expect(r.sent.filter((s) => s.body.text === T.menuHint)).toHaveLength(0)
+    // само приветствие на /start остаётся — человек его и просил
+    expect(r.sent.filter((s) => s.method === 'sendPhoto')).toHaveLength(3)
   })
 
   it('кнопка → «напиши задачу» → следующее сообщение разбивается как на сайте, весь план', async () => {

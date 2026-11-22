@@ -96,8 +96,10 @@ async function goneUser(chat: number) {
 
 /** Настоящие зависимости бота: Upstash (или память процесса), Telegram API, кот и дробление через обвязку */
 export function liveDeps(site: string): Deps {
+  const { store, persistent } = getStore()
   return {
-    store: getStore().store,
+    store,
+    persistent,
     send: async (method, body) => {
       const r = await tgCall(method, body)
       // человек заблокировал бота или удалил аккаунт: напоминания снимаем, чтобы не стучаться впустую каждый день

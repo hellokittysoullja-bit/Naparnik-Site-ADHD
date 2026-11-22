@@ -101,6 +101,12 @@ export type Deps = {
   converse?: Converse
   /** Подпись ссылки «Сесть рядом» (lib/tg/telegram.ts) */
   sign: (value: string) => string
+  /**
+   * Память бота постоянная (Upstash Redis). Без неё каждый холодный запуск функции не помнит чат, и любой /start выглядит
+   * как первое знакомство: подсказку про нижнюю кнопку без памяти не шлём вовсе (владелец 22.11: «пишу старт — спамят»).
+   * По умолчанию — есть.
+   */
+  persistent?: boolean
 }
 
 type Button = { text: string; callback_data?: string; url?: string }
@@ -108,7 +114,9 @@ type Keyboard = Button[][]
 
 /** Нижняя кнопка (владелец 20.11): постоянная клавиатура под полем ввода, а не кнопка под сообщением */
 export const MENU_BREAK = '🐾 Разбить задачу'
-const MENU = { keyboard: [[{ text: MENU_BREAK }]], resize_keyboard: true, is_persistent: true, input_field_placeholder: 'Напиши задачу…' }
+// зелёная (владелец 22.11; Bot API 9.4 даёт только «success» — зелёный, «primary» — синий, «danger» — красный).
+// Старые приложения Telegram цвет не знают и рисуют кнопку серой, как раньше
+const MENU = { keyboard: [[{ text: MENU_BREAK, style: 'success' }]], resize_keyboard: true, is_persistent: true, input_field_placeholder: 'Напиши задачу…' }
 /** нажатие нижней кнопки приходит её текстом; эмодзи на некоторых клиентах теряется */
 const isMenuBreak = (text: string) => text.replace(/^\p{Extended_Pictographic}\s*/u, '').toLowerCase() === 'разбить задачу'
 
@@ -540,8 +548,10 @@ async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
       if (!sent) await say(d, chat, T.hello, sphereKeyboard())
       // подсказка про нижнюю кнопку — один раз за всю жизнь чата, только при знакомстве (владелец 21.11: повторы — спам);
       // сама кнопка прикрепляется к чату и остаётся, повторять сообщение ради неё не нужно
-      await sayMenu(d, u, T.menuHint)
-      await d.store.saveUser(u)
+      if (d.persistent !== false) {
+        await sayMenu(d, u, T.menuHint)
+        await d.store.saveUser(u)
+      }
     } else {
       await say(d, chat, T.helloBack, sphereKeyboard())
     }
