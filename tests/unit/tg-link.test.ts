@@ -72,7 +72,7 @@ describe('привязка сайта к чату', () => {
     expect(await tick(r.deps)).toBe(1)
     expect(r.texts()[0]).toContain('«Открыть файл диплома»')
     const kb = (r.sent[0].body.reply_markup as { inline_keyboard: { text: string; url?: string }[][] }).inline_keyboard
-    expect(kb[0][0].text).toBe('Сесть рядом →')
+    expect(kb[0][0].text).toBe('Сесть с Котиком 🐈‍⬛')
     expect(kb[0][0].url).toContain('/api/tg/go?c=4242')
   })
   it('код живёт 15 минут и срабатывает один раз', async () => {
@@ -189,7 +189,7 @@ describe('разговор с котом в боте', () => {
     const r = rig(T0, cat({ text: 'Открывай, я рядом.', startFocus: { firstStep: 'Открыть черновик курсовой', minutes: 15 } }))
     await r.msg('готов начать')
     const kb = (r.sent.filter((s) => s.body.text !== T.menuHint).at(-1)!.body.reply_markup as { inline_keyboard: { text: string; url?: string }[][] }).inline_keyboard
-    expect(kb[0][0].text).toBe('Сесть рядом →')
+    expect(kb[0][0].text).toBe('Сесть с Котиком 🐈‍⬛')
     expect(new URL(kb[0][0].url!).searchParams.get('s')).toBe('Открыть черновик курсовой')
   })
   it('кот сохранил план: «записал, напишу в 10» говорит код по сохранённому, и напоминание стоит', async () => {

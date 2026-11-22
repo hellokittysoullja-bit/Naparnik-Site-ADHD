@@ -70,6 +70,24 @@ export function planText(title: string, steps: string[], minutes?: (number | und
   return `${head}\n\n${lines.join('\n')}\n\n👉 Начнём с первого. Я рядом.`
 }
 
+/**
+ * «⏱ Оценить время» под планом (владелец 22.11): сколько займёт дело с текущего шага до конца и к какому часу
+ * человек управится, если начнёт сейчас. Минуты — своя база времени шагов (без модели, мгновенно)
+ */
+export function estimateText(d: Pick<Deps, 'estimate'>, u: TgUser, now: number): string {
+  const steps = u.steps ?? []
+  if (!u.task || !steps.length || !d.estimate) return 'Сначала разобьём дело: напиши его, и я посчитаю время.'
+  const from = Math.min(u.stepIdx ?? 0, steps.length - 1)
+  const mins = d.estimate(u.task, steps).slice(from)
+  const total = Math.max(1, Math.round(mins.reduce((a, m) => a + (m > 0 ? m : 0), 0)))
+  const end = new Date(now + (u.tz + total) * 60_000)
+  const at = `${String(end.getUTCHours()).padStart(2, '0')}:${String(end.getUTCMinutes()).padStart(2, '0')}`
+  const left = steps.length - from
+  const scope = from === 0 ? `Всё дело «${u.task}»` : `${left} ${plural(left, 'шаг', 'шага', 'шагов')} до конца «${u.task}»`
+  const late = total >= 24 * 60 ? '' : `\nНачнёшь сейчас, управишься примерно к ${at}.`
+  return `⏱ ${scope}: около ${shortDuration(total)}.${late}\nНе страшно, если выйдет дольше. Первый шаг важнее часов.`
+}
+
 /** то же без разметки — в переписку, которую видит кот */
 const plain = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
 
@@ -102,9 +120,11 @@ export type Deps = {
   converse?: Converse
   /** Подпись ссылки «Сесть рядом» (lib/tg/telegram.ts) */
   sign: (value: string) => string
+  /** минуты на каждый шаг дела — та же estimate() (lib/ai/agents/estimate.ts), что у /api/estimate на сайте */
+  estimate?: (title: string, steps: string[]) => number[]
 }
 
-type Button = { text: string; callback_data?: string; url?: string }
+type Button = { text: string; callback_data?: string; url?: string; style?: 'primary' | 'success' | 'danger' }
 type Keyboard = Button[][]
 
 /** Нижняя кнопка (владелец 20.11): постоянная клавиатура под полем ввода, а не кнопка под сообщением */
@@ -364,12 +384,19 @@ function goUrl(d: Deps, u: TgUser) {
   return `${d.site}/api/tg/go?${q.toString()}`
 }
 
+/**
+ * Главная кнопка (владелец 22.11): «Сесть с Котиком», синяя, на всю ширину. Стрелку ↗ в углу Telegram рисует сам у
+ * кнопок-ссылок. Старые приложения Telegram цвет не знают и рисуют кнопку серой
+ */
+export const SIT = 'Сесть с Котиком 🐈‍⬛'
+const sit = (d: Deps, u: TgUser): Button => ({ text: SIT, url: goUrl(d, u), style: 'primary' })
+
 function stepKeyboard(d: Deps, u: TgUser): Keyboard {
   // у шага из плана «другого» нет: о нём человек договорился сам
-  if (u.plan) return [[{ text: 'Сесть рядом →', url: goUrl(d, u) }]]
-  // план из разбивки — шаги по порядку, кнопки в один ряд (вариант Б); шаг по сфере — «другой» из заготовок
-  if (u.task) return [[{ text: 'Сесть рядом →', url: goUrl(d, u) }, { text: 'Следующий шаг', callback_data: 'nx' }]]
-  return [[{ text: 'Сесть рядом →', url: goUrl(d, u) }], [{ text: 'Другой шаг', callback_data: 'nx' }]]
+  if (u.plan) return [[sit(d, u)]]
+  // план из разбивки — шаги по порядку: «Сесть с Котиком» большой, под ним «След шаг» и «Оценить время» (владелец 22.11)
+  if (u.task) return [[sit(d, u)], [{ text: 'След шаг', callback_data: 'nx' }, { text: '⏱ Оценить время', callback_data: 'est' }]]
+  return [[sit(d, u)], [{ text: 'Другой шаг', callback_data: 'nx' }]]
 }
 
 function remindKeyboard(): Keyboard {
@@ -393,7 +420,7 @@ function toneKeyboard(): Keyboard {
 function reminderKeyboard(d: Deps, u: TgUser): Keyboard {
   return [
     [
-      { text: 'Сесть рядом →', url: goUrl(d, u) },
+      sit(d, u),
       { text: 'Не сегодня', callback_data: 'skip' },
     ],
     [
@@ -782,7 +809,7 @@ async function catSays(d: Deps, u: TgUser, userText: string, reply: CatReply) {
       u.steps = [reply.startFocus.firstStep.slice(0, 160)]
       u.stepIdx = 0
     }
-    keyboard = [[{ text: 'Сесть рядом →', url: goUrl(d, u) }]]
+    keyboard = [[sit(d, u)]]
     text ||= T.step(reply.startFocus.firstStep)
   }
   if (!text) text = T.aiDown
@@ -840,6 +867,9 @@ async function onCallback(q: NonNullable<TgUpdate['callback_query']>, d: Deps) {
     u.stepIdx = 0
     await d.store.saveUser(u)
     await offerStep(d, u, T.step(u.steps[0]))
+  } else if (data === 'est') {
+    await d.store.saveUser(u)
+    await say(d, chat, estimateText(d, u, now))
   } else if (data === 'nx') {
     // «другой шаг» под шагом из плана (старая кнопка): план снят, показываем первый шаг по сфере, а не второй
     if (u.plan) {

@@ -126,7 +126,7 @@ describe('бот: напоминания', () => {
     expect(await tick(r.deps)).toBe(1)
     expect(r.texts()[0]).toMatch(/Открыть документ или задачу/)
     const kb = (r.sent[0].body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard.flat()
-    expect(kb.map((b) => b.text)).toEqual(['Сесть рядом →', 'Не сегодня', 'Пауза на неделю', 'Стоп'])
+    expect(kb.map((b) => b.text)).toEqual(['Сесть с Котиком 🐈‍⬛', 'Не сегодня', 'Пауза на неделю', 'Стоп'])
     // повторно в ту же минуту — тишина: не больше одного в день
     expect(await tick(r.deps)).toBe(0)
     // три дня без ответа → дальше раз в 3 дня
@@ -279,7 +279,14 @@ describe('бот: «Разбей …» — база готовых планов 
     expect(u?.task).toBe('Помыть посуду')
     expect(u?.steps).toHaveLength(3)
     const kb = (planMsg.body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard
-    expect(kb[0].map((b) => b.text)).toEqual(['Сесть рядом →', 'Следующий шаг'])
+    // «Сесть с Котиком» — синяя, на всю ширину; под ней «След шаг» и «Оценить время» (владелец 22.11)
+    expect(kb.map((row) => row.map((b) => b.text))).toEqual([['Сесть с Котиком 🐈‍⬛'], ['След шаг', '⏱ Оценить время']])
+    expect((kb[0][0] as { style?: string; url?: string }).style).toBe('primary')
+    expect((kb[0][0] as { url?: string }).url).toContain('/api/tg/go?')
+    // «Оценить время» — сколько до конца и к какому часу, без модели
+    r.deps.estimate = () => [2, 10, 90]
+    await r.tap('est')
+    expect(r.texts().at(-1)).toMatch(/^⏱ Всё дело «Помыть посуду»: около 1 ч 42 мин\.\nНачнёшь сейчас, управишься примерно к \d\d:\d\d\./)
     // «Следующий шаг» — по порядку, после последнего не по кругу
     await r.tap('nx')
     expect(r.texts().at(-1)).toBe('Шаг 2 из 3: «Помыть тарелки».\nЯ рядом.')
@@ -494,7 +501,7 @@ describe('бот: полоска «котик разбивает задачу» 
     const last = edits.at(-1)!
     expect(last.body.parse_mode).toBe('HTML')
     expect(String(last.body.text)).toMatch(/^🐾 <b>Помыть посуду<\/b>/)
-    expect((last.body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard[0][0].text).toBe('Сесть рядом →')
+    expect((last.body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard[0][0].text).toBe('Сесть с Котиком 🐈‍⬛')
     // плана новым сообщением нет — он вырос из полоски
     expect(ev.filter((s) => s.method === 'sendMessage' && String(s.body.text).startsWith('🐾'))).toHaveLength(0)
     expect(r.waits.every((w) => w >= 400)).toBe(true)
@@ -535,5 +542,20 @@ describe('бот: полоска «котик разбивает задачу» 
     await r.msg('/start')
     await r.msg('разбей отчёт')
     expect(r.sent.some((s) => s.method === 'sendMessage' && String(s.body.text).startsWith('🐾 <b>отчёт</b>'))).toBe(true)
+  })
+})
+
+describe('одна база на сайте, в мини-аппе и в боте', () => {
+  it('разбивка и оценка времени в боте — те же функции, что у /api/breakdown и /api/estimate', async () => {
+    const { liveDeps } = await import('@/lib/tg/deps')
+    const { breakdown } = await import('@/lib/ai/agents/breakdown')
+    const { estimate } = await import('@/lib/ai/agents/estimate')
+    const d = liveDeps('https://example.com')
+    const steps = ['Собрать посуду в раковину', 'Помыть тарелки']
+    expect(d.estimate!('Помыть посуду', steps)).toEqual(estimate({ task: 'Помыть посуду', steps }))
+    const site = await breakdown({ task: 'помою посуду' })
+    const bot = await d.breakdown('помою посуду')
+    expect(site.kind === 'steps' && bot.steps).toEqual(site.kind === 'steps' && site.steps)
+    expect(site.kind === 'steps' && bot.minutes).toEqual(site.kind === 'steps' && site.minutes)
   })
 })
