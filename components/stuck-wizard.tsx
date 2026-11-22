@@ -272,7 +272,8 @@ export function StuckWizard() {
 
       <div className="mt-4 flex items-end gap-3">
         {/* кот с костром — как в макете владельца 22.11: костёр слева у лап, кот до 128 px */}
-        <div className="relative shrink-0">
+        {/* pl-1.5: кот чуть правее костра (владелец 22.11), костёр на прежнем месте */}
+        <div className="relative shrink-0 pl-1.5">
           <Campfire className="absolute -bottom-1 -left-5 z-[2] h-[46%] w-[40%]" />
           <MascotDoll expression={face} action={stage === 2 ? "wave" : stage === 1 && kind === "unclear" ? "think" : "idle"} size={128} label="Напарник" className="size-[clamp(96px,22dvh,128px)]" />
         </div>
