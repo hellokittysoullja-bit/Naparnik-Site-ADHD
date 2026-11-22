@@ -1753,10 +1753,9 @@ export function FocusSession() {
             )}
             {/* Кот в своём квадрате стоит низко — подъём уравнивает зазоры до кольца (замер ringgap.mjs, 11.11) */}
             <div className="-translate-y-[12%]">
-              <motion.div
-                animate={reducedMotion || paused ? undefined : { y: [0, -4, 0], rotate: [0, 0, -1.5, 0, 1.5, 0, 0] }}
-                transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
-              >
+              {/* кот сидит на месте и только дышит (дыхание — в самой кукле). Раньше вся обёртка качалась вверх-вниз и
+                  поворачивалась по кругу 7 с — кот «плавал, будто в воде» (владелец 22.11); такого покачивания нигде нет */}
+              <div>
                 <MascotSvg
                   expression={paused ? 'sleepy' : cheering || backFromDrift ? 'happy' : 'focused'}
                   // «работаем вместе» (владелец 22.11): кот всегда за ноутбуком и печатает; на паузе дремлет
@@ -1765,7 +1764,7 @@ export function FocusSession() {
                   size={188}
                   className="size-[var(--focus-cat)]"
                 />
-              </motion.div>
+              </div>
             </div>
           </div>
           {hideDigits ? (
