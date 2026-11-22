@@ -54,7 +54,9 @@ const dur = (m: number) => shortDuration(m).replace(/ /g, '\u00a0')
 /**
  * Весь план (владелец 22.11), разметка HTML; минуты — только после «Оценить время» (тогда и итог с часом конца):
  * <b>🐾 Помыть посуду</b>
+ *
  * 🪄 Котик разломал на <b>7 микрошагов:</b>
+ *
  * <b>1. Собрать всю грязную посуду</b> (первый шаг)
  * <b>2. …</b>
  *
@@ -74,7 +76,7 @@ export function planText(title: string, steps: string[], timing?: PlanTiming) {
   const total = timing
     ? `\n⏱ Всего около ${dur(timing.total)}${timing.at ? `. Начнёшь сейчас, управишься примерно к ${timing.at}` : ''}`
     : ''
-  return `<b>${PLAN_HEAD}${esc(title)}</b>\n🪄 Котик разломал на <b>${n} ${plural(n, 'микрошаг', 'микрошага', 'микрошагов')}:</b>\n${lines.join('\n')}${total}\n\n🐈 Начнём с первого. Котик рядом`
+  return `<b>${PLAN_HEAD}${esc(title)}</b>\n\n🪄 Котик разломал на <b>${n} ${plural(n, 'микрошаг', 'микрошага', 'микрошагов')}:</b>\n\n${lines.join('\n')}${total}\n\n🐈 Начнём с первого. Котик рядом`
 }
 
 /**
@@ -83,7 +85,8 @@ export function planText(title: string, steps: string[], timing?: PlanTiming) {
  */
 export function parsePlanMessage(text: string | undefined): { title: string; steps: string[] } | null {
   if (!text) return null
-  const lines = text.split('\n')
+  // пустые строки «воздуха» между названием, подзаголовком и шагами не считаются
+  const lines = text.split('\n').filter((l) => l.trim())
   if (!lines[0]?.startsWith(PLAN_HEAD) || !/^🪄 Котик разломал на /.test(lines[1] ?? '')) return null
   const title = lines[0].slice(PLAN_HEAD.length).trim()
   const steps: string[] = []

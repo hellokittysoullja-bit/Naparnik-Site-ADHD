@@ -161,7 +161,7 @@ describe('бот: разметка не прошла — план всё рав�
     await r.msg({ text: '/start' })
     await r.msg({ text: 'разбей помыть посуду' })
     const last = r.sent.filter((s) => s.method === 'sendMessage').map((s) => String(s.body.text)).find((t) => t.startsWith('🐾 '))
-    expect(last).toMatch(/^🐾 помыть посуду\n🪄 Котик разломал на 3 микрошага:/)
+    expect(last).toMatch(/^🐾 помыть посуду\n\n🪄 Котик разломал на 3 микрошага:/)
     expect(last).not.toContain('<b>')
   })
 })
