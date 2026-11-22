@@ -133,6 +133,13 @@ export class DollAnimator {
   private airPrev = false;
   private hopPrev = 0;
   private actGaze: { x: number; y: number } | null = null;
+  /** лапы на клавиатуре (ноутбук): подъём левой и правой 0..1 — их читает слой предметов (components/cat-props.tsx) */
+  pawLift: [number, number] = [0, 0];
+  /** удар по клавише 0..1 — свет экрана чуть вспыхивает в такт */
+  keyHit = 0;
+  private keyAt: [number, number] = [-9, -9];
+  private nextKey = 0;
+  private lastPaw = 0;
 
   constructor(rig: RigData & { eyes?: number[][] }, seed = Math.floor(Math.random() * 2 ** 31)) {
     this.rand = rng(seed);
@@ -378,13 +385,22 @@ export class DollAnimator {
       if (this.activity === "laptop") {
         const think = fbm(t / 5, 91) > 0.55;
         this.actGaze = { x: think ? 0.35 : 0.18 * fbm(t / 1.3, 93), y: think ? -0.15 : 0.6 };
-        // печатает — голова чуть покачивается в такт; задумался — замирает
-        if (!think) P.rot[B.head] += 0.7 * Math.sin(t * 17) * Math.max(0, fbm(t / 0.9, 95)) * D2R;
+        // печатает лапами: удары по клавишам по очереди (иногда одной лапой дважды), темп живой — 5–9 ударов в
+        // секунду, между словами короткие паузы; задумался — лапы лежат на клавиатуре, голова замирает
+        if (!think && t >= this.nextKey) {
+          const paw = this.rand() < 0.75 ? 1 - this.lastPaw : this.lastPaw;
+          this.keyAt[paw] = t; this.lastPaw = paw;
+          this.nextKey = t + (this.rand() < 0.12 ? 0.35 + this.rand() * 0.25 : 0.1 + this.rand() * 0.09);
+          P.rot[B.head] += 0.5 * D2R;
+        }
+        const lift = (d: number) => (d < 0 ? 0 : d < 0.05 ? sm(d / 0.05) : d < 0.14 ? 1 - sm((d - 0.05) / 0.09) : 0);
+        this.pawLift = think ? [0, 0] : [lift(t - this.keyAt[0]), lift(t - this.keyAt[1])];
+        this.keyHit = Math.max(lift(t - this.keyAt[0] - 0.05), lift(t - this.keyAt[1] - 0.05));
       } else {
         const line = 1.6, u = (t % line) / line, n = Math.floor(t / line) % 5;
         this.actGaze = n === 4 ? { x: 0, y: 0.3 } : { x: u < 0.88 ? -0.5 + (u / 0.88) * 1.0 : 0.5 - ((u - 0.88) / 0.12) * 1.0, y: 0.45 + n * 0.07 };
       }
-    } else this.actGaze = null;
+    } else { this.actGaze = null; this.pawLift = [0, 0]; this.keyHit = 0; }
 
     // ----- глаза
     const R = this.eyeR;

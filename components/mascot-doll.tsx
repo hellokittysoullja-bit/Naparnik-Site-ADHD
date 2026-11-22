@@ -251,6 +251,13 @@ function DollCanvas({ expression = "calm", action = "idle", size = 160, label, c
         sh.style.transform = k ? `scale(${1 - 0.25 * k})` : "";
         sh.style.opacity = k ? String(1 - 0.5 * k) : "";
       }
+      // лапы на клавиатуре и вспышка экрана — CSS-переменными слою предметов (только пока кот за ноутбуком)
+      if (a.activity === "laptop" && wrap.current) {
+        const st = wrap.current.style;
+        st.setProperty("--paw-l", a.pawLift[0].toFixed(3));
+        st.setProperty("--paw-r", a.pawLift[1].toFixed(3));
+        st.setProperty("--key-hit", a.keyHit.toFixed(3));
+      }
       if (octx && (a.fx.length || a.sparks.length || fxShown)) {
         octx.clearRect(0, 0, px, px);
         drawDollFx(octx, a.fx, a.t, rg.view, px, px);

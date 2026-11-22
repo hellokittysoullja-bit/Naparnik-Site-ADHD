@@ -36,6 +36,10 @@ export function CatProps({ activity }: { activity: DollActivity }) {
           <stop offset="0.6" stopColor="#ff9a2e" />
           <stop offset="1" stopColor="#ffd166" />
         </linearGradient>
+        <linearGradient id="cp-fur" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#7a7880" />
+          <stop offset="1" stopColor="#3d3c42" />
+        </linearGradient>
         <linearGradient id="cp-cover" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#e2683a" />
           <stop offset="1" stopColor="#bf4a22" />
@@ -45,10 +49,14 @@ export function CatProps({ activity }: { activity: DollActivity }) {
       {activity === "laptop" ? (
         <g className="cat-props-breathe">
           {/* свет экрана на морде и над кромкой крышки — мерцает, как экран при печати */}
-          <g className="cat-props-screen" style={{ mixBlendMode: "screen" }}>
+          <g style={{ mixBlendMode: "screen", opacity: "calc(0.8 + var(--key-hit, 0) * 0.2)" }}>
             <ellipse cx="545" cy="575" rx="360" ry="250" fill="url(#cp-face)" />
             <path d="M300 712 L790 712 L770 640 Q545 600 320 640 Z" fill="url(#cp-rim)" />
           </g>
+          {/* лапы на клавиатуре — тыльной стороной к зрителю (кот печатает, подушечки внизу, на клавишах), выглядывают
+              из-за крышки и поднимаются на каждый удар: подъём считает кукла (--paw-l, --paw-r) */}
+          <PawBack x={430} side="l" />
+          <PawBack x={660} side="r" />
           {/* крышка (вид сзади): чуть сужается кверху, толстая тёмная обводка как у кота */}
           <path d="M318 706 Q306 706 304 720 L284 948 Q282 966 300 966 L790 966 Q808 966 806 948 L786 720 Q784 706 772 706 Z" fill="url(#cp-lid)" stroke={INK} strokeWidth="10" strokeLinejoin="round" />
           <path d="M330 730 L760 730" stroke="#fff" strokeOpacity="0.55" strokeWidth="6" strokeLinecap="round" />
@@ -83,5 +91,18 @@ export function CatProps({ activity }: { activity: DollActivity }) {
         </g>
       )}
     </svg>
+  );
+}
+
+/** Лапа сверху (тыльная сторона): мягкая «варежка» с двумя бороздками между пальцами, шерсть цвета кота */
+function PawBack({ x, side }: { x: number; side: "l" | "r" }) {
+  return (
+    <g style={{ transform: `translateY(calc(var(--paw-${side}, 0) * -34px))` }}>
+      <g transform={`translate(${x} 712) rotate(${side === "l" ? -8 : 8}) scale(1.3)`}>
+        <path d="M-62 46 C-66 -6 -36 -44 0 -44 C36 -44 66 -6 62 46 Z" fill="url(#cp-fur)" stroke={INK} strokeWidth="9" strokeLinejoin="round" />
+        <path d="M-22 -40 Q-19 -26 -21 -10 M22 -40 Q19 -26 21 -10" fill="none" stroke={INK} strokeWidth="6" strokeLinecap="round" />
+        <path d="M-40 -18 Q-34 -32 -20 -37" fill="none" stroke="#8d8a93" strokeWidth="5" strokeLinecap="round" opacity="0.6" />
+      </g>
+    </g>
   );
 }
