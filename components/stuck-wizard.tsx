@@ -7,6 +7,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, BatteryLow, CloudFog, Mountain, RotateCcw, ShieldAlert, Wind, type LucideIcon } from "lucide-react";
 import { MascotDoll, type MascotExpression } from "@/components/mascot-doll";
 import { EmphasisText } from "@/components/emphasis-text";
+import { Campfire } from "@/components/campfire";
+import { FocusScene } from "@/components/focus-scene";
 import { hapticThreshold } from "@/lib/haptics";
 
 /**
@@ -138,7 +140,8 @@ export function StuckWizard() {
   const params = useSearchParams();
   const router = useRouter();
   const reduce = useReducedMotion();
-  const [task, setTask] = useState((params.get("task") ?? "").slice(0, 100));
+  // дело приходит с Дома (?task=); поля «дело» на экране нет (владелец 22.11) — без дела шаг общий
+  const task = (params.get("task") ?? "").slice(0, 100);
   const [stage, setStage] = useState<0 | 1 | 2>(0);
   const [kind, setKind] = useState<Kind | null>(null);
   const [word, setWord] = useState("");
@@ -244,6 +247,9 @@ export function StuckWizard() {
   }
 
   return (
+    <>
+    {/* фон — ночная сцена, как на Доме и в Фокусе (владелец 22.11) */}
+    <FocusScene />
     <main className="app-page-enter relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-[calc(5.5rem+var(--sab))] pt-[max(0.75rem,var(--sat))]">
       <div className="flex items-center gap-2">
         <button type="button" onClick={back} aria-label="Назад" className="press -ml-2 grid size-11 place-items-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -264,22 +270,12 @@ export function StuckWizard() {
         )}
       </div>
 
-      {/* дело — сверху, как у источника: мастер всё время говорит про него */}
-      <label className="field-shell mt-1">
-        <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-primary/90">дело</span>
-        <input
-          value={task}
-          maxLength={100}
-          onChange={(e) => setTask(e.target.value)}
-          placeholder="например, курсовая"
-          className="field-inner"
-          enterKeyHint="done"
-          autoCapitalize="sentences"
-        />
-      </label>
-
       <div className="mt-4 flex items-end gap-3">
-        <MascotDoll expression={face} action={stage === 2 ? "wave" : stage === 1 && kind === "unclear" ? "think" : "idle"} size={104} label="Напарник" />
+        {/* кот с костром — как в макете владельца 22.11: костёр слева у лап, кот до 128 px */}
+        <div className="relative shrink-0">
+          <Campfire className="absolute -bottom-1 -left-5 z-[2] h-[46%] w-[40%]" />
+          <MascotDoll expression={face} action={stage === 2 ? "wave" : stage === 1 && kind === "unclear" ? "think" : "idle"} size={128} label="Напарник" className="size-[clamp(96px,22dvh,128px)]" />
+        </div>
         <AnimatePresence mode="wait" initial={false}>
           <motion.p
             key={`${stage}-${kind}-${line}`}
@@ -413,7 +409,6 @@ export function StuckWizard() {
                 <button
                   type="button"
                   onClick={start}
-                  disabled={!task.trim()}
                   onTouchStart={() => {}}
                   className="btn-chunky block w-full select-none rounded-[16px] outline-none disabled:pointer-events-none disabled:opacity-50"
                 >
@@ -421,7 +416,6 @@ export function StuckWizard() {
                     {a.breakIt ? "Разломать на шаги" : "Готов начать"}
                   </span>
                 </button>
-                {!task.trim() && <p className="text-center text-[13px] text-muted-foreground">Впиши дело наверху, и поедем.</p>}
                 <button type="button" onClick={restart} className="press h-11 text-[14.5px] font-medium text-muted-foreground">
                   Не то, спроси по-другому
                 </button>
@@ -431,6 +425,7 @@ export function StuckWizard() {
         </motion.div>
       </AnimatePresence>
     </main>
+    </>
   );
 }
 
