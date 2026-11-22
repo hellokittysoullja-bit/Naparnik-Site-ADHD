@@ -78,13 +78,21 @@ function startLinks() {
 export const SCENE_TOP = '#060c1f'
 export const SCENE_BOTTOM = '#070d0a'
 
+/** низ нижнего меню /app (.glass-nav в globals.css — полупрозрачный, поверх неба экрана) */
+const NAV_BOTTOM = 'oklch(0.17 0.008 130 / 0.68)'
+
+/** цвет css в hex; с base — css, положенный поверх base (для полупрозрачного) */
 const toHex = (() => {
   let ctx: CanvasRenderingContext2D | null = null
-  return (css: string): string | null => {
+  return (css: string, base?: string): string | null => {
     try {
       ctx ??= document.createElement('canvas').getContext('2d', { willReadFrequently: true })
       if (!ctx) return null
       ctx.clearRect(0, 0, 1, 1)
+      if (base) {
+        ctx.fillStyle = base
+        ctx.fillRect(0, 0, 1, 1)
+      }
       ctx.fillStyle = '#000'
       ctx.fillStyle = css
       ctx.fillRect(0, 0, 1, 1)
@@ -111,6 +119,13 @@ function startColors(tg: TgBridge) {
       const stops = sky?.style.background.match(/(?:oklch|rgba?|lab|hsl)\([^)]*\)|#[0-9a-f]{3,8}/gi)
       top = (stops && toHex(stops[0])) || toHex(getComputedStyle(document.body).backgroundColor) || SCENE_TOP
       bottom = (stops && toHex(stops[stops.length - 1])) || top
+    }
+    // под нижним меню Telegram на iPhone рисует свою панель (место своих кнопок) — красим её цветом меню, иначе она
+    // светлой полосой торчит под полоской «домой» (скриншот владельца 22.11)
+    const nav = document.querySelector<HTMLElement>('nav[aria-label="Основная навигация"]')
+    if (nav) {
+      const cs = getComputedStyle(nav)
+      if (cs.visibility !== 'hidden' && Number(cs.opacity) > 0.5) bottom = toHex(NAV_BOTTOM, bottom) || bottom
     }
     const key = top + bottom
     if (key === last) return

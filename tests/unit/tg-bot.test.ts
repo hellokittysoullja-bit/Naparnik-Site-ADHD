@@ -272,21 +272,33 @@ describe('бот: «Разбей …» — база готовых планов 
     await r.msg('разбей памыть пасуду')
     expect(asked).toEqual(['памыть пасуду'])
     expect(talked).toBe(0)
-    const planMsg = r.sent.find((s) => String(s.body.text).startsWith('🐾 <b>'))!
+    const planMsg = r.sent.find((s) => String(s.body.text).startsWith('<b>🐾 '))!
     expect(planMsg.body.parse_mode).toBe('HTML')
-    expect(planMsg.body.text).toBe('🐾 <b>Помыть посуду</b>\nРазломал на 3 микрошага · около 1\u00a0ч\u00a042\u00a0мин\n\n1️⃣ Собрать посуду в раковину\u00a0·\u00a0<i>2\u00a0мин</i>\n2️⃣ Помыть тарелки\u00a0·\u00a0<i>10\u00a0мин</i>\n3️⃣ Вытереть стол\u00a0·\u00a0<i>1\u00a0ч\u00a030\u00a0мин</i>\n\n👉 Начнём с первого. Я рядом.')
+    expect(planMsg.body.text).toBe('<b>🐾 Помыть посуду</b>\n\n🪄 Котик разломал на <b>3 микрошага:</b>\n\n<b>1. Собрать посуду в раковину</b> (первый шаг)\n<b>2. Помыть тарелки</b>\n<b>3. Вытереть стол</b>\n\n🐈 Начнём с первого. Котик рядом')
     const u = await r.store.getUser(CHAT)
     expect(u?.task).toBe('Помыть посуду')
     expect(u?.steps).toHaveLength(3)
     const kb = (planMsg.body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard
     // «Сесть с Котиком» — синяя, на всю ширину; под ней «След шаг» и «Оценить время» (владелец 22.11)
-    expect(kb.map((row) => row.map((b) => b.text))).toEqual([['Сесть с Котиком 🐈‍⬛'], ['След шаг', '⏱ Оценить время']])
+    expect(kb.map((row) => row.map((b) => b.text))).toEqual([['Сесть с Котиком 🐈‍⬛'], ['⏭️ След. шаг', '⏱ Оценить время']])
     expect((kb[0][0] as { style?: string; url?: string }).style).toBe('primary')
     expect((kb[0][0] as { url?: string }).url).toContain('/api/tg/go?')
-    // «Оценить время» — сколько до конца и к какому часу, без модели
+    // «Оценить время» правит ТО ЖЕ сообщение: минуты у шагов, итог и час конца, кнопки на месте; нового сообщения нет
     r.deps.estimate = () => [2, 10, 90]
-    await r.tap('est')
-    expect(r.texts().at(-1)).toMatch(/^⏱ Всё дело «Помыть посуду»: около 1 ч 42 мин\.\nНачнёшь сейчас, управишься примерно к \d\d:\d\d\./)
+    const before = r.sent.length
+    const plainText = String(planMsg.body.text).replace(/<[^>]+>/g, '')
+    await handleUpdate({ callback_query: { id: 'q2', data: 'est', message: { chat: { id: CHAT }, message_id: 77, text: plainText, reply_markup: planMsg.body.reply_markup } } }, r.deps)
+    const edits = r.sent.slice(before).filter((s) => s.method === 'editMessageText')
+    expect(edits).toHaveLength(1)
+    expect(edits[0].body.message_id).toBe(77)
+    expect(edits[0].body.reply_markup).toEqual(planMsg.body.reply_markup)
+    expect(String(edits[0].body.text)).toContain('<b>1. Собрать посуду в раковину</b> (первый шаг) · 2\u00a0мин')
+    expect(String(edits[0].body.text)).toMatch(/⏱ Всего около 1\u00a0ч\u00a042\u00a0мин\. Начнёшь сейчас, управишься примерно к \d\d:\d\d/)
+    expect(r.sent.slice(before).some((s) => s.method === 'sendMessage')).toBe(false)
+    // второе нажатие на уже оценённом — текст тот же, правки нет
+    const after = r.sent.length
+    await handleUpdate({ callback_query: { id: 'q3', data: 'est', message: { chat: { id: CHAT }, message_id: 77, text: String(edits[0].body.text).replace(/<[^>]+>/g, ''), reply_markup: planMsg.body.reply_markup } } }, r.deps)
+    expect(r.sent.slice(after).filter((s) => s.method === 'editMessageText' || s.method === 'sendMessage')).toHaveLength(0)
     // «Следующий шаг» — по порядку, после последнего не по кругу
     await r.tap('nx')
     expect(r.texts().at(-1)).toBe('Шаг 2 из 3: «Помыть тарелки».\nЯ рядом.')
@@ -338,10 +350,11 @@ describe('бот: «Разбей …» — база готовых планов 
     await r.msg('/start')
     await r.msg('Разбей помыть посуду')
     const want = readyPlan('помыть посуду')!.value
-    const plan = r.texts().find((t) => t.startsWith('🐾 <b>Помыть посуду</b>'))!
-    expect(plan).toContain(`1️⃣ ${want.steps[0]}`)
-    expect(plan.split('\n').filter((l) => /^\d\uFE0F\u20E3|^🔟/u.test(l))).toHaveLength(want.steps.length)
-    expect(plan).toMatch(/\u00a0·\u00a0<i>\d+\u00a0(мин|ч)/)
+    const plan = r.texts().find((t) => t.startsWith('<b>🐾 Помыть посуду</b>'))!
+    expect(plan).toContain(`<b>1. ${want.steps[0]}</b> (первый шаг)`)
+    expect(plan.split('\n').filter((l) => /^<b>\d+\. /.test(l))).toHaveLength(want.steps.length)
+    // минут в плане нет — они только после «Оценить время» (владелец 22.11)
+    expect(plan).not.toMatch(/мин|<i>/)
   })
 })
 
@@ -377,7 +390,7 @@ describe('бот: нижняя кнопка «🐾 Разбить задачу»
     await r.msg('помыть посуду')
     expect(asked).toEqual(['помыть посуду'])
     expect(talked).toBe(0)
-    expect(r.texts().some((t) => t.startsWith('🐾 <b>помыть посуду</b>\nРазломал на 3 микрошага'))).toBe(true)
+    expect(r.texts().some((t) => t.startsWith('<b>🐾 помыть посуду</b>\n\n🪄 Котик разломал на <b>3 микрошага:</b>'))).toBe(true)
     // ожидание снято: следующее сообщение снова разговор с котом
     expect((await r.store.getUser(CHAT))?.awaiting).toBeNull()
     await r.msg('спасибо')
@@ -399,24 +412,30 @@ describe('бот: нижняя кнопка «🐾 Разбить задачу»
   })
 })
 
-describe('бот: оформление плана (вариант Б)', () => {
+describe('бот: оформление плана (владелец 22.11)', () => {
+  it('без минут: жирное название, «Котик разломал на N микрошагов:», жирные шаги, «(первый шаг)» обычным; без курсива', async () => {
+    const { planText } = await import('@/lib/tg/bot')
+    expect(planText('Покакать', ['Дойти до туалета', 'Раздеться и сесть'])).toBe(
+      '<b>🐾 Покакать</b>\n\n🪄 Котик разломал на <b>2 микрошага:</b>\n\n<b>1. Дойти до туалета</b> (первый шаг)\n<b>2. Раздеться и сесть</b>\n\n🐈 Начнём с первого. Котик рядом',
+    )
+    expect(planText('Д', ['a'])).not.toContain('<i>')
+    expect(planText('Д', ['a'])).toContain('1 микрошаг:')
+    expect(planText('Дело', Array.from({ length: 12 }, (_, i) => `Шаг ${i + 1}`))).toContain('<b>12 микрошагов:</b>\n\n<b>1. Шаг 1</b>')
+  })
   it('текст человека экранируется: теги из дела не становятся разметкой', async () => {
     const { planText } = await import('@/lib/tg/bot')
-    const t = planText('<b>я</b> & ты', ['Открыть <a href="x">ссылку</a>', 'Два'], [5, undefined])
-    expect(t).toContain('🐾 <b>&lt;b&gt;я&lt;/b&gt; &amp; ты</b>')
-    expect(t).toContain('1️⃣ Открыть &lt;a href="x"&gt;ссылку&lt;/a&gt;\u00a0·\u00a0<i>5\u00a0мин</i>')
-    // минут нет у одного шага — общего времени нет, а не неправда
-    expect(t).toContain('Разломал на 2 микрошага\n')
-    expect(t).toContain('2️⃣ Два\n')
+    const t = planText('<b>я</b> & ты', ['Открыть <a href="x">ссылку</a>', 'Два'])
+    expect(t).toContain('<b>🐾 &lt;b&gt;я&lt;/b&gt; &amp; ты</b>')
+    expect(t).toContain('<b>1. Открыть &lt;a href="x"&gt;ссылку&lt;/a&gt;</b> (первый шаг)')
   })
-
-  it('больше десяти шагов: после 🔟 обычные номера; склонение «микрошагов»', async () => {
-    const { planText } = await import('@/lib/tg/bot')
-    const steps = Array.from({ length: 12 }, (_, i) => `Шаг ${i + 1}`)
-    const t = planText('Дело', steps)
-    expect(t).toContain('Разломал на 12 микрошагов')
-    expect(t).toContain('🔟 Шаг 10\n11. Шаг 11\n12. Шаг 12')
-    expect(planText('Д', ['a'])).toContain('1 микрошаг\n')
+  it('план читается обратно из текста сообщения — и после оценки времени тоже', async () => {
+    const { planText, parsePlanMessage } = await import('@/lib/tg/bot')
+    const plain = (h: string) => h.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    const steps = ['Собрать посуду (всю)', 'Помыть · быстро', 'Вытереть стол']
+    const want = { title: 'Помыть посуду', steps }
+    expect(parsePlanMessage(plain(planText('Помыть посуду', steps)))).toEqual(want)
+    expect(parsePlanMessage(plain(planText('Помыть посуду', steps, { minutes: [2, 10, 90], total: 102, at: '15:40' })))).toEqual(want)
+    expect(parsePlanMessage('Шаг 2 из 3: «Помыть».')).toBeNull()
   })
 })
 
@@ -495,12 +514,12 @@ describe('бот: полоска «котик разбивает задачу» 
     const first = ev.find((s) => s.method === 'sendMessage')!
     expect(first.body.text).toBe('🐈 котик разбивает задачу...\n[░░░░░░░░░░] 0%')
     const edits = ev.filter((s) => s.method === 'editMessageText')
-    expect(edits.map((e) => String(e.body.text).split('\n')[1] ?? '')).toEqual(['[▓▓▓░░░░░░░] 30%', '[▓▓▓▓▓▓░░░░] 60%', '[▓▓▓▓▓▓▓▓▓░] 90%', '[▓▓▓▓▓▓▓▓▓▓] 100%', 'Разломал на 3 микрошага · около 6\u00a0мин'])
+    expect(edits.map((e) => String(e.body.text).split('\n').filter(Boolean)[1] ?? '')).toEqual(['[▓▓▓░░░░░░░] 30%', '[▓▓▓▓▓▓░░░░] 60%', '[▓▓▓▓▓▓▓▓▓░] 90%', '[▓▓▓▓▓▓▓▓▓▓] 100%', '🪄 Котик разломал на <b>3 микрошага:</b>'])
     // все правки — того же сообщения; последняя — план с разметкой и кнопками
     expect(new Set(edits.map((e) => e.body.message_id)).size).toBe(1)
     const last = edits.at(-1)!
     expect(last.body.parse_mode).toBe('HTML')
-    expect(String(last.body.text)).toMatch(/^🐾 <b>Помыть посуду<\/b>/)
+    expect(String(last.body.text)).toMatch(/^<b>🐾 Помыть посуду<\/b>/)
     expect((last.body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard[0][0].text).toBe('Сесть с Котиком 🐈‍⬛')
     // плана новым сообщением нет — он вырос из полоски
     expect(ev.filter((s) => s.method === 'sendMessage' && String(s.body.text).startsWith('🐾'))).toHaveLength(0)
@@ -521,7 +540,7 @@ describe('бот: полоска «котик разбивает задачу» 
     expect(shown.some((t) => t.includes('100%'))).toBe(false)
     release()
     await run
-    expect(String(r.sent.filter((s) => s.method === 'editMessageText').at(-1)!.body.text)).toMatch(/^🐾 <b>отчёт<\/b>/)
+    expect(String(r.sent.filter((s) => s.method === 'editMessageText').at(-1)!.body.text)).toMatch(/^<b>🐾 отчёт<\/b>/)
   })
 
   it('дробление не вышло или упало — полоска превращается в честный ответ, а не висит', async () => {
@@ -541,7 +560,7 @@ describe('бот: полоска «котик разбивает задачу» 
     r.deps.breakdown = async () => ({ steps: ['Раз', 'Два', 'Три'], fallback: false })
     await r.msg('/start')
     await r.msg('разбей отчёт')
-    expect(r.sent.some((s) => s.method === 'sendMessage' && String(s.body.text).startsWith('🐾 <b>отчёт</b>'))).toBe(true)
+    expect(r.sent.some((s) => s.method === 'sendMessage' && String(s.body.text).startsWith('<b>🐾 отчёт</b>'))).toBe(true)
   })
 })
 

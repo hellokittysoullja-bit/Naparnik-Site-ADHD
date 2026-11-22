@@ -284,7 +284,7 @@ export function HomeCamp() {
               expression="calm"
               size={190}
               label="Напарник"
-              className="vt-cat size-[clamp(96px,calc(100dvh-480px-var(--sab)),196px)] [@media(max-height:620px)]:size-[clamp(90px,calc(100dvh-440px-var(--sab)),196px)]"
+              className="vt-cat size-[clamp(96px,calc(var(--cat-vh)-480px-var(--sab)),196px)] [@media(max-height:620px)]:size-[clamp(90px,calc(var(--cat-vh)-440px-var(--sab)),196px)]"
             />
           </div>
         </div>

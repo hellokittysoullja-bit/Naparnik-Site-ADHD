@@ -204,6 +204,12 @@ export function parseBreakdownAnswer(text: string): BreakdownResult | null {
 const LAUGH = /^[\s!).]*(?:(?:а|х|ах|ха|хе|хи|хы)*(?:хах|аха|хаха|хех|хих)(?:а|х|ха|ах)*|л+о+л+|lol+|кек|ору+|ржу+|ржака)[\s!).]*$/iu
 export const asTask = (task: string) => (LAUGH.test(task.trim()) ? 'посмеяться' : task)
 
+/** дело словами человека: только первая буква заглавная и лишние пробелы убраны — слова не меняются */
+const ownWords = (task: string) => {
+  const t = task.trim().replace(/\s+/g, ' ')
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 export async function breakdown(input: {
   ctx?: TurnContext
   task: string
@@ -223,7 +229,8 @@ export async function breakdown(input: {
   const c = input.context
   if (!(input.again || c?.['Это часть дела'])) {
     const hit = readyPlan(input.task)
-    if (hit) return { kind: 'steps', ...hit.value, steps: [...hit.value.steps], source: 'library', title: hit.title }
+    // название из базы — только если человек ошибся в написании; написал иначе — дело остаётся его словами (22.11)
+    if (hit) return { kind: 'steps', ...hit.value, steps: [...hit.value.steps], source: 'library', title: hit.typo ? hit.title : ownWords(input.task) }
   }
   const ctx = input.ctx ?? newTurn({ task: 'breakdown' })
   const snapshot = await prefetchWithin(input.memory ?? NoMemory, ctx)
