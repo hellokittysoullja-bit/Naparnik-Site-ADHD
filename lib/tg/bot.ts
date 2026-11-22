@@ -1,3 +1,4 @@
+import { postButtons } from './post-buttons'
 import { SPHERES, STEPS, FIRST_MINUTES, type Sphere } from '@/lib/onboarding'
 import { shortDuration } from '@/lib/deals'
 import { linkCode } from './link'
@@ -499,6 +500,8 @@ async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
   const now = d.now()
   // фото с подписью — подпись и есть сообщение
   const text = (msg.text ?? msg.caption ?? '').trim()
+  // кнопки под постом канала (lib/tg/post-buttons.ts): служебная команда админа, разговор и запись не трогает
+  if (/^\/(button|buttons|кнопка|кнопки)(@\w+)?(\s|$)/i.test(text)) return void (await d.send('sendMessage', { chat_id: chat, text: await postButtons(d.send, chat, text), link_preview_options: { is_disabled: true } }))
   let u = await d.store.getUser(chat)
   const isNew = !u
   u ??= newUser(chat, now)
