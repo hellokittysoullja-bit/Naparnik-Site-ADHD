@@ -9,7 +9,6 @@ import { useSearchParams } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Button } from '@/components/ui/button'
 import { MascotDoll as MascotSvg } from '@/components/mascot-doll'
-import { catActivity } from '@/lib/cat-activity'
 import { EmphasisText } from '@/components/emphasis-text'
 import { RevealIsland, type RevealNewItem } from '@/components/reveal-island'
 import { ChevronLeft, Eye, EyeOff, LayoutList, NotebookPen, Pause, Play, Sparkles, Timer } from 'lucide-react'
@@ -1760,8 +1759,8 @@ export function FocusSession() {
               >
                 <MascotSvg
                   expression={paused ? 'sleepy' : cheering || backFromDrift ? 'happy' : 'focused'}
-                  // «работаем вместе» (владелец 22.11): кот сидит за ноутбуком или читает книгу — по делу; на паузе дремлет
-                  activity={paused || cheering || backFromDrift ? 'none' : catActivity(task)}
+                  // «работаем вместе» (владелец 22.11): кот всегда за ноутбуком и печатает; на паузе дремлет
+                  activity={paused || cheering || backFromDrift ? 'none' : 'laptop'}
                   label="Напарник работает рядом"
                   size={188}
                   className="size-[var(--focus-cat)]"
