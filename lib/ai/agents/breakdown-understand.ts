@@ -143,6 +143,16 @@ export function studyRewrite(tw: readonly string[]): { w: string; from: number; 
     if (tail && /^язык[ауе]?$/.test(tail)) out.splice(k + 1, 2, { w: s, from: out[k + 1].from, to: out[k + 2].to })
     if (s === 'окружающему' && tail && /^мир[ауе]?$/.test(tail)) out[k + 2] = { ...out[k + 2], w: 'миру' }
   }
+  // «сделать алгебру», «доделать физику», «решить матан» — предмет сразу после глагола домашки: это домашка по нему
+  // (22.11, партия 12: живые фразы «сделать геометрию», «сделать англ» уходили модели)
+  for (let k = 0; k + 1 < out.length; k++) {
+    if (!HOMEWORK_VERBS[out[k].w] && out[k].w !== 'сделать') continue
+    const s = subjectOf(out[k + 1].w)
+    if (!s || TASK_WORDS.has(out[k + 1].w)) continue
+    subject = true
+    out.splice(k + 1, 1, { w: 'домашку', from: out[k + 1].from, to: out[k + 1].from }, { w: 'по', from: out[k + 1].from, to: out[k + 1].from }, { w: s, from: out[k + 1].from, to: out[k + 1].to })
+    break
+  }
   if (subject) for (let k = 0; k < out.length; k++) if (TASK_WORDS.has(out[k].w)) out[k] = { ...out[k], w: 'домашку' }
   if (!out.some((t) => STUDY_HEADS.has(t.w))) return null
   const head = out.findIndex((t) => HOMEWORK_HEADS.has(t.w))
@@ -203,6 +213,9 @@ export const VERB_SAME: Readonly<Record<string, string>> = {
   // 22.11 (владелец: «Пойти к психиатру» не дробилось, а «Сходить к психиатру» в базе есть)
   пойти: 'сходить', поехать: 'съездить', пойду: 'сходить', схожу: 'сходить', пойдем: 'сходить', заехать: 'съездить',
   исправить: 'починить', наладить: 'починить', прибираться: 'убраться',
+  // 22.11 (партия 12): «сделать рагу», «сделать гуляш» — в базе «Приготовить …»; срабатывает, только если «Сделать …»
+  // такого дела нет, а «Приготовить …» есть (замена глагола принимается лишь при точном совпадении с делом)
+  сделать: 'приготовить',
 }
 
 /**
