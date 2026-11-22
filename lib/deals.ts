@@ -21,6 +21,10 @@ export type Deal = {
   when?: DayPart
   /** «Оценить» нажато: у дела и у шагов показано время (как у goblin.tools — по запросу, а не всегда) */
   estimated?: boolean
+  /** время дела без шагов (оценено по названию, 22.11) — у дела с шагами время = сумма шагов */
+  minutes?: number
+  /** долгое ожидание дела (сохнет ночь, ждать решения): показывается отдельно от твоего времени */
+  wait?: number
 }
 /** Карточка после сессии (у Shimmer — «Win / Action / Insight»): что получилось, что дальше, что понял */
 export type WinCard = { id: string; at: number; win: string; next?: string; insight?: string; minutes?: number }
@@ -148,7 +152,7 @@ export function toggleStep(id: string, index: number): boolean {
 }
 
 /** «Оценить»: время шагам. Уже стоящее у шага время не трогаем (оно из готового плана), дописываем только пустое */
-export function setDealEstimate(id: string, minutes: (number | undefined)[]) {
+export function setDealEstimate(id: string, minutes: (number | undefined)[], total?: { work: number; wait: number }) {
   const deals = getDeals()
   const d = deals.find((x) => x.id === id)
   if (!d) return
@@ -156,6 +160,9 @@ export function setDealEstimate(id: string, minutes: (number | undefined)[]) {
     const m = minutes[i]
     if (!st.minutes && typeof m === 'number' && m > 0) st.minutes = Math.round(m)
   })
+  // дело без шагов — время целиком по названию; ожидание — отдельно (у дела с шагами тоже)
+  if (total && !d.steps.length && total.work > 0) d.minutes = Math.round(total.work)
+  if (total) d.wait = total.wait > 0 ? Math.round(total.wait) : undefined
   d.estimated = true
   write(DEALS_KEY, deals)
 }
@@ -170,8 +177,10 @@ export function clearDealEstimate(id: string) {
 }
 
 /** Время всего дела — все шаги, и сделанные тоже: «сколько это дело занимает» (как у goblin.tools) */
+/** твоё время дела: сумма шагов без долгого ожидания (оно — `deal.wait`); у дела без шагов — оценка по названию */
 export function dealTotalMinutes(deal: Deal): number {
-  return deal.steps.reduce((a, s) => a + (s.minutes ?? 0), 0)
+  if (!deal.steps.length) return deal.minutes ?? 0
+  return Math.max(0, deal.steps.reduce((a, s) => a + (s.minutes ?? 0), 0) - (deal.wait ?? 0))
 }
 
 const plural = (n: number, one: string, few: string, many: string) => {
