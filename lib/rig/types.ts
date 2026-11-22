@@ -21,4 +21,8 @@ export type PartState = {
   opacity: number; dx: number; dy: number; sx: number; sy: number;
   /** деформация формы части (огонёк): смещение вершины (x, y в покое) пишется в out[o], out[o + 1] */
   warp?: (x: number, y: number, out: Float32Array, o: number) => void;
+  /** окраска части: rgb и доля (огонёк: слабый краснее, сильный золотистее) */
+  tint?: [number, number, number, number];
+  /** уголёк: та же часть в полный размер тёмно-оранжевым под уменьшенной (непрозрачность 0..1) */
+  ember?: number;
 };

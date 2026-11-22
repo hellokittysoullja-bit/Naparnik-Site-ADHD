@@ -12,6 +12,10 @@ export type DollExpression = "calm" | "happy" | "focused" | "sleepy" | "excited"
 export type DollAction = "idle" | "wave" | "think" | "celebrate";
 export type DollFxItem = { kind: "stars" | "zzz"; k: number; t0: number };
 export type DollFx = DollFxItem[];
+/** чем кот занят (владелец 22.11, «работаем вместе»): смотрит в ноутбук или читает книгу */
+export type DollActivity = "none" | "laptop" | "book";
+/** искра с огонька на хвосте (координаты рисунка); kind: «уголёк» поднимается сам, «вспышка» — салют победы */
+export type DollSpark = { x: number; y: number; vx: number; vy: number; t0: number; life: number; r: number; seed: number; burst: boolean };
 
 const D2R = Math.PI / 180;
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
@@ -115,6 +119,29 @@ export class DollAnimator {
   private flameH = 136;
   private flameT = 0;
   private flameAmp = 1;
+  /** от центра огонька до его основания: масштаб части идёт от центра, основание держим на кончике хвоста */
+  private flameBase = 68;
+  /** сила огня 0..1 — прогресс человека (функция 3, владелец 22.11). 1 — огонёк как всегда; меньше — тише и ниже,
+   *  но не гаснет: у самой малой силы остаётся тёплый уголёк. Меняется плавно, за ~0,5 с */
+  fire = 1;
+  private fireNow = 1;
+  /** вспышка огня на победе: 1 → 0 за 1,1 с после каждого прыжка */
+  private flareK = 0;
+  activity: DollActivity = "none";
+  sparks: DollSpark[] = [];
+  private emberAt = 1.5;
+  private airPrev = false;
+  private hopPrev = 0;
+  private actGaze: { x: number; y: number } | null = null;
+  /** лапы на клавиатуре (ноутбук): подъём левой и правой 0..1 — их читает слой предметов (components/cat-props.tsx) */
+  pawLift: [number, number] = [0, 0];
+  /** удар по клавише 0..1 — свет экрана чуть вспыхивает в такт */
+  keyHit = 0;
+  private keyAt: [number, number] = [-9, -9];
+  private nextKey = 0;
+  private lastPaw = 0;
+  private lapTyping = false;
+  private lapUntil = 1.2;
 
   constructor(rig: RigData & { eyes?: number[][] }, seed = Math.floor(Math.random() * 2 ** 31)) {
     this.rand = rng(seed);
@@ -126,7 +153,7 @@ export class DollAnimator {
     this.eyeGeo = (rig.eyes ?? []).map((e) => [e[0], e[1], e[2], e[3] ?? e[2]]).sort((a, b) => a[0] - b[0]);
     for (const n of PARTS) this.parts.set(n, { opacity: 1, dx: 0, dy: 0, sx: 1, sy: 1 });
     const fb = rig.parts.find((p) => p.name === "flame")?.box;
-    if (fb) { this.flameTop = fb[1]; this.flameH = fb[3] - fb[1]; }
+    if (fb) { this.flameTop = fb[1]; this.flameH = fb[3] - fb[1]; this.flameBase = (fb[3] - fb[1]) / 2; }
     this.parts.get("flame")!.warp = this.flameWarp;
     if (this.eyeGeo.length === 2)
       ["l", "r"].forEach((s, i) => {
@@ -197,6 +224,24 @@ export class DollAnimator {
     return { happy, sleep, z: e === "sleepy" };
   }
 
+  /** кончик огонька сейчас (координаты рисунка): точка рисунка через матрицу кости огонька — искра вылетает из пламени,
+   *  где бы ни был хвост и кот (в прыжке тоже) */
+  private flameTip(): [number, number] {
+    const o = this.B.flame * 9, k = this.pose.skin;
+    const x = 1086, y = this.flameTop + 8;
+    return [k[o] * x + k[o + 3] * y + k[o + 6], k[o + 1] * x + k[o + 4] * y + k[o + 7]];
+  }
+  private spark(t: number, burst: boolean): DollSpark {
+    const [x, y] = this.flameTip();
+    const r = this.rand, a = -Math.PI / 2 + (r() - 0.5) * (burst ? 2.2 : 0.6), sp = burst ? 380 + r() * 420 : 90 + r() * 70;
+    return { x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t0: t, life: burst ? 0.7 + r() * 0.5 : 1.4 + r() * 0.8, r: burst ? 14 + r() * 12 : 9 + r() * 6, seed: Math.floor(r() * 1000), burst };
+  }
+  /** салют искр с огонька — на вершине прыжка победы (и по вызову) */
+  burst(t = this.t) {
+    if (this.reduced) return;
+    for (let i = 0; i < 22; i++) this.sparks.push(this.spark(t, true));
+  }
+
   update(dt: number) {
     dt = Math.min(dt, 0.1);
     this.t += dt;
@@ -234,7 +279,7 @@ export class DollAnimator {
     const eyeFade = 1 - sm((sk - 0.45) / 0.21);
 
     // ----- взгляд
-    if (!still && !this.gaze && t > this.glanceAt) {
+    if (!still && !this.gaze && !this.actGaze && t > this.glanceAt) {
       this.glance = [-0.7, -0.4, 0.4, 0.7][Math.floor(this.rand() * 4)];
       this.glanceUntil = t + 1 + this.rand() * 1.2; this.glanceAt = this.glanceUntil + 2.5 + this.rand() * 3;
       if (Math.abs(this.glance) >= 0.6) this.addBlink(t, 0.5); // большой перевод взгляда — под веком (не ближе 0.5 с к другому, как в роликах)
@@ -242,7 +287,7 @@ export class DollAnimator {
     }
     // и обратно тоже под веком (как в роликах: взгляд возвращается на зрителя, моргание за 0.03 с до хода)
     if (!still && !this.gaze && !this.glanceBack && t >= this.glanceUntil - 0.03) { this.addBlink(t, 0.5); this.glanceBack = true; }
-    const g = this.gaze ?? { x: t < this.glanceUntil ? this.glance : 0, y: 0 };
+    const g = this.actGaze ?? this.gaze ?? { x: t < this.glanceUntil ? this.glance : 0, y: 0 };
     this.gx.target = Math.max(-1, Math.min(1, g.x)); this.gy.target = Math.max(-1, Math.min(1, g.y));
     const lx = still ? 0 : this.gx.step(dt), ly = still ? 0 : this.gy.step(dt);
 
@@ -287,18 +332,84 @@ export class DollAnimator {
     P.rot[B.flame] = -acc * 0.5 * D2R;             // огонёк тянется вверх, но держится за кончик хвоста
     // огонёк колышется ФОРМОЙ, как у куклы в роликах (doll_rig.py): по высоте бежит волна (языки пламени
     // изгибаются), кончик ходит сильнее основания, основание на хвосте стоит — см. flameWarp
-    this.flameT = t; this.flameAmp = still ? 0 : 0.75 + 0.25 * lively;
+    // сила огня: размер, ход и скорость колыхания. Слабый огонь — маленький и сонный, сильный — выше и живее; на
+    // победе — вспышка вверх (выше и уже, как языки пламени от порыва), тает за 1,1 с
+    this.fireNow += (clamp01(this.fire) - this.fireNow) * Math.min(1, dt * 2);
+    this.flareK = Math.max(0, this.flareK - dt / 1.1);
+    const fk = this.fireNow, fl = sm(this.flareK);
+    // Размер — масштабом самой части от основания (а не костью): тогда под уменьшенным огоньком можно положить
+    // уголёк в полный размер — в слое хвоста на месте огонька дыра (огонёк вырезан), без уголька она видна тёмным пятном
+    const fs = (0.5 + 0.5 * fk) * (1 + 0.5 * fl);
+    const fp = this.parts.get("flame")!;
+    fp.sx = fs * (1 - 0.08 * fl); fp.sy = fs * (1 + 0.14 * fl);
+    fp.dy = -this.flameBase * (fp.sy - 1);
+    fp.ember = fs < 0.999 ? 1 : 0;
+    // цвет: слабый — темнее и краснее, сильный — золотистее (у вспышки победы почти жёлтый)
+    const gold = clamp01((fk - 0.75) * 2) * 0.18 + 0.3 * fl, red = clamp01((0.6 - fk) * 1.6) * 0.45;
+    fp.tint = red > gold ? [0.78, 0.22, 0.06, red] : [1, 0.86, 0.35, gold];
+    this.flameT += dt * (0.65 + 0.35 * fk + 0.8 * fl);
+    this.flameAmp = still ? 0 : (0.75 + 0.25 * lively) * (0.55 + 0.45 * fk + 0.5 * fl);
 
     // ----- дыхание (сон — глубже и реже), прыжок радости, присед от касания
     const per = 2.6 + 1.0 * sm(sk), amp = 0.012 + 0.01 * sm(sk);
     P.sy[B.chest] = 1 + (still ? 0 : amp * Math.sin((2 * Math.PI * t) / per));
+    // Прыжок радости как у мультяшного персонажа (владелец 22.11, «присед перед прыжком и пружинка»): присед-замах
+    // 0–0,12 с (сплющен), взлёт 0,12–0,44 (вытянут вверх, уши прижимаются от рывка), приземление — удар сплющивает
+    // тело ровно в момент касания земли (по самой пружине прыжка, а не по часам), дальше пружинит с перелётом.
+    // На вершине — вспышка огня и салют искр с хвоста. Опора корня — у лап: сплющивается вниз, лапы на земле
     const hopT = t - this.hopAt;
-    this.hop.target = !still && hopT >= 0 && hopT < 0.32 ? -70 : 0;
+    const crouch = !still && hopT >= 0 && hopT < 0.12;
+    const air = !still && hopT >= 0.12 && hopT < 0.44;
+    this.hop.target = air ? -82 : 0;
     if (!still && this.action === "celebrate" && hopT > 2.2) this.hopAt = t;
-    P.ty[B.root] = still ? 0 : this.hop.step(dt);
-    this.squash.target = !still && t - this.pokeAt >= 0 && t - this.pokeAt < 0.09 ? -14 : 0;
+    const hy = still ? 0 : this.hop.step(dt);
+    P.ty[B.root] = hy;
+    if (air && !this.airPrev) { this.earL.v -= 340; this.earR.v += 300; }          // рывок вверх — уши прижимаются
+    if (!still && this.hopPrev < -6 && hy >= -6 && this.hop.v > 0) {                  // касание земли
+      this.squash.v -= 420; this.earL.v += 260; this.earR.v -= 220;
+    }
+    if (air && hopT >= 0.3 && hopT - dt < 0.3) { this.flareK = 1; this.burst(t); }  // вершина
+    this.airPrev = air; this.hopPrev = hy;
+    this.squash.target = crouch ? -10 : air && hopT < 0.3 ? 6 : !still && t - this.pokeAt >= 0 && t - this.pokeAt < 0.09 ? -14 : 0;
     const sq = still ? 0 : this.squash.step(dt);
-    P.sy[B.root] *= 1 + sq * 0.02; P.sx[B.root] *= 1 - sq * 0.01;
+    P.sy[B.root] *= 1 + sq * 0.02; P.sx[B.root] *= 1 - sq * 0.012;
+
+    // угольки: сильный огонь изредка отпускает искру вверх (тем чаще, чем сильнее), слабый — нет
+    if (!still && t >= this.emberAt) {
+      if (this.fireNow > 0.55) this.sparks.push(this.spark(t, false));
+      this.emberAt = t + (2.6 - 1.6 * this.fireNow) * (0.7 + this.rand() * 0.6);
+    }
+    this.sparks = this.sparks.filter((p) => t - p.t0 < p.life);
+
+    // занятие: ноутбук — смотрит в экран (вниз), иногда поднимает глаза «подумать»; книга — глаза бегут по строчкам
+    // слева направо и быстро возвращаются, через 4 строки — короткая пауза (перевернуть страницу)
+    if (this.activity !== "none" && !still) {
+      if (this.activity === "laptop") {
+        // владелец 22.11: часто просто смотрит на зрителя — прямо в центр, глаза в глаза, лапы лежат на клавиатуре;
+        // иногда смотрит в ноутбук и печатает. Смена — под морганием, как живой взгляд
+        if (t >= this.lapUntil) {
+          this.lapTyping = !this.lapTyping;
+          this.lapUntil = t + (this.lapTyping ? 2 + this.rand() * 2.5 : 2.5 + this.rand() * 3);
+          this.addBlink(t + 0.02, 0.5);
+        }
+        const think = !this.lapTyping;
+        this.actGaze = think ? { x: 0, y: 0 } : { x: 0.12 * fbm(t / 1.3, 93), y: 0.6 };
+        // печатает лапами: удары по клавишам по очереди (иногда одной лапой дважды), 5–9 ударов в секунду, между
+        // словами короткие паузы; смотрит на зрителя — лапы лежат на клавиатуре
+        if (!think && t >= this.nextKey) {
+          const paw = this.rand() < 0.75 ? 1 - this.lastPaw : this.lastPaw;
+          this.keyAt[paw] = t; this.lastPaw = paw;
+          this.nextKey = t + (this.rand() < 0.12 ? 0.35 + this.rand() * 0.25 : 0.1 + this.rand() * 0.09);
+          P.rot[B.head] += 0.5 * D2R;
+        }
+        const lift = (d: number) => (d < 0 ? 0 : d < 0.05 ? sm(d / 0.05) : d < 0.14 ? 1 - sm((d - 0.05) / 0.09) : 0);
+        this.pawLift = think ? [0, 0] : [lift(t - this.keyAt[0]), lift(t - this.keyAt[1])];
+        this.keyHit = think ? 0 : Math.max(lift(t - this.keyAt[0] - 0.05), lift(t - this.keyAt[1] - 0.05));
+      } else {
+        const line = 1.6, u = (t % line) / line, n = Math.floor(t / line) % 5;
+        this.actGaze = n === 4 ? { x: 0, y: 0.3 } : { x: u < 0.88 ? -0.5 + (u / 0.88) * 1.0 : 0.5 - ((u - 0.88) / 0.12) * 1.0, y: 0.45 + n * 0.07 };
+      }
+    } else { this.actGaze = null; this.pawLift = [0, 0]; this.keyHit = 0; }
 
     // ----- глаза
     const R = this.eyeR;
@@ -313,7 +424,7 @@ export class DollAnimator {
       for (const n of [`eye-${s}`, `hl-${s}`]) { const p = this.parts.get(n)!; p.opacity = eyeOp; p.sy = sy; p.dx = 0; p.dy = 0; }
       const pu = this.parts.get(`pupil-${s}`)!;
       pu.opacity = eyeOp; pu.sy = sy; pu.sx = 1;
-      if (curved) { this.pupilOff[i] = [lx * R * 0.26, ly * R * 0.2]; pu.dx = 0; pu.dy = 0; }
+      if (curved) { this.pupilOff[i] = [lx * R * 0.26, ly * R * (this.activity !== "none" ? 0.26 : 0.2)]; pu.dx = 0; pu.dy = 0; }
       else { pu.dx = lx * R * 0.26; pu.dy = ly * R * 0.2 * sy; }
       const ld = this.parts.get(`lid-${s}`)!;
       ld.opacity = eyeFade * sm((lid - 0.7) / 0.3);
@@ -400,6 +511,35 @@ function drawFxItem(ctx: CanvasRenderingContext2D, fx: DollFxItem, t: number, vi
       ctx.lineTo(x + (-1 - sh) * hs, y + hs); ctx.lineTo(x + (1 - sh) * hs, y + hs);
       ctx.stroke();
     }
+  }
+  ctx.restore();
+}
+
+/**
+ * Искры огонька (Canvas 2D, сложение света): ядро светлое, ореол оранжевый; уголёк поднимается и петляет, искра
+ * салюта летит веером и падает (сила тяжести), гаснет и мельчает к концу жизни. Координаты — рисунка, как у рига.
+ */
+export function drawDollSparks(ctx: CanvasRenderingContext2D, sparks: readonly DollSpark[], t: number, view: number[], w: number, h: number) {
+  if (!sparks.length) return;
+  const [vx, vy, vw, vh] = view;
+  ctx.save();
+  ctx.setTransform(w / vw, 0, 0, h / vh, (-vx * w) / vw, (-vy * h) / vh);
+  ctx.globalCompositeOperation = "lighter";
+  for (const p of sparks) {
+    const a = t - p.t0, u = a / p.life;
+    if (u < 0 || u >= 1) continue;
+    const g = p.burst ? 900 : -40;
+    const drift = p.burst ? 0 : 22 * fbm(a * 1.6, p.seed);
+    const x = p.x + p.vx * a + drift, y = p.y + p.vy * a + 0.5 * g * a * a;
+    const fade = (1 - u) * (1 - u), flick = 0.75 + 0.25 * Math.sin(a * 40 + p.seed);
+    const r = p.r * (1 - 0.6 * u);
+    const halo = ctx.createRadialGradient(x, y, 0, x, y, r * 3);
+    halo.addColorStop(0, `rgba(255, 170, 60, ${0.55 * fade * flick})`);
+    halo.addColorStop(1, "rgba(255, 110, 20, 0)");
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(x, y, r * 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(255, 238, 170, ${fade * flick})`;
+    ctx.beginPath(); ctx.arc(x, y, r * 0.55, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
 }

@@ -31,8 +31,9 @@ precision mediump float;
 in vec2 vUV;
 uniform sampler2D uTex;
 uniform float uOp;
+uniform vec4 uTint;   // rgb и доля: огонёк краснеет у слабого огня и золотится у сильного; уголёк под огоньком
 out vec4 o;
-void main() { o = texture(uTex, vUV) * uOp; }`;
+void main() { vec4 c = texture(uTex, vUV) * uOp; c.rgb = mix(c.rgb, uTint.rgb * c.a, uTint.a); o = c; }`;
 
 type GpuPart = {
   name: string;
@@ -172,7 +173,7 @@ export class RigRenderer {
     this.gl = gl;
     this.prog = prog;
     this.view = rig.view;
-    for (const k of ["uBones", "uView", "uLocal", "uCenter", "uTex", "uOp"]) this.loc[k] = gl.getUniformLocation(prog, k);
+    for (const k of ["uBones", "uView", "uLocal", "uCenter", "uTex", "uOp", "uTint"]) this.loc[k] = gl.getUniformLocation(prog, k);
   }
 
   /** targetPx — сторона холста в пикселях устройства: по ней подбирается детальность слоёв (0 — полная) */
@@ -291,9 +292,18 @@ export class RigRenderer {
       }
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, g.tex);
-      gl.uniform4f(this.loc.uLocal, st?.dx ?? 0, st?.dy ?? 0, st?.sx ?? 1, st?.sy ?? 1);
       gl.uniform2f(this.loc.uCenter, g.center[0], g.center[1]);
+      // уголёк: та же часть в полный размер, тёмно-оранжевая, ПОД уменьшенной — закрывает место огонька в слое хвоста
+      if (st?.ember && st.ember > 0.003) {
+        gl.uniform4f(this.loc.uLocal, 0, 0, 1, 1);
+        gl.uniform1f(this.loc.uOp, st.ember);
+        gl.uniform4f(this.loc.uTint, 0.97, 0.5, 0.14, 0.9);   // цвет внешнего пламени: дыры не видно, ядро просто меньше
+        gl.drawElements(gl.TRIANGLES, g.count, gl.UNSIGNED_SHORT, 0);
+      }
+      gl.uniform4f(this.loc.uLocal, st?.dx ?? 0, st?.dy ?? 0, st?.sx ?? 1, st?.sy ?? 1);
       gl.uniform1f(this.loc.uOp, st ? st.opacity : 1);
+      const tn = st?.tint;
+      gl.uniform4f(this.loc.uTint, tn?.[0] ?? 0, tn?.[1] ?? 0, tn?.[2] ?? 0, tn?.[3] ?? 0);
       gl.drawElements(gl.TRIANGLES, g.count, gl.UNSIGNED_SHORT, 0);
     }
     gl.bindVertexArray(null);
