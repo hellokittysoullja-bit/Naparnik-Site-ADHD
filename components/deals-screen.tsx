@@ -140,25 +140,21 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
   const total = dealTotalMinutes(deal);
 
   const runEstimate = async () => {
-    if (!deal.steps.length) return setToolNote("Сначала разломай дело на шаги, потом оценю.");
     setBusy(true);
     setToolNote(null);
     // «считаю» всегда 1–1,5 с (владелец 18.11): мгновенный ответ не читается как работа, а время — как оценка
     const hold = new Promise((r) => setTimeout(r, 1000 + Math.random() * 500));
     try {
-      let minutes: number[] = [];
-      if (deal.steps.some((st) => !st.minutes)) {
-        const r = await fetch("/api/estimate", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ task: deal.title.slice(0, 200), steps: deal.steps.slice(0, 24).map((st) => st.text.slice(0, 200)) }),
-        });
-        const data = (await r.json().catch(() => null)) as { minutes?: number[] | null } | null;
-        if (!r.ok || !data?.minutes) throw new Error("no estimate");
-        minutes = data.minutes;
-      }
+      // дело без шагов оценивается по названию, с шагами — по шагам; ожидание (сохнет ночь, ждать решения) — отдельно
+      const r = await fetch("/api/estimate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: deal.title.slice(0, 200), steps: deal.steps.slice(0, 24).map((st) => st.text.slice(0, 200)) }),
+      });
+      const data = (await r.json().catch(() => null)) as { minutes?: number[] | null; total?: { work: number; wait: number } } | null;
+      if (!r.ok || !data?.minutes) throw new Error("no estimate");
       await hold;
-      setDealEstimate(deal.id, minutes);
+      setDealEstimate(deal.id, data.minutes, data.total);
       setTools(false);
     } catch {
       await hold;
@@ -196,8 +192,10 @@ function DealCard({ deal, i, current }: { deal: Deal; i: number; current: boolea
             <ChevronDown className={`size-3 transition-transform duration-200 ${open ? "rotate-180" : ""}`} aria-hidden="true" />
           </span>
           {deal.estimated && total > 0 && (
-            <span className="mt-1.5 block">
+            <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <TimePill minutes={total} big />
+              {/* долгое ожидание — не твоё время: «и ждать 3 дня» рядом, а не внутри суммы */}
+              {deal.wait ? <span className="text-[12px] font-medium text-muted-foreground">и ждать {formatDuration(deal.wait)}</span> : null}
             </span>
           )}
           {deal.steps.length > 1 && <PawTrail steps={deal.steps} />}
@@ -397,7 +395,27 @@ export function DealsScreen() {
     return () => window.removeEventListener("naparnik:memory", load);
   }, []);
 
-  const found = splitDump(dump);
+  // Компилятор (22.11, как Compiler у goblin.tools, без модели — lib/ai/agents/compile.ts): поток мыслей → дела.
+  // Пока сервер не ответил (или нет сети) — прежнее деление по запятым, чтобы кнопка не ждала
+  const [compiled, setCompiled] = useState<{ text: string; items: string[] } | null>(null);
+  useEffect(() => {
+    const text = dump.trim();
+    if (!text) return;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => {
+      fetch("/api/compile", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: text.slice(0, 4000) }), signal: ctrl.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { items?: unknown } | null) => {
+          if (d && Array.isArray(d.items)) setCompiled({ text, items: d.items.filter((x): x is string => typeof x === "string") });
+        })
+        .catch(() => {});
+    }, 350);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [dump]);
+  const found = compiled && compiled.text === dump.trim() ? compiled.items : splitDump(dump);
   const addDump = () => {
     // новые дела встают сверху своей части дня; порядок ввода сохраняется
     for (const t of [...found].reverse()) upsertDeal(t);

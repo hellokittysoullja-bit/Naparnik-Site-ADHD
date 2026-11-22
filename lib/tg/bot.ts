@@ -1,3 +1,4 @@
+import { splitMinutes } from '../ai/agents/wait-steps'
 import { postButtons } from './post-buttons'
 import { SPHERES, STEPS, FIRST_MINUTES, type Sphere } from '@/lib/onboarding'
 import { shortDuration } from '@/lib/deals'
@@ -65,7 +66,7 @@ const dur = (m: number) => shortDuration(m).replace(/ /g, '\u00a0')
 export const PLAN_HEAD = '🐾 '
 const FIRST = ' (первый шаг)'
 const MIN_SEP = ' · '
-export type PlanTiming = { minutes: number[]; total: number; at?: string }
+export type PlanTiming = { minutes: number[]; total: number; at?: string; wait?: number }
 
 export function planText(title: string, steps: string[], timing?: PlanTiming) {
   const n = steps.length
@@ -73,8 +74,11 @@ export function planText(title: string, steps: string[], timing?: PlanTiming) {
     const m = timing?.minutes[i]
     return `<b>${i + 1}. ${esc(s)}</b>${i === 0 ? FIRST : ''}${m ? `${MIN_SEP}${dur(m)}` : ''}`
   })
+  // долгое ожидание (сохнет ночь, ждать решения) — не твоё время: отдельно, и «управишься к» тогда не обещаем
   const total = timing
-    ? `\n⏱ Всего около ${dur(timing.total)}${timing.at ? `. Начнёшь сейчас, управишься примерно к ${timing.at}` : ''}`
+    ? timing.wait
+      ? `\n⏱ Твоей работы около ${dur(timing.total)}, и ждать ещё около ${dur(timing.wait)}`
+      : `\n⏱ Всего около ${dur(timing.total)}${timing.at ? `. Начнёшь сейчас, управишься примерно к ${timing.at}` : ''}`
     : ''
   return `<b>${PLAN_HEAD}${esc(title)}</b>\n\n🪄 Котик разломал на <b>${n} ${plural(n, 'микрошаг', 'микрошага', 'микрошагов')}:</b>\n\n${lines.join('\n')}${total}\n\n🐈 Начнём с первого. Котик рядом`
 }
@@ -106,10 +110,11 @@ export function parsePlanMessage(text: string | undefined): { title: string; ste
 export function timing(d: Pick<Deps, 'estimate'>, title: string, steps: string[], tz: number, now: number): PlanTiming | null {
   if (!d.estimate || !steps.length) return null
   const minutes = d.estimate(title, steps).map((m) => Math.max(1, Math.round(m > 0 ? m : 1)))
-  const total = minutes.reduce((a, m) => a + m, 0)
+  const { wait } = splitMinutes(steps, minutes)
+  const total = Math.max(1, minutes.reduce((a, m) => a + m, 0) - wait)
   const end = new Date(now + (tz + total) * 60_000)
-  const at = total >= 24 * 60 ? undefined : `${String(end.getUTCHours()).padStart(2, '0')}:${String(end.getUTCMinutes()).padStart(2, '0')}`
-  return { minutes, total, at }
+  const at = total >= 24 * 60 || wait ? undefined : `${String(end.getUTCHours()).padStart(2, '0')}:${String(end.getUTCMinutes()).padStart(2, '0')}`
+  return wait ? { minutes, total, at, wait } : { minutes, total, at }
 }
 
 /** под отдельным шагом («Шаг 2 из 7») плана в тексте нет — оценка остатка дела из записи человека одной строкой */
@@ -119,7 +124,10 @@ export function estimateLine(d: Pick<Deps, 'estimate'>, u: TgUser, now: number):
   const from = Math.min(u.stepIdx ?? 0, steps.length - 1)
   const t = timing(d, u.task, steps, u.tz, now)
   if (!t) return null
-  const left = t.minutes.slice(from).reduce((a, m) => a + m, 0)
+  const rest = steps.slice(from)
+  const { wait } = splitMinutes(rest, t.minutes.slice(from))
+  const left = Math.max(1, t.minutes.slice(from).reduce((a, m) => a + m, 0) - wait)
+  if (wait) return `⏱ До конца «${u.task}» твоей работы около ${shortDuration(left)}, и ждать ещё около ${shortDuration(wait)}`
   const end = new Date(now + (u.tz + left) * 60_000)
   const at = left >= 24 * 60 ? '' : `. Начнёшь сейчас, управишься примерно к ${String(end.getUTCHours()).padStart(2, '0')}:${String(end.getUTCMinutes()).padStart(2, '0')}`
   return `⏱ До конца «${u.task}» около ${shortDuration(left)}${at}`

@@ -422,6 +422,16 @@ describe('бот: оформление плана (владелец 22.11)', () 
     expect(planText('Д', ['a'])).toContain('1 микрошаг:')
     expect(planText('Дело', Array.from({ length: 12 }, (_, i) => `Шаг ${i + 1}`))).toContain('<b>12 микрошагов:</b>\n\n<b>1. Шаг 1</b>')
   })
+  it('«Оценить время»: долгое ожидание отдельно от работы, «управишься к» тогда не обещаем (22.11)', async () => {
+    const { planText, timing } = await import('@/lib/tg/bot')
+    const steps = ['Заполнить заявление', 'Отправить документы', 'Дождаться решения налоговой']
+    const t = timing({ estimate: () => [30, 10, 43200] }, 'Подать вычет', steps, 180, Date.UTC(2026, 10, 22, 9))!
+    expect(t).toMatchObject({ total: 40, wait: 43200, at: undefined })
+    expect(planText('Подать вычет', steps, t)).toMatch(/⏱ Твоей работы около 40\s?мин, и ждать ещё около 30/)
+    const short = timing({ estimate: () => [10, 60] }, 'Постирать', ['Загрузить машину', 'Дождаться конца стирки'], 180, Date.UTC(2026, 10, 22, 9))!
+    expect(short).toMatchObject({ total: 70, at: '13:10' })
+    expect(planText('Постирать', ['Загрузить машину', 'Дождаться конца стирки'], short)).toContain('Всего около')
+  })
   it('текст человека экранируется: теги из дела не становятся разметкой', async () => {
     const { planText } = await import('@/lib/tg/bot')
     const t = planText('<b>я</b> & ты', ['Открыть <a href="x">ссылку</a>', 'Два'])

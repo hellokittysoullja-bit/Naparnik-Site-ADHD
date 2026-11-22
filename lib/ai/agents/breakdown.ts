@@ -6,7 +6,7 @@ import { runTurn } from '../core/run-turn'
 import { examplesBlock } from './breakdown-examples'
 import { GOBLIN_PLANS } from './breakdown-goblin'
 import { GOBLIN_MINUTES } from './breakdown-minutes'
-import { estimateStep } from './step-time'
+import { calibratePlan, estimateStep } from './step-time'
 import { TASK_ALIASES } from './breakdown-aliases'
 import { buildMatcher } from './breakdown-match'
 import { ALL_TEMPLATES } from '@/lib/templates'
@@ -21,7 +21,8 @@ const READY_ENTRIES: [string, Ready][] = [
   // минуты шагов оценены вручную (breakdown-minutes.ts, 18.11): план из базы сразу приходит со временем каждого шага
   ...Object.entries(GOBLIN_PLANS).map(([t, s]): [string, Ready] => {
     const m = GOBLIN_MINUTES[t]
-    return [t, m && m.length === s.length ? { steps: [...s], minutes: [...m] } : { steps: [...s] }]
+    // поправка суммы (step-time.ts calibratePlan): минуты шагов в сумме — время дела целиком, как его оценил бы человек
+    return [t, m && m.length === s.length ? { steps: [...s], minutes: calibratePlan(s, m) } : { steps: [...s] }]
   }),
   ...ALL_TEMPLATES.map((t): [string, Ready] => [t.title, { steps: t.steps.map((s) => s.text), minutes: t.steps.map((s) => s.minutes), wait: t.steps.map((s) => !!s.wait) }]),
 ]
@@ -38,6 +39,28 @@ const READY = buildMatcher<Ready>([
 ], { understand: true })
 /** готовая разбивка дела, если оно есть в базе (с исправлением написания) */
 export const readyPlan = (task: string) => READY.find(task)
+
+/** синоним → дело, к которому он ведёт («Посуда» → «Помыть посуду»): компилятору нужно действие, а не слово */
+const ALIAS_OF = new Map<string, string>()
+for (const [title, aliases] of Object.entries(TASK_ALIASES)) for (const a of aliases) if (!ALIAS_OF.has(a)) ALIAS_OF.set(a, title)
+/** название дела из базы, которым поиск узнал фразу (синоним заменён своим делом) */
+export function readyTitle(task: string): string | null {
+  const hit = READY.find(task)
+  if (!hit) return null
+  // само дело базы — как есть («Вынести мусор», хотя «Вынести» — синоним того же дела)
+  if (BY_TITLE.has(hit.title)) return hit.title
+  const whole = ALIAS_OF.get(hit.title)
+  if (whole) return whole
+  // понимание дописывает уточнение к синониму: «Экзамен» + «по истории» → «Подготовиться к экзамену» + «по истории»
+  const ws = hit.title.split(' ')
+  for (let n = ws.length - 1; n > 0; n--) {
+    const head = ALIAS_OF.get(ws.slice(0, n).join(' '))
+    // хвост уже есть в названии дела («Вынести» → «Вынести мусор» + «мусор») — не дописываем его второй раз
+    const tail = ws.slice(n).join(' ')
+    if (head) return head.toLowerCase().endsWith(tail.toLowerCase()) ? head : `${head} ${tail}`
+  }
+  return hit.title
+}
 
 /**
  * Разбивка дела на шаги до самого конца, как у goblin.tools (владелец 16.11: «он что угодно правильно разбивает»).

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { GOBLIN_PLANS, goblinPlan } from '@/lib/ai/agents/breakdown-goblin'
 import { breakdown } from '@/lib/ai/agents/breakdown'
 import { GOBLIN_MINUTES } from '@/lib/ai/agents/breakdown-minutes'
+import { calibratePlan } from '@/lib/ai/agents/step-time'
 
 describe('готовые разбивки goblin.tools (дословно, владелец 16.11)', () => {
   it('дело ровно как в списке — план сразу, без учёта регистра, «ё» и знаков', () => {
@@ -27,7 +28,7 @@ describe('готовые разбивки goblin.tools (дословно, вла
   })
   it('breakdown отдаёт готовый план без модели', async () => {
     const r = await breakdown({ task: 'Вынести мусор' })
-    expect(r).toEqual({ kind: 'steps', steps: [...GOBLIN_PLANS['Вынести мусор']], minutes: [...GOBLIN_MINUTES['Вынести мусор']], source: 'library', title: 'Вынести мусор' })
+    expect(r).toEqual({ kind: 'steps', steps: [...GOBLIN_PLANS['Вынести мусор']], minutes: calibratePlan(GOBLIN_PLANS['Вынести мусор'], GOBLIN_MINUTES['Вынести мусор']), source: 'library', title: 'Вынести мусор' })
   })
   it('написано по-другому — дело остаётся словами человека, план из базы; опечатка — название из базы (владелец 22.11)', async () => {
     const own = await breakdown({ task: 'Пойти к психиатру' })
