@@ -49,43 +49,77 @@ export function breakCommand(text: string): string | null {
 
 /** Текст человека или модели в сообщении с разметкой HTML: <, > и & — как текст, а не теги */
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-const KEYCAP = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟']
 const dur = (m: number) => shortDuration(m).replace(/ /g, '\u00a0')
 
 /**
- * Весь план (вариант Б, владелец 20.11), разметка HTML:
- * 🐾 <b>Помыть посуду</b>
- * Разломал на 7 микрошагов · около 33 мин
+ * Весь план (владелец 22.11), разметка HTML; минуты — только после «Оценить время» (тогда и итог с часом конца):
+ * <b>🐾 Помыть посуду</b>
+ * 🪄 Котик разломал на <b>7 микрошагов:</b>
+ * <b>1. Собрать всю грязную посуду</b> (первый шаг)
+ * <b>2. …</b>
  *
- * 1️⃣ Собрать всю грязную посуду · <i>3 мин</i>
- * …
- * 👉 Начнём с первого. Я рядом.
+ * 🐈 Начнём с первого. Котик рядом
  */
-export function planText(title: string, steps: string[], minutes?: (number | undefined)[]) {
+export const PLAN_HEAD = '🐾 '
+const FIRST = ' (первый шаг)'
+const MIN_SEP = ' · '
+export type PlanTiming = { minutes: number[]; total: number; at?: string }
+
+export function planText(title: string, steps: string[], timing?: PlanTiming) {
   const n = steps.length
-  const known = steps.every((_, i) => (minutes?.[i] ?? 0) > 0)
-  const total = known ? minutes!.reduce((a: number, m) => a + (m ?? 0), 0) : 0
-  const head = `🐾 <b>${esc(title)}</b>\nРазломал на ${n} ${plural(n, 'микрошаг', 'микрошага', 'микрошагов')}${total ? ` · около ${dur(total)}` : ''}`
-  const lines = steps.map((s, i) => `${KEYCAP[i] ?? `${i + 1}.`} ${esc(s)}${minutes?.[i] ? `\u00a0·\u00a0<i>${dur(minutes[i]!)}</i>` : ''}`)
-  return `${head}\n\n${lines.join('\n')}\n\n👉 Начнём с первого. Я рядом.`
+  const lines = steps.map((s, i) => {
+    const m = timing?.minutes[i]
+    return `<b>${i + 1}. ${esc(s)}</b>${i === 0 ? FIRST : ''}${m ? `${MIN_SEP}${dur(m)}` : ''}`
+  })
+  const total = timing
+    ? `\n⏱ Всего около ${dur(timing.total)}${timing.at ? `. Начнёшь сейчас, управишься примерно к ${timing.at}` : ''}`
+    : ''
+  return `<b>${PLAN_HEAD}${esc(title)}</b>\n🪄 Котик разломал на <b>${n} ${plural(n, 'микрошаг', 'микрошага', 'микрошагов')}:</b>\n${lines.join('\n')}${total}\n\n🐈 Начнём с первого. Котик рядом`
 }
 
 /**
- * «⏱ Оценить время» под планом (владелец 22.11): сколько займёт дело с текущего шага до конца и к какому часу
- * человек управится, если начнёт сейчас. Минуты — своя база времени шагов (без модели, мгновенно)
+ * План обратно из текста самого сообщения (Telegram отдаёт его без разметки): «Оценить время» считает ровно тот план,
+ * под которым нажата кнопка, а не тот, что сейчас в записи человека — нажатие на старом плане не перепутает дела
  */
-export function estimateText(d: Pick<Deps, 'estimate'>, u: TgUser, now: number): string {
+export function parsePlanMessage(text: string | undefined): { title: string; steps: string[] } | null {
+  if (!text) return null
+  const lines = text.split('\n')
+  if (!lines[0]?.startsWith(PLAN_HEAD) || !/^🪄 Котик разломал на /.test(lines[1] ?? '')) return null
+  const title = lines[0].slice(PLAN_HEAD.length).trim()
+  const steps: string[] = []
+  for (const line of lines.slice(2)) {
+    const m = line.match(/^(\d+)\. (.+)$/)
+    if (!m) break
+    if (Number(m[1]) !== steps.length + 1) return null
+    // хвост «· 2 мин» прошлой оценки и пометка первого шага — не часть шага
+    let step = m[2].replace(/ · [\d\u00a0 чмин]+$/u, '')
+    if (step.endsWith(FIRST)) step = step.slice(0, -FIRST.length)
+    steps.push(step.trim())
+  }
+  return title && steps.length ? { title, steps } : null
+}
+
+/** Минуты и час конца: та же оценка, что у сайта (deps.estimate → lib/ai/agents/estimate.ts) */
+export function timing(d: Pick<Deps, 'estimate'>, title: string, steps: string[], tz: number, now: number): PlanTiming | null {
+  if (!d.estimate || !steps.length) return null
+  const minutes = d.estimate(title, steps).map((m) => Math.max(1, Math.round(m > 0 ? m : 1)))
+  const total = minutes.reduce((a, m) => a + m, 0)
+  const end = new Date(now + (tz + total) * 60_000)
+  const at = total >= 24 * 60 ? undefined : `${String(end.getUTCHours()).padStart(2, '0')}:${String(end.getUTCMinutes()).padStart(2, '0')}`
+  return { minutes, total, at }
+}
+
+/** под отдельным шагом («Шаг 2 из 7») плана в тексте нет — оценка остатка дела из записи человека одной строкой */
+export function estimateLine(d: Pick<Deps, 'estimate'>, u: TgUser, now: number): string | null {
   const steps = u.steps ?? []
-  if (!u.task || !steps.length || !d.estimate) return 'Сначала разобьём дело: напиши его, и я посчитаю время.'
+  if (!u.task || !steps.length) return null
   const from = Math.min(u.stepIdx ?? 0, steps.length - 1)
-  const mins = d.estimate(u.task, steps).slice(from)
-  const total = Math.max(1, Math.round(mins.reduce((a, m) => a + (m > 0 ? m : 0), 0)))
-  const end = new Date(now + (u.tz + total) * 60_000)
-  const at = `${String(end.getUTCHours()).padStart(2, '0')}:${String(end.getUTCMinutes()).padStart(2, '0')}`
-  const left = steps.length - from
-  const scope = from === 0 ? `Всё дело «${u.task}»` : `${left} ${plural(left, 'шаг', 'шага', 'шагов')} до конца «${u.task}»`
-  const late = total >= 24 * 60 ? '' : `\nНачнёшь сейчас, управишься примерно к ${at}.`
-  return `⏱ ${scope}: около ${shortDuration(total)}.${late}\nНе страшно, если выйдет дольше. Первый шаг важнее часов.`
+  const t = timing(d, u.task, steps, u.tz, now)
+  if (!t) return null
+  const left = t.minutes.slice(from).reduce((a, m) => a + m, 0)
+  const end = new Date(now + (u.tz + left) * 60_000)
+  const at = left >= 24 * 60 ? '' : `. Начнёшь сейчас, управишься примерно к ${String(end.getUTCHours()).padStart(2, '0')}:${String(end.getUTCMinutes()).padStart(2, '0')}`
+  return `⏱ До конца «${u.task}» около ${shortDuration(left)}${at}`
 }
 
 /** то же без разметки — в переписку, которую видит кот */
@@ -151,7 +185,7 @@ export type TgUpdate = {
     video?: unknown
     document?: unknown
   }
-  callback_query?: { id: string; data?: string; message?: { chat: { id: number }; message_id: number } }
+  callback_query?: { id: string; data?: string; message?: { chat: { id: number }; message_id: number; text?: string; reply_markup?: unknown } }
 }
 
 const DAY = 86_400_000
@@ -395,7 +429,7 @@ function stepKeyboard(d: Deps, u: TgUser): Keyboard {
   // у шага из плана «другого» нет: о нём человек договорился сам
   if (u.plan) return [[sit(d, u)]]
   // план из разбивки — шаги по порядку: «Сесть с Котиком» большой, под ним «След шаг» и «Оценить время» (владелец 22.11)
-  if (u.task) return [[sit(d, u)], [{ text: 'След шаг', callback_data: 'nx' }, { text: '⏱ Оценить время', callback_data: 'est' }]]
+  if (u.task) return [[sit(d, u)], [{ text: '⏭️ След. шаг', callback_data: 'nx' }, { text: '⏱ Оценить время', callback_data: 'est' }]]
   return [[sit(d, u)], [{ text: 'Другой шаг', callback_data: 'nx' }]]
 }
 
@@ -707,7 +741,7 @@ async function breakAndOffer(d: Deps, u: TgUser, task: string, whole: boolean) {
   // дробление стартует сразу, полоска рисуется параллельно
   const job = d.breakdown(task).catch(() => ({ steps: [] as string[], fallback: true, care: undefined, minutes: undefined, title: undefined }))
   const progress = whole ? await startProgress(d, chat) : null
-  const { steps, care, fallback, minutes, title } = progress ? await progress.run(job) : await job
+  const { steps, care, fallback, title } = progress ? await progress.run(job) : await job
   // заготовка («Открыть то, что нужно для дела») — не план: честно просим ещё раз, а не выдаём её за шаги
   if (care || steps.length === 0 || fallback) {
     await d.store.saveUser(u)
@@ -721,7 +755,7 @@ async function breakAndOffer(d: Deps, u: TgUser, task: string, whole: boolean) {
   u.plan = undefined
   u.steps = steps
   u.stepIdx = 0
-  const msg = whole ? planText(name, steps, minutes) : T.stepFromTask(name, steps[0])
+  const msg = whole ? planText(name, steps) : T.stepFromTask(name, steps[0])
   // ответ остаётся в переписке: «а второй шаг какой?» кот поймёт из истории
   if (whole) remember(u, 'cat', plain(msg), d.now())
   await d.store.saveUser(u)
@@ -848,6 +882,39 @@ async function stop(d: Deps, u: TgUser) {
   await say(d, u.id, T.stop)
 }
 
+/**
+ * «⏱ Оценить время» (владелец 22.11): минуты появляются в ТОМ ЖЕ сообщении — Telegram правит его на месте, кнопки
+ * остаются. Повторное нажатие ничего не меняет (тот же текст — правки нет). Сообщение уже не править (старше 48 ч,
+ * удалено) — оценка приходит новым сообщением, а не тишиной
+ */
+async function estimateHere(d: Deps, q: NonNullable<TgUpdate['callback_query']>, u: TgUser, now: number) {
+  const m = q.message
+  if (!m) return
+  const plan = parsePlanMessage(m.text)
+  let html: string | null = null
+  let text: string | null = null
+  if (plan) {
+    const t = timing(d, plan.title, plan.steps, u.tz, now)
+    if (t) html = planText(plan.title, plan.steps, t)
+  } else {
+    const line = estimateLine(d, u, now)
+    // строка прошлой оценки заменяется, а не копится
+    if (line) text = `${(m.text ?? '').replace(/\n\n⏱ [\s\S]*$/, '')}\n\n${line}`.trim()
+  }
+  const next = html ?? text
+  if (!next) return void (await say(d, m.chat.id, 'Сначала разобьём дело: напиши его, и я посчитаю время.'))
+  if (plain(next) === m.text) return
+  const edited = await d.send('editMessageText', {
+    chat_id: m.chat.id,
+    message_id: m.message_id,
+    text: next,
+    ...(html ? { parse_mode: 'HTML' } : {}),
+    link_preview_options: { is_disabled: true },
+    ...(m.reply_markup ? { reply_markup: m.reply_markup } : {}),
+  })
+  if (!edited) await say(d, m.chat.id, html ? plain(html) : next)
+}
+
 async function onCallback(q: NonNullable<TgUpdate['callback_query']>, d: Deps) {
   // кнопка всегда «отпускается», даже если дальше что-то пойдёт не так
   await d.send('answerCallbackQuery', { callback_query_id: q.id })
@@ -869,7 +936,7 @@ async function onCallback(q: NonNullable<TgUpdate['callback_query']>, d: Deps) {
     await offerStep(d, u, T.step(u.steps[0]))
   } else if (data === 'est') {
     await d.store.saveUser(u)
-    await say(d, chat, estimateText(d, u, now))
+    await estimateHere(d, q, u, now)
   } else if (data === 'nx') {
     // «другой шаг» под шагом из плана (старая кнопка): план снят, показываем первый шаг по сфере, а не второй
     if (u.plan) {
