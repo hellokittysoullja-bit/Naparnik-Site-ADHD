@@ -190,7 +190,7 @@ function useMinHeight(px: number) {
 }
 
 /** Кот в «ожидании» (крупно над поленом) — и размер его тела в «деле», где оно уменьшено масштабом */
-const CAT_STAGE = 'size-[clamp(170px,calc(100dvh_-_470px),245px)]'
+const CAT_STAGE = 'size-[clamp(170px,calc(var(--cat-vh)_-_470px),245px)]'
 
 export function FocusSession() {
   const reducedMotion = useReducedMotion()
@@ -1301,7 +1301,7 @@ export function FocusSession() {
               stage
                 ? `${CAT_STAGE} z-10 -mb-[14px] -mt-10`
                 : deal
-                  ? `${tall ? 'size-[clamp(80px,calc((100dvh_-_670px)*1.05),176px)]' : 'size-[clamp(67px,calc((100dvh_-_628px)*1.05),176px)] [@media(max-height:699px)]:size-[67px]'} -mt-3 [@media(max-height:699px)]:mt-0`
+                  ? `${tall ? 'size-[clamp(80px,calc((var(--cat-vh)_-_670px)*1.05),176px)]' : 'size-[clamp(67px,calc((var(--cat-vh)_-_628px)*1.05),176px)] [@media(max-height:699px)]:size-[67px]'} -mt-3 [@media(max-height:699px)]:mt-0`
                   : '-mt-5 mb-4 [@media(min-height:740px)]:-mt-12'
             }`}
           >
@@ -1317,7 +1317,7 @@ export function FocusSession() {
                 awake={!!reveal}
                 label={companionName ?? 'Напарник'}
                 // размер — от высоты экрана, чтобы старт всегда был над меню
-                className={deal ? CAT_STAGE : 'size-[clamp(140px,calc(100dvh_-_536px),264px)]'}
+                className={deal ? CAT_STAGE : 'size-[clamp(140px,calc(var(--cat-vh)_-_536px),264px)]'}
               />
             </div>
           </div>

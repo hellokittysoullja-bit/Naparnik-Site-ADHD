@@ -67,6 +67,10 @@
      полоска «домой», его кнопки поверх полноэкранного режима): env() в его окне их не знает. Ставит lib/tg-webapp-boot.ts. */
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
+  /* высота, от которой считается размер кота (22.11, владелец: «в мини-аппе кот такой же, как на сайте»). В браузере —
+     100dvh, как было; в мини-аппе на весь экран — без шапки и кнопок Telegram сверху, полоски «домой» снизу и ещё
+     50px (столько у Safari на iPhone съедает нижняя панель сверх полоски «домой»), иначе кот там на треть крупнее */
+  --cat-vh: 100dvh;
   --background: oklch(0.17 0.008 130);
   --foreground: oklch(0.96 0.008 110);
   --card: oklch(0.21 0.01 130);
@@ -2514,4 +2518,7 @@ html:has(.app-scroll) body {
 html[data-tg] {
   --sat: max(env(safe-area-inset-top, 0px), var(--tg-sat, 0px));
   --sab: max(env(safe-area-inset-bottom, 0px), var(--tg-sab, 0px));
+}
+html[data-tg-fs] {
+  --cat-vh: calc(100dvh - var(--sat) - var(--sab) - 50px);
 }
