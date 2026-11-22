@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 // своего скролла и прокручивается вся страница (см. историю в git для app/app/page.tsx).
 export default function ChatPage() {
   return (
-    <main className="app-page-enter relative flex h-dvh flex-col overflow-hidden pb-20">
+    <main className="app-page-enter relative flex h-dvh flex-col overflow-hidden pb-20 pt-[var(--sat)]">
       {/* фон — ночная сцена Дома и лендинга (владелец 19.11); общий фон /app с грядой здесь не рисуется */}
       <FocusScene />
       <div className="relative z-[1] flex min-h-0 flex-1 flex-col">

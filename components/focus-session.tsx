@@ -420,6 +420,7 @@ export function FocusSession() {
           memory: memoryForTask(),
           energy: e ?? undefined,
           fineness: finer ? 'fine' : fineness === 'normal' ? undefined : fineness,
+          ...(finer ? { more: true } : {}),
           // шаг дробится внутри своего дела: модель видит дело целиком и не повторяет соседние шаги
           ...(finer && dealTitle && dealTitle !== target
             ? { parent: dealTitle, siblings: (brokenSteps ?? []).map((b) => b.text).filter((t) => t !== target).slice(0, 12) }
@@ -1248,7 +1249,7 @@ export function FocusSession() {
     const line = breakNote
       ? breakNote
       : finerError
-      ? 'Не вышло разломать мельче, сеть подвела. *Попробуем ещё раз?*'
+      ? 'Сейчас не вышло разломать мельче. *Попробуем ещё раз?*'
       : dropped
       ? `Убрал «${trimLabel(dropped.step.text, 28)}».`
       : reveal
@@ -1553,7 +1554,7 @@ export function FocusSession() {
               role="status"
               className="flex items-center gap-2 self-start rounded-full border border-white/10 bg-background/70 px-4 py-2 text-xs leading-relaxed text-muted-foreground"
             >
-              Не вышло раздробить — сеть подвела.
+              Сейчас не вышло раздробить.
               <button
                 type="button"
                 onClick={() => void requestBreak()}

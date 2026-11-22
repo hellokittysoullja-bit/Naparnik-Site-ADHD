@@ -1,3 +1,4 @@
+import { postButtons } from './post-buttons'
 import { SPHERES, STEPS, FIRST_MINUTES, type Sphere } from '@/lib/onboarding'
 import { shortDuration } from '@/lib/deals'
 import { linkCode } from './link'
@@ -108,7 +109,9 @@ type Keyboard = Button[][]
 
 /** Нижняя кнопка (владелец 20.11): постоянная клавиатура под полем ввода, а не кнопка под сообщением */
 export const MENU_BREAK = '🐾 Разбить задачу'
-const MENU = { keyboard: [[{ text: MENU_BREAK }]], resize_keyboard: true, is_persistent: true, input_field_placeholder: 'Напиши задачу…' }
+// зелёная (владелец 22.11; Bot API 9.4 даёт только «success» — зелёный, «primary» — синий, «danger» — красный).
+// Старые приложения Telegram цвет не знают и рисуют кнопку серой, как раньше
+const MENU = { keyboard: [[{ text: MENU_BREAK, style: 'success' }]], resize_keyboard: true, is_persistent: true, input_field_placeholder: 'Напиши задачу…' }
 /** нажатие нижней кнопки приходит её текстом; эмодзи на некоторых клиентах теряется */
 const isMenuBreak = (text: string) => text.replace(/^\p{Extended_Pictographic}\s*/u, '').toLowerCase() === 'разбить задачу'
 
@@ -187,8 +190,9 @@ const hh = (h: number) => `${h}:00`
 
 // Голос кота (правила владельца 12.11): без тире, без рода, по-разговорному
 export const T = {
-  hello:
-    'Приветик. Я Напарник, кот, который сидит рядом, пока ты делаешь что-то маленькое. Без стыда и без серий, которые сгорают.\n\nЧто сейчас висит? Нажми или напиши своими словами.',
+  /** открытка знакомства (подпись) и вопрос со сферами — два сообщения: к открытке прикреплена нижняя кнопка */
+  helloIntro: 'Приветик. Я Напарник, кот, который сидит рядом, пока ты делаешь что-то маленькое. Без стыда и без серий, которые сгорают.',
+  helloAsk: 'Что сейчас висит? Нажми или напиши своими словами.',
   helloBack: 'О, привет-привет! Что сейчас висит? Нажми или напиши своими словами.',
   step: (step: string) => `Самый маленький шаг: «${step}».\nДве минуты. Я рядом.`,
   planStep: (k: number, n: number, step: string) => `Шаг ${k} из ${n}: «${step}».\nЯ рядом.`,
@@ -496,6 +500,8 @@ async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
   const now = d.now()
   // фото с подписью — подпись и есть сообщение
   const text = (msg.text ?? msg.caption ?? '').trim()
+  // кнопки под постом канала (lib/tg/post-buttons.ts): служебная команда админа, разговор и запись не трогает
+  if (/^\/(button|buttons|кнопка|кнопки)(@\w+)?(\s|$)/i.test(text)) return void (await d.send('sendMessage', { chat_id: chat, text: await postButtons(d.send, chat, text), link_preview_options: { is_disabled: true } }))
   let u = await d.store.getUser(chat)
   const isNew = !u
   u ??= newUser(chat, now)
@@ -531,16 +537,18 @@ async function onMessage(msg: TgUpdate['message'], d: Deps): Promise<void> {
     if (isNew) {
       // Первое знакомство — открытка с котом у костра (та же, что в превью ссылки на сайт): человек сразу видит,
       // кто с ним говорит. Не загрузилась картинка — то же приветствие текстом.
+      // Нижняя кнопка «🐾 Разбить задачу» едет на самой открытке: отдельного сообщения-подсказки про неё нет совсем
+      // (владелец 22.11: «пусть вообще не отправляет про кнопку сообщение при старте»). Клавиатура остаётся в чате сама.
+      // Сферы — кнопками под вопросом следующим сообщением: у одного сообщения может быть только одна клавиатура.
       const sent = await d.send('sendPhoto', {
         chat_id: chat,
         photo: `${d.site}/opengraph-image.png`,
-        caption: T.hello,
-        reply_markup: { inline_keyboard: sphereKeyboard() },
+        caption: T.helloIntro,
+        reply_markup: MENU,
       })
-      if (!sent) await say(d, chat, T.hello, sphereKeyboard())
-      // подсказка про нижнюю кнопку — один раз за всю жизнь чата, только при знакомстве (владелец 21.11: повторы — спам);
-      // сама кнопка прикрепляется к чату и остаётся, повторять сообщение ради неё не нужно
-      await sayMenu(d, u, T.menuHint)
+      if (!sent) await d.send('sendMessage', { chat_id: chat, text: T.helloIntro, reply_markup: MENU })
+      u.menu = true
+      await say(d, chat, T.helloAsk, sphereKeyboard())
       await d.store.saveUser(u)
     } else {
       await say(d, chat, T.helloBack, sphereKeyboard())

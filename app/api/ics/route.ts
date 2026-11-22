@@ -20,7 +20,9 @@ export async function GET(req: Request) {
   const at = q.get('at') ?? ''
   const when = (q.get('w') ?? 'завтра').trim()
   const m = AT.exec(at)
-  if (!m || !WHEN.test(when) || +m[2] < 1 || +m[2] > 12 || +m[3] < 1 || +m[3] > 31 || +m[4] > 23 || +m[5] > 59) {
+  const real = m && new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5])
+  const exists = !!real && real.getFullYear() === +m[1] && real.getMonth() === +m[2] - 1 && real.getDate() === +m[3] && real.getHours() === +m[4]
+  if (!m || !exists || !WHEN.test(when) || +m[5] > 59) {
     return new Response('bad request', { status: 400 })
   }
   return new Response(icsText(at, when, ICS_TITLE, new URL(req.url).origin), {

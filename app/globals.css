@@ -1876,7 +1876,10 @@ html[data-hold] body {
 /* Плашка cookie: в HTML всегда, прячется до первой отрисовки, если согласие уже есть или открыт шаг теста
    (components/cookie-notice.tsx) */
 html[data-cookies-ok] .cookie-notice,
-html[data-test-step] .cookie-notice {
+html[data-test-step] .cookie-notice,
+/* мини-апп в Telegram (владелец 22.11): плашки нет. Согласия там не спрашиваем — значит, и cookie посещения (nid,
+   источник) /api/visit не ставит: без согласия их нет нигде (lib/cookie-consent.ts) */
+html[data-tg] .cookie-notice {
   display: none;
 }
 

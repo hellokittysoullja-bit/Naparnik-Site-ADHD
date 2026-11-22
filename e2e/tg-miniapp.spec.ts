@@ -68,9 +68,15 @@ test('запуск: окно раскрыто, «смахнуть — закры
   const types = ev.map((e) => e[0])
   expect(types.indexOf('web_app_expand')).toBeLessThan(types.indexOf('web_app_ready'))
   expect(await last(page, 'web_app_setup_swipe_behavior')).toEqual({ allow_vertical_swipe: false })
+  // телефон — во весь экран, как зрелые мини-аппы (Bot API 8.0)
+  expect(types).toContain('web_app_request_fullscreen')
   expect(page.url()).not.toContain('tgWebApp')
   expect(page.url()).not.toContain('777')
   expect(await page.evaluate(() => document.documentElement.getAttribute('data-tg'))).toBe('android')
+  // плашки cookie в мини-аппе нет, и без согласия cookie посещения не ставятся
+  await expect(page.locator('.cookie-notice')).toBeHidden()
+  await page.waitForTimeout(1500)
+  expect((await page.context().cookies()).map((c) => c.name)).not.toContain('nid')
   // шапка Telegram в цвет неба сцены
   expect(await last(page, 'web_app_set_header_color')).toEqual({ color: '#060c1f' })
 })
@@ -88,6 +94,13 @@ test('шапка Telegram в цвет верха экрана: на Мире —
   })
   await expect.poll(() => last(page, 'web_app_set_header_color')).toEqual({ color: expected })
   expect(expected).not.toBe('#060c1f')
+})
+
+test('на компьютере (Telegram Desktop) мини-апп остаётся окном, без полного экрана', async ({ page }) => {
+  await asTelegram(page)
+  await page.goto('/' + HASH('8.0', 'tdesktop'))
+  await expect.poll(async () => (await events(page)).map((e) => e[0])).toContain('web_app_ready')
+  expect((await events(page)).map((e) => e[0])).not.toContain('web_app_request_fullscreen')
 })
 
 test('экран, который ждёт памяти (Фокус): «готово» только когда экран готов, а не на пустом кадре', async ({ page }) => {
@@ -152,6 +165,12 @@ test('идёт сессия — закрыть окно случайно нел�
     window.dispatchEvent(new CustomEvent('naparnik:memory', { detail: { key: 'naparnik:activeSession' } }))
   })
   await expect.poll(() => last(page, 'web_app_setup_closing_behavior')).toEqual({ need_confirmation: true })
+  // сессия закончилась: память хранит "null" — подтверждение снимается
+  await page.evaluate(() => {
+    localStorage.setItem('naparnik:activeSession', 'null')
+    window.dispatchEvent(new CustomEvent('naparnik:memory', { detail: { key: 'naparnik:activeSession' } }))
+  })
+  await expect.poll(() => last(page, 'web_app_setup_closing_behavior')).toEqual({ need_confirmation: false })
 })
 
 test('память копируется в облако Telegram и «Забудь всё» стирает копию', async ({ page }) => {
@@ -240,4 +259,18 @@ test('после первой сессии в мини-аппе: «сохран�
   const res = await page.request.get(dl.url)
   expect(res.status()).toBe(200)
   expect(await res.text()).toMatch(/DTSTART:\d{8}T190000/)
+})
+
+test('«Поговорить» на Доме в мини-аппе: закрывает окно — под ним чат бота; своей переписки сайта нет', async ({ page }) => {
+  await asTelegram(page)
+  await page.goto('/app' + HASH())
+  await page.getByRole('link', { name: 'Поговорить с котом' }).click()
+  await expect.poll(async () => (await events(page)).map((e) => e[0])).toContain('web_app_close')
+  expect(new URL(page.url()).pathname).toBe('/app')
+})
+
+test('«Поговорить» в обычном браузере — переписка сайта', async ({ page }) => {
+  await page.goto('/app')
+  await page.getByRole('link', { name: 'Поговорить с котом' }).click()
+  await expect(page).toHaveURL(/\/app\/chat/)
 })
