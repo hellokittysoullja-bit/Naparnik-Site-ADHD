@@ -42,7 +42,10 @@ describe('бот: первый разговор', () => {
     expect(r.sent[0].method).toBe('sendPhoto')
     expect(r.sent[0].body.photo).toBe('https://adhd-naparnik.vercel.app/opengraph-image.png')
     expect(String(r.sent[0].body.caption)).toMatch(/^Приветик. Я Напарник/)
-    const kb = (r.sent[0].body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard
+    // на открытке — нижняя кнопка; сферы — под вопросом следующим сообщением
+    expect(r.sent[0].body.reply_markup).toMatchObject({ keyboard: [[{ text: '🐾 Разбить задачу', style: 'success' }]] })
+    expect(String(r.sent[1].body.text)).toMatch(/^Что сейчас висит/)
+    const kb = (r.sent[1].body.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard
     expect(kb.flat().map((b) => b.text)).toContain('Учёба')
     expect(r.store.sources.get('c_lina')).toBe(1)
     expect((await r.store.getUser(CHAT))?.src).toBe('c_lina')
@@ -53,8 +56,8 @@ describe('бот: первый разговор', () => {
     await r.msg('/start')
     await r.tap('sp:study')
     const t = r.texts()
-    expect(t[0]).toContain('«Открыть файл или учебник»')
-    expect(t[1]).toMatch(/буду звать тебя раз в день/)
+    expect(t[1]).toContain('«Открыть файл или учебник»')
+    expect(t[2]).toMatch(/буду звать тебя раз в день/)
     const go = (r.sent.find((s) => String(s.body.text).includes('Открыть файл или учебник'))!.body.reply_markup as {
       inline_keyboard: { url?: string }[][]
     }).inline_keyboard[0][0].url!
@@ -338,43 +341,20 @@ describe('бот: «Разбей …» — база готовых планов 
 describe('бот: нижняя кнопка «🐾 Разбить задачу» (владелец 20.11)', () => {
   const menuOf = (s: { body: Record<string, unknown> }) => s.body.reply_markup as { keyboard?: { text: string }[][]; is_persistent?: boolean } | undefined
 
-  it('после /start в чате постоянная нижняя клавиатура с одной кнопкой; подсказка про неё — один раз за всю жизнь чата', async () => {
+  it('после /start нижняя кнопка прикреплена к самой открытке, а отдельного сообщения-подсказки про неё нет вовсе (владелец 22.11)', async () => {
     const r = rig()
-    await r.msg('/start')
-    const withMenu = r.sent.filter((s) => menuOf(s)?.keyboard)
-    expect(withMenu).toHaveLength(1)
-    expect(menuOf(withMenu[0])).toMatchObject({ keyboard: [[{ text: '🐾 Разбить задачу', style: 'success' }]], is_persistent: true, resize_keyboard: true })
-    await r.msg('/help')
-    await r.msg('помыть посуду')
-    await r.msg('/start')
-    await r.msg('/start')
-    expect(r.sent.filter((s) => s.body.text === T.menuHint)).toHaveLength(1)
-  })
-
-  it('подсказка не возвращается, даже если запись чата перезаписали без отметки (владелец 21.11: это был спам)', async () => {
-    const r = rig()
-    await r.msg('/start')
-    const u = (await r.store.getUser(CHAT))!
-    u.menu = undefined
-    await r.store.saveUser(u)
-    await r.msg('/help')
-    await r.msg('/help')
-    await r.msg('/start')
-    expect(r.sent.filter((s) => s.body.text === T.menuHint)).toHaveLength(1)
-  })
-
-  it('без постоянной памяти (нет Redis) каждый /start похож на знакомство — подсказку тогда не шлём вовсе (владелец 22.11)', async () => {
-    const r = rig()
-    r.deps.persistent = false
     for (let i = 0; i < 3; i++) {
-      // холодный запуск функции: память процесса пуста, чат «новый»
+      // и без памяти бота каждый /start — знакомство: подсказка не приходит ни разу
       const u = await r.store.getUser(CHAT)
       if (u) await r.store.deleteUser(u)
       await r.msg('/start')
     }
+    await r.msg('/help')
+    await r.msg('/start')
     expect(r.sent.filter((s) => s.body.text === T.menuHint)).toHaveLength(0)
-    // само приветствие на /start остаётся — человек его и просил
-    expect(r.sent.filter((s) => s.method === 'sendPhoto')).toHaveLength(3)
+    const photos = r.sent.filter((s) => s.method === 'sendPhoto')
+    expect(photos).toHaveLength(3)
+    for (const p of photos) expect(menuOf(p)).toMatchObject({ keyboard: [[{ text: '🐾 Разбить задачу', style: 'success' }]], is_persistent: true, resize_keyboard: true })
   })
 
   it('кнопка → «напиши задачу» → следующее сообщение разбивается как на сайте, весь план', async () => {
