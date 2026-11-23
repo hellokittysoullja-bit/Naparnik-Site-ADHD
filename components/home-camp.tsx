@@ -273,7 +273,7 @@ export function HomeCamp() {
         {/* сцена: кот по центру на холме, костёр слева от него */}
         <div className="relative flex min-h-0 flex-1 items-end justify-center">
           {/* луна, как на лендинге: справа вверху, отдельно от видео */}
-          <Moon className="pointer-events-none absolute right-[3%] top-0 w-[clamp(84px,26vw,112px)]" />
+          <Moon className="home-moon pointer-events-none absolute right-[3%] top-0 w-[clamp(84px,26vw,112px)]" />
           <div className="relative">
             {/* холм поднят над лапами (макушка svg, y≈6 из 500, на 0,15 W выше лап): кот сидит в холме, не на кромке */}
             <Knoll className="pointer-events-none absolute left-1/2 top-[82%] w-[440%] max-w-[900px] -translate-x-1/2" />
@@ -288,7 +288,7 @@ export function HomeCamp() {
               fire={data?.fire ?? 1}
               size={190}
               label="Напарник"
-              className="vt-cat size-[clamp(96px,calc(var(--cat-vh)-480px-var(--sab)),196px)] [@media(max-height:620px)]:size-[clamp(90px,calc(var(--cat-vh)-440px-var(--sab)),196px)]"
+              className="vt-cat home-cat size-[clamp(96px,calc(var(--cat-vh)-480px-var(--sab)),196px)] [@media(max-height:620px)]:size-[clamp(90px,calc(var(--cat-vh)-440px-var(--sab)),196px)]"
             />
           </div>
         </div>

@@ -476,3 +476,21 @@ test('Дом: блок дела в HTML раньше кота, а на экра�
   expect(m.sectionZ).toBeGreaterThan(0)
   expect(m.fireZ).toBeGreaterThan(m.sectionZ)
 })
+
+// Мини-апп на весь экран (владелец 23.11): свободная высота идёт коту (до 230 px), а не в пустое небо; луна крупнее
+test('мини-апп на весь экран: кот на Доме 230 px, луна крупнее, в браузере как было', async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 852 })
+  await page.goto('/app')
+  const site = await page.locator('.home-cat').boundingBox()
+  const moonSite = await page.locator('.home-moon').boundingBox()
+  await page.evaluate(() => {
+    const h = document.documentElement
+    h.setAttribute('data-tg', ''); h.setAttribute('data-tg-fs', '')
+    h.style.setProperty('--tg-sat', '100px'); h.style.setProperty('--tg-sab', '34px')
+  })
+  const tg = await page.locator('.home-cat').boundingBox()
+  const moonTg = await page.locator('.home-moon').boundingBox()
+  expect(Math.round(tg!.width)).toBe(230)
+  expect(moonTg!.width).toBeGreaterThan(moonSite!.width)
+  expect(Math.round(site!.width)).toBe(196)
+})

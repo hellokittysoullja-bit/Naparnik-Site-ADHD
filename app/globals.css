@@ -2536,3 +2536,14 @@ html[data-tg-fs] {
 @media (prefers-reduced-motion: reduce) {
   .cat-props-breathe, .cat-props-screen, .cat-props-ribbon, .cat-props-page { animation: none; }
 }
+
+/* Дом в мини-аппе на весь экран (владелец 23.11): экран выше, чем в Safari, и свободная высота уходила в пустое небо —
+   кот был даже меньше, чем на сайте (~154 px против ~180). Здесь кот до 230 px от свободной высоты (низ блока тот же),
+   луна чуть крупнее. В браузере ничего не меняется */
+html[data-tg-fs] .home-cat {
+  width: clamp(96px, calc(100dvh - var(--sat) - var(--sab) - 488px), 230px);
+  height: clamp(96px, calc(100dvh - var(--sat) - var(--sab) - 488px), 230px);
+}
+html[data-tg-fs] .home-moon {
+  width: clamp(94px, 29vw, 126px);
+}
